@@ -1,0 +1,26 @@
+{
+  "name": "arl-online",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "send-email": "node send-email.js",
+    "build": "vite build",
+    "start": "npm run build && node server.js",
+    "serve": "node server.js",
+    "dev": "node scripts/dev.js",
+    "dev:client": "vite",
+    "dev:server": "NODE_ENV=development node server.js",
+    "preview": "npm start"
+  },
+  "dependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "resend": "^4.0.0",
+    "svelte": "^5.56.3",
+    "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.10"
+  }
+}

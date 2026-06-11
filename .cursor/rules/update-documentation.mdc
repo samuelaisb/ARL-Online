@@ -1,0 +1,24 @@
+---
+description: Require agents to update AGENTS.md after website changes
+alwaysApply: true
+---
+
+# Update documentation after website edits
+
+When you finish editing the ARL Online website (frontend, API, scripts, env, or structure), you must update documentation before considering the task complete.
+
+## Required
+
+1. Read `AGENTS.md` at the project root before making structural changes.
+2. After changes that affect behavior, layout, APIs, scripts, env vars, or directory structure, update `AGENTS.md` (and any other affected docs).
+3. Add a row to the **Changelog** table in `AGENTS.md` for meaningful changes.
+
+## Skip doc updates only when
+
+- Typo fixes, comment-only edits, or formatting with no behavioral change.
+- Dependency bumps that do not change how the app runs or is developed.
+
+## Do not
+
+- Leave `AGENTS.md` describing removed files, endpoints, or workflows.
+- Add new README or markdown files unless the user asked for them; prefer updating `AGENTS.md`.
