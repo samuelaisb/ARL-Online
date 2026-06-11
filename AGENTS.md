@@ -291,7 +291,7 @@ Production image: multi-stage `Dockerfile` at the repo root.
 
 | Stage | Role |
 |-------|------|
-| `build` | `npm ci` + `npm run build` (Vite → `dist/`) |
+| `build` | `npm ci` + `npm run build` (Vite → `dist/`; copies `locales/` for i18n JSON imports) |
 | `production` | `npm ci --omit=dev`, `node server.js` (copies `src/lib/` for shared calendar/reservation helpers) |
 
 **Build-time args** (optional — omit Supabase vars to hide header auth in the built UI):
@@ -391,3 +391,4 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-11 | Calendar grid: existing reservations (`status: reserved`) shown on all item tags with branded lavender cell styling and legend swatch; equipment/books mid-week reserved days no longer appear as generic blocked weekdays. |
 | 2026-06-11 | Inventory badge: **Check availability** (lavender) when not reserved today but no bookable window within 7 days; `hasAvailabilityWithinDays` in `calendar.js`; EN/FR `calendar.check_availability`. |
 | 2026-06-11 | Code review fixes: Dockerfile copies `src/lib/`; server imports shared `calendar.js`; in-process inventory file lock; JPEG/path image validation; removed open email relay endpoints; lazy Resend init; single `ReserveCalendarModal` + shared availability clock; package.json devDeps cleanup; assorted UX hardening (reservation copy, AuthModal password, QuoteFooter locale, main.js guard). |
+| 2026-06-11 | Fixed Docker/Cloud Build: `Dockerfile` build stage now copies `locales/` (required by `src/lib/i18n.js` during `vite build`). |

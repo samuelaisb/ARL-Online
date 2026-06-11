@@ -9,6 +9,7 @@ RUN npm ci
 
 COPY index.html vite.config.js svelte.config.js ./
 COPY public ./public
+COPY locales ./locales
 COPY src ./src
 
 # Baked into the client bundle at build time (Vite envPrefix: SUPABASE_, VITE_, SITE_).
