@@ -1,0 +1,156 @@
+{
+  "site": {
+    "title": "Bibliothèque ressources activistes — Montréal",
+    "subtitle": "Parcourez l'inventaire et réservez des articles.",
+    "brand_home_aria": "Accueil Apathy is Boring",
+    "brand_name": "Apathy is Boring",
+    "attribution_aria": "Créé par Finance Engage Sustain",
+    "attribution_text": "La bibliothèque a été créée par Finance Engage Sustain",
+    "attribution_link_aria": "Finance Engage Sustain — ouvre un nouvel onglet",
+    "fes_name": "Finance Engage Sustain"
+  },
+  "language": {
+    "switch_aria": "Langue",
+    "en": "EN",
+    "fr": "FR"
+  },
+  "inventory": {
+    "heading": "Inventaire",
+    "loading": "Chargement…",
+    "empty": "Aucun article. Allez dans Admin pour en ajouter.",
+    "load_error": "Impossible de charger l'inventaire.",
+    "reserve": "Réserver",
+    "reserve_modal_title": "Réserver : {title}",
+    "reservation_complete": "Réservation enregistrée.",
+    "filter_aria": "Filtrer l'inventaire par catégorie",
+    "filter_equipment": "Équipement",
+    "filter_books": "Livres",
+    "filter_rooms": "Salles",
+    "empty_filtered": "Aucun article dans cette catégorie."
+  },
+  "calendar": {
+    "heading": "Disponibilité",
+    "available": "Disponible",
+    "check_availability": "Vérifier disponibilité",
+    "unavailable": "Indisponible",
+    "prev_month": "Mois précédent",
+    "next_month": "Mois suivant",
+    "grid_aria": "Calendrier de réservation",
+    "legend_available": "Disponible",
+    "legend_reserved": "Réservé",
+    "select_start_date": "Choisissez une date de début.",
+    "select_end_date": "Choisissez une date de fin pour compléter la période.",
+    "selected_range": "Sélection : {start} au {end}",
+    "confirm_reservation": "Réserver les dates",
+    "clear_selection": "Effacer",
+    "saving": "Enregistrement…",
+    "reservation_saved": "Réservation enregistrée.",
+    "create_error": "Impossible d'enregistrer la réservation.",
+    "delete_error": "Impossible de supprimer la réservation.",
+    "collision_error": "Ces dates chevauchent une réservation existante.",
+    "pickup_dropoff_hours": "Le ramassage et le retour se font entre 10 h et 17 h le mardi.",
+    "select_tuesday_equipment": "Choisissez un mardi pour réserver un bloc d'une semaine.",
+    "select_tuesday_books": "Choisissez un mardi pour réserver un bloc d'un mois.",
+    "block_unavailable": "Ce bloc chevauche une réservation existante."
+  },
+  "auth": {
+    "loading": "Chargement…",
+    "log_in": "Connexion",
+    "register": "Inscription",
+    "sign_out": "Déconnexion",
+    "signing_out": "Déconnexion…",
+    "admin": "Admin",
+    "sign_out_error": "Impossible de se déconnecter.",
+    "create_account": "Créer un compte",
+    "email": "Courriel",
+    "password": "Mot de passe",
+    "email_placeholder": "vous@exemple.com",
+    "close_aria": "Fermer",
+    "cancel": "Annuler",
+    "creating": "Création…",
+    "logging_in": "Connexion…",
+    "enter_email_password": "Entrez votre courriel et mot de passe.",
+    "password_min_length": "Le mot de passe doit contenir au moins 6 caractères.",
+    "account_created_check_email": "Compte créé. Confirmez par courriel, puis connectez-vous.",
+    "auth_failed": "Échec de l'authentification.",
+    "already_have_account": "Déjà un compte?",
+    "need_account": "Pas de compte?"
+  },
+  "admin": {
+    "heading": "Admin",
+    "copy": "Ajoutez ou supprimez des articles d'inventaire.",
+    "add_item": "Ajouter",
+    "remove_items_heading": "Supprimer",
+    "loading": "Chargement…",
+    "empty": "Aucun article à supprimer.",
+    "remove": "Supprimer",
+    "removing": "Suppression…",
+    "remove_confirm": "Supprimer « {title} » de l'inventaire?",
+    "remove_error": "Impossible de supprimer l'article.",
+    "delete_error": "Impossible de supprimer l'article."
+  },
+  "add_item": {
+    "title": "Ajouter",
+    "title_label": "Titre",
+    "title_placeholder": "Titre de l'article",
+    "body_label": "Description",
+    "body_placeholder": "Description…",
+    "tag_label": "Catégorie",
+    "tag_equipment": "Équipement",
+    "tag_books": "Livres",
+    "tag_rooms": "Salles",
+    "image_label": "Image",
+    "processing": "Traitement…",
+    "choose_image": "Choisir une image",
+    "saving": "Enregistrement…",
+    "save_item": "Enregistrer",
+    "fill_all_fields": "Remplissez le titre, la description et choisissez une image.",
+    "save_error": "Impossible d'enregistrer l'article.",
+    "process_image_error": "Impossible de traiter l'image."
+  },
+  "quotes": {
+    "aria_label": "Citations inspirantes",
+    "items": [
+      {
+        "text": "Faites votre part de bien là où vous êtes; ce sont ces petits gestes, mis ensemble, qui envahissent le monde.",
+        "author": "Desmond Tutu"
+      },
+      {
+        "text": "Ne doutez jamais qu'un petit groupe de citoyens réfléchis et engagés peut changer le monde; c'est la seule chose qui y soit jamais parvenue.",
+        "author": "Margaret Mead"
+      },
+      {
+        "text": "Je ne suis qu'une personne, mais j'en suis une. Je ne peux pas tout faire, mais je peux faire quelque chose; et parce que je ne peux pas tout, je ne refuserai pas ce que je peux faire.",
+        "author": "Helen Keller"
+      },
+      {
+        "text": "Ce que vous faites compte; vous devez choisir quel genre de différence vous voulez faire.",
+        "author": "Jane Goodall"
+      },
+      {
+        "text": "Tout semble impossible jusqu'à ce que ce soit fait.",
+        "author": "Nelson Mandela"
+      },
+      {
+        "text": "La façon la plus courante de renoncer à son pouvoir est de croire qu'on n'en a pas.",
+        "author": "Alice Walker"
+      },
+      {
+        "text": "Commencez où vous êtes. Utilisez ce que vous avez. Faites ce que vous pouvez.",
+        "author": "Arthur Ashe"
+      },
+      {
+        "text": "Quand le monde entier se tait, une seule voix devient puissante.",
+        "author": "Malala Yousafzai"
+      },
+      {
+        "text": "Le moment est toujours propice pour faire ce qui est juste.",
+        "author": "Dr. Martin Luther King Jr."
+      },
+      {
+        "text": "Quand j'étais enfant et que je voyais des choses effrayantes à la télé, ma mère me disait : « Cherche les aidants. Tu en trouveras toujours. »",
+        "author": "Fred Rogers"
+      }
+    ]
+  }
+}

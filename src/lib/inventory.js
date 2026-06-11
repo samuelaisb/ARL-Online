@@ -1,4 +1,9 @@
+import { translateKey } from './i18n.js';
+
 const LEGACY_STORAGE_KEY = 'arl-inventory-items';
+
+export const INVENTORY_TAGS = ['equipment', 'books', 'rooms'];
+export const DEFAULT_INVENTORY_TAG = 'equipment';
 
 function loadLegacyLocalItems() {
   try {
@@ -23,7 +28,7 @@ export async function fetchInventory() {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || 'Could not load inventory.');
+    throw new Error(result.error || translateKey('inventory.load_error'));
   }
 
   return Array.isArray(result.items) ? result.items : [];
@@ -39,7 +44,7 @@ export async function createInventoryItem(item) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || 'Could not save inventory item.');
+    throw new Error(result.error || translateKey('add_item.save_error'));
   }
 
   return result.item;
@@ -53,7 +58,7 @@ export async function deleteInventoryItem(id) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || 'Could not delete inventory item.');
+    throw new Error(result.error || translateKey('admin.delete_error'));
   }
 
   return result;
@@ -86,17 +91,32 @@ export async function loadInventoryItems() {
   return items;
 }
 
-export async function reserveInventoryItem(item) {
-  const response = await fetch('/api/reserve-inventory', {
+export async function createReservation(itemId, { startDate, endDate }) {
+  const response = await fetch(`/api/inventory/${encodeURIComponent(itemId)}/reservations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ item }),
+    body: JSON.stringify({ startDate, endDate }),
   });
 
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || 'Failed to send reservation email.');
+    throw new Error(result.error || translateKey('calendar.create_error'));
+  }
+
+  return result;
+}
+
+export async function deleteReservation(itemId, reservationId) {
+  const response = await fetch(
+    `/api/inventory/${encodeURIComponent(itemId)}/reservations/${encodeURIComponent(reservationId)}`,
+    { method: 'DELETE' },
+  );
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('calendar.delete_error'));
   }
 
   return result;

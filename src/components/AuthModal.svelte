@@ -1,5 +1,6 @@
 <script>
   import { signInWithEmail, signUpWithEmail } from '../lib/auth.js';
+  import { t } from '../lib/i18n.js';
 
   let dialog = $state();
   let activeMode = $state('login');
@@ -42,15 +43,14 @@
     clearFormStatus();
 
     const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
 
-    if (!trimmedEmail || !trimmedPassword) {
-      showFormStatus('Please enter your email and password.', 'error');
+    if (!trimmedEmail || !password) {
+      showFormStatus($t('auth.enter_email_password'), 'error');
       return;
     }
 
-    if (trimmedPassword.length < 6) {
-      showFormStatus('Password must be at least 6 characters.', 'error');
+    if (password.length < 6) {
+      showFormStatus($t('auth.password_min_length'), 'error');
       return;
     }
 
@@ -58,20 +58,20 @@
 
     try {
       if (activeMode === 'register') {
-        const { session: newSession } = await signUpWithEmail(trimmedEmail, trimmedPassword);
+        const { session: newSession } = await signUpWithEmail(trimmedEmail, password);
         if (!newSession) {
-          showFormStatus('Account created. Check your email to confirm, then log in.', 'success');
+          showFormStatus($t('auth.account_created_check_email'), 'success');
           activeMode = 'login';
           password = '';
           return;
         }
       } else {
-        await signInWithEmail(trimmedEmail, trimmedPassword);
+        await signInWithEmail(trimmedEmail, password);
       }
 
       close();
     } catch (error) {
-      showFormStatus(error.message || 'Authentication failed.', 'error');
+      showFormStatus(error.message || $t('auth.auth_failed'), 'error');
     } finally {
       submitting = false;
     }
@@ -87,24 +87,24 @@
 <dialog bind:this={dialog} class="modal" oncancel={handleCancel}>
   <form method="dialog" novalidate onsubmit={handleSubmit}>
     <header class="modal-header">
-      <h2>{activeMode === 'register' ? 'Create account' : 'Log in'}</h2>
-      <button type="button" class="icon-btn" aria-label="Close" onclick={close}>
+      <h2>{activeMode === 'register' ? $t('auth.create_account') : $t('auth.log_in')}</h2>
+      <button type="button" class="icon-btn" aria-label={$t('auth.close_aria')} onclick={close}>
         &times;
       </button>
     </header>
 
-    <label for="auth-email">Email</label>
+    <label for="auth-email">{$t('auth.email')}</label>
     <input
       id="auth-email"
       name="email"
       type="email"
       autocomplete="email"
-      placeholder="you@example.com"
+      placeholder={$t('auth.email_placeholder')}
       required
       bind:value={email}
     />
 
-    <label for="auth-password">Password</label>
+    <label for="auth-password">{$t('auth.password')}</label>
     <input
       id="auth-password"
       name="password"
@@ -122,23 +122,23 @@
     {/if}
 
     <div class="modal-actions">
-      <button type="button" class="btn-secondary" onclick={close}>Cancel</button>
+      <button type="button" class="btn-secondary" onclick={close}>{$t('auth.cancel')}</button>
       <button type="submit" class="btn-primary" disabled={submitting}>
         {#if submitting}
-          {activeMode === 'register' ? 'Creating...' : 'Logging in...'}
+          {activeMode === 'register' ? $t('auth.creating') : $t('auth.logging_in')}
         {:else}
-          {activeMode === 'register' ? 'Create account' : 'Log in'}
+          {activeMode === 'register' ? $t('auth.create_account') : $t('auth.log_in')}
         {/if}
       </button>
     </div>
 
     <p class="auth-modal-switch">
       {#if activeMode === 'register'}
-        Already have an account?
-        <button type="button" class="link-btn" onclick={() => switchMode('login')}>Log in</button>
+        {$t('auth.already_have_account')}
+        <button type="button" class="link-btn" onclick={() => switchMode('login')}>{$t('auth.log_in')}</button>
       {:else}
-        Need an account?
-        <button type="button" class="link-btn" onclick={() => switchMode('register')}>Register</button>
+        {$t('auth.need_account')}
+        <button type="button" class="link-btn" onclick={() => switchMode('register')}>{$t('auth.register')}</button>
       {/if}
     </p>
   </form>

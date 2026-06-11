@@ -1,8 +1,19 @@
 import { writable } from 'svelte/store';
-import { supabase, supabaseConfigured } from './supabase.js';
+import { supabase, supabaseConfigured, getAuthRedirectUrl } from './supabase.js';
 
 export const session = writable(null);
 export const authReady = writable(false);
+
+const APATHY_ADMIN_DOMAIN = '@apathyisboring.com';
+
+/** True when the signed-in user's email is an @apathyisboring.com address. */
+export function isApathyAdmin(sessionValue) {
+  const email = sessionValue?.user?.email?.trim();
+  if (!email) {
+    return false;
+  }
+  return email.toLowerCase().endsWith(APATHY_ADMIN_DOMAIN);
+}
 
 let authSubscription = null;
 
@@ -35,7 +46,12 @@ export async function signInWithEmail(email, password) {
 
 export async function signUpWithEmail(email, password) {
   if (!supabase) throw new Error('Auth is not configured.');
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const redirectTo = getAuthRedirectUrl();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+  });
   if (error) throw error;
   if (data.session) {
     session.set(data.session);

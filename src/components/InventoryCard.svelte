@@ -1,16 +1,30 @@
 <script>
-  import { reserveInventoryItem } from '../lib/inventory.js';
+  import { onDestroy } from 'svelte';
+  import { availabilityNow } from '../lib/availability-clock.js';
+  import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
+  import { t } from '../lib/i18n.js';
 
-  let { item } = $props();
+  let { item, reserveSuccessTick, onOpenReserve } = $props();
 
-  let reserving = $state(false);
-  let reserved = $state(false);
   let statusMessage = $state('');
   let statusType = $state('');
   let fadeOut = $state(false);
 
   let fadeTimeout;
   let hideTimeout;
+
+  let unavailable = $derived(
+    isCurrentlyReserved(item.reservations ?? [], new Date($availabilityNow)),
+  );
+  let checkAvailability = $derived(
+    !unavailable &&
+      !hasAvailabilityWithinDays(
+        item.reservations ?? [],
+        item.tag ?? 'equipment',
+        7,
+        new Date($availabilityNow),
+      ),
+  );
 
   function clearStatusTimeouts() {
     clearTimeout(fadeTimeout);
@@ -35,42 +49,48 @@
     }
   }
 
-  async function handleReserve() {
-    reserving = true;
-    setStatus('', '');
-
-    try {
-      await reserveInventoryItem(item);
-      reserving = false;
-      reserved = true;
-      setStatus('Reservation email sent.', 'success');
-    } catch (error) {
-      reserving = false;
-      setStatus(error.message || 'Could not send reservation email.', 'error');
-    }
+  function openReserveModal() {
+    onOpenReserve?.(item);
   }
+
+  $effect(() => {
+    const { id, at } = reserveSuccessTick;
+    if (id === item.id && at) {
+      setStatus($t('inventory.reservation_complete'), 'success');
+    }
+  });
+
+  onDestroy(() => {
+    clearStatusTimeouts();
+  });
 </script>
 
 <article class="inventory-card">
   <div class="inventory-image-frame">
     <img class="inventory-image" src={item.image} alt={item.title} loading="lazy" />
+    <span
+      class="availability-badge"
+      class:availability-badge--available={!unavailable && !checkAvailability}
+      class:availability-badge--check={checkAvailability}
+      class:availability-badge--unavailable={unavailable}
+      role="status"
+      aria-live="polite"
+    >
+      {#if unavailable}
+        {$t('calendar.unavailable')}
+      {:else if checkAvailability}
+        {$t('calendar.check_availability')}
+      {:else}
+        {$t('calendar.available')}
+      {/if}
+    </span>
   </div>
   <div class="inventory-content">
     <h3>{item.title}</h3>
     <p>{item.body}</p>
-    <button
-      type="button"
-      class="btn-reserve"
-      disabled={reserving || reserved}
-      onclick={handleReserve}
-    >
-      {#if reserving}
-        Reserving...
-      {:else if reserved}
-        Reserved
-      {:else}
-        Reserve Inventory
-      {/if}
+
+    <button type="button" class="btn-reserve" onclick={openReserveModal}>
+      {$t('inventory.reserve')}
     </button>
     {#if statusMessage}
       <p

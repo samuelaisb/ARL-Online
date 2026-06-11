@@ -1,0 +1,25 @@
+# Build production image with Supabase baked in, then push to Artifact Registry.
+# Usage (from repo root, with .env present):
+#   ./scripts/cloud-build.sh
+#
+# Or manually:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_SUPABASE_URL=...,_SUPABASE_API=...,_SITE_URL=...,_IMAGE=...
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=SUPABASE_URL=${_SUPABASE_URL}
+      - --build-arg=SUPABASE_API=${_SUPABASE_API}
+      - --build-arg=SITE_URL=${_SITE_URL}
+      - -t
+      - ${_IMAGE}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_IMAGE}
+
+images:
+  - ${_IMAGE}

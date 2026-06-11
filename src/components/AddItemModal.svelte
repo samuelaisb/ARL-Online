@@ -1,12 +1,18 @@
 <script>
-  import { createInventoryItem } from '../lib/inventory.js';
+  import {
+    createInventoryItem,
+    INVENTORY_TAGS,
+    DEFAULT_INVENTORY_TAG,
+  } from '../lib/inventory.js';
   import { compressImageFile } from '../lib/image.js';
+  import { t } from '../lib/i18n.js';
 
   let { oncreated } = $props();
 
   let dialog = $state();
   let title = $state('');
   let body = $state('');
+  let tag = $state(DEFAULT_INVENTORY_TAG);
   let selectedImageDataUrl = $state('');
   let imageFileName = $state('');
   let processingImage = $state(false);
@@ -19,6 +25,7 @@
   export function open() {
     title = '';
     body = '';
+    tag = DEFAULT_INVENTORY_TAG;
     selectedImageDataUrl = '';
     imageFileName = '';
     formStatus = '';
@@ -62,7 +69,7 @@
       selectedImageDataUrl = '';
       imageFileName = '';
       event.target.value = '';
-      showFormStatus(error.message || 'Could not process the image.', 'error');
+      showFormStatus(error.message || $t('add_item.process_image_error'), 'error');
     } finally {
       processingImage = false;
     }
@@ -82,7 +89,7 @@
     const image = selectedImageDataUrl;
 
     if (!trimmedTitle || !trimmedBody || !image) {
-      showFormStatus('Please fill in title, body, and choose an image.', 'error');
+      showFormStatus($t('add_item.fill_all_fields'), 'error');
       return;
     }
 
@@ -93,11 +100,12 @@
         title: trimmedTitle,
         body: trimmedBody,
         image,
+        tag,
       });
       oncreated?.(item);
       close();
     } catch (error) {
-      showFormStatus(error.message || 'Could not save inventory item.', 'error');
+      showFormStatus(error.message || $t('add_item.save_error'), 'error');
     } finally {
       saving = false;
     }
@@ -111,33 +119,50 @@
 >
   <form method="dialog" novalidate onsubmit={handleSubmit}>
     <header class="modal-header">
-      <h2>Add Item</h2>
-      <button type="button" class="icon-btn" aria-label="Close" onclick={close}>
+      <h2>{$t('add_item.title')}</h2>
+      <button type="button" class="icon-btn" aria-label={$t('auth.close_aria')} onclick={close}>
         &times;
       </button>
     </header>
 
-    <label for="item-title">Title</label>
+    <label for="item-title">{$t('add_item.title_label')}</label>
     <input
       id="item-title"
       name="title"
       type="text"
-      placeholder="Item title"
+      placeholder={$t('add_item.title_placeholder')}
       required
       bind:value={title}
     />
 
-    <label for="item-body">Body</label>
+    <fieldset class="tag-fieldset">
+      <legend>{$t('add_item.tag_label')}</legend>
+      <div class="tag-options">
+        {#each INVENTORY_TAGS as tagOption (tagOption)}
+          <label class="tag-option">
+            <input
+              type="radio"
+              name="item-tag"
+              value={tagOption}
+              bind:group={tag}
+            />
+            <span>{$t(`add_item.tag_${tagOption}`)}</span>
+          </label>
+        {/each}
+      </div>
+    </fieldset>
+
+    <label for="item-body">{$t('add_item.body_label')}</label>
     <textarea
       id="item-body"
       name="body"
       rows="5"
-      placeholder="Item description..."
+      placeholder={$t('add_item.body_placeholder')}
       required
       bind:value={body}
     ></textarea>
 
-    <label for="item-image">Image</label>
+    <label for="item-image">{$t('add_item.image_label')}</label>
     <div class="image-upload">
       <input
         bind:this={imageInput}
@@ -155,9 +180,9 @@
         onclick={() => imageInput?.click()}
       >
         {#if processingImage}
-          Processing...
+          {$t('add_item.processing')}
         {:else}
-          Choose Image
+          {$t('add_item.choose_image')}
         {/if}
       </button>
       {#if imageFileName}
@@ -175,12 +200,12 @@
     {/if}
 
     <div class="modal-actions">
-      <button type="button" class="btn-secondary" onclick={close}>Cancel</button>
+      <button type="button" class="btn-secondary" onclick={close}>{$t('auth.cancel')}</button>
       <button type="submit" class="btn-primary" disabled={saving}>
         {#if saving}
-          Saving...
+          {$t('add_item.saving')}
         {:else}
-          Save Item
+          {$t('add_item.save_item')}
         {/if}
       </button>
     </div>

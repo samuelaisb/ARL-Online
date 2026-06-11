@@ -1,0 +1,156 @@
+{
+  "site": {
+    "title": "Activist Resource Library - Montreal",
+    "subtitle": "Browse inventory and reserve items for your work.",
+    "brand_home_aria": "Apathy is Boring home",
+    "brand_name": "Apathy is Boring",
+    "attribution_aria": "Created by Finance Engage Sustain",
+    "attribution_text": "The Activist Resource Library was created by Finance Engage Sustain",
+    "attribution_link_aria": "Finance Engage Sustain — opens in a new tab",
+    "fes_name": "Finance Engage Sustain"
+  },
+  "language": {
+    "switch_aria": "Language",
+    "en": "EN",
+    "fr": "FR"
+  },
+  "inventory": {
+    "heading": "Inventory",
+    "loading": "Loading inventory...",
+    "empty": "No items yet. Switch to Admin to add one.",
+    "load_error": "Could not load inventory.",
+    "reserve": "Reserve Inventory",
+    "reserve_modal_title": "Reserve: {title}",
+    "reservation_complete": "Reservation saved.",
+    "filter_aria": "Filter inventory by category",
+    "filter_equipment": "Equipment",
+    "filter_books": "Books",
+    "filter_rooms": "Rooms",
+    "empty_filtered": "No items in this category yet."
+  },
+  "calendar": {
+    "heading": "Availability",
+    "available": "Available",
+    "check_availability": "Check availability",
+    "unavailable": "Unavailable",
+    "prev_month": "Previous month",
+    "next_month": "Next month",
+    "grid_aria": "Reservation calendar",
+    "legend_available": "Available",
+    "legend_reserved": "Reserved",
+    "select_start_date": "Select a start date on the calendar.",
+    "select_end_date": "Select an end date to complete your range.",
+    "selected_range": "Selected: {start} to {end}",
+    "confirm_reservation": "Reserve dates",
+    "clear_selection": "Clear",
+    "saving": "Saving...",
+    "reservation_saved": "Reservation saved.",
+    "create_error": "Could not save reservation.",
+    "delete_error": "Could not remove reservation.",
+    "collision_error": "Those dates overlap an existing reservation.",
+    "pickup_dropoff_hours": "Pickup and drop off is between 10am and 5pm on Tuesdays.",
+    "select_tuesday_equipment": "Select a Tuesday to reserve a one-week block.",
+    "select_tuesday_books": "Select a Tuesday to reserve a one-month block.",
+    "block_unavailable": "That block overlaps an existing reservation."
+  },
+  "auth": {
+    "loading": "Loading...",
+    "log_in": "Log in",
+    "register": "Register",
+    "sign_out": "Sign out",
+    "signing_out": "Signing out...",
+    "admin": "Admin",
+    "sign_out_error": "Could not sign out.",
+    "create_account": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "email_placeholder": "you@example.com",
+    "close_aria": "Close",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "logging_in": "Logging in...",
+    "enter_email_password": "Please enter your email and password.",
+    "password_min_length": "Password must be at least 6 characters.",
+    "account_created_check_email": "Account created. Check your email to confirm, then log in.",
+    "auth_failed": "Authentication failed.",
+    "already_have_account": "Already have an account?",
+    "need_account": "Need an account?"
+  },
+  "admin": {
+    "heading": "Admin",
+    "copy": "Create new inventory items or remove existing ones.",
+    "add_item": "Add Item",
+    "remove_items_heading": "Remove items",
+    "loading": "Loading inventory…",
+    "empty": "No items to remove.",
+    "remove": "Remove",
+    "removing": "Removing…",
+    "remove_confirm": "Remove \"{title}\" from inventory?",
+    "remove_error": "Could not remove item.",
+    "delete_error": "Could not delete inventory item."
+  },
+  "add_item": {
+    "title": "Add Item",
+    "title_label": "Title",
+    "title_placeholder": "Item title",
+    "body_label": "Body",
+    "body_placeholder": "Item description...",
+    "tag_label": "Category",
+    "tag_equipment": "Equipment",
+    "tag_books": "Books",
+    "tag_rooms": "Rooms",
+    "image_label": "Image",
+    "processing": "Processing...",
+    "choose_image": "Choose Image",
+    "saving": "Saving...",
+    "save_item": "Save Item",
+    "fill_all_fields": "Please fill in title, body, and choose an image.",
+    "save_error": "Could not save inventory item.",
+    "process_image_error": "Could not process the image."
+  },
+  "quotes": {
+    "aria_label": "Inspirational quotes",
+    "items": [
+      {
+        "text": "Do your little bit of good where you are; it's those little bits of good put together that overwhelm the world.",
+        "author": "Desmond Tutu"
+      },
+      {
+        "text": "Never doubt that a small group of thoughtful, committed citizens can change the world; indeed, it's the only thing that ever has.",
+        "author": "Margaret Mead"
+      },
+      {
+        "text": "I am only one, but still I am one. I cannot do everything, but still I can do something; and because I cannot do everything, I will not refuse to do something that I can do.",
+        "author": "Helen Keller"
+      },
+      {
+        "text": "What you do makes a difference, and you have to decide what kind of difference you want to make.",
+        "author": "Jane Goodall"
+      },
+      {
+        "text": "It always seems impossible until it's done.",
+        "author": "Nelson Mandela"
+      },
+      {
+        "text": "The most common way people give up their power is by thinking they don't have any.",
+        "author": "Alice Walker"
+      },
+      {
+        "text": "Start where you are. Use what you have. Do what you can.",
+        "author": "Arthur Ashe"
+      },
+      {
+        "text": "When the whole world is silent, even one voice becomes powerful.",
+        "author": "Malala Yousafzai"
+      },
+      {
+        "text": "The time is always right to do what is right.",
+        "author": "Dr. Martin Luther King Jr."
+      },
+      {
+        "text": "When I was a boy and I would see scary things in the news, my mother would say to me, 'Look for the helpers. You will always find people who are helping.'",
+        "author": "Fred Rogers"
+      }
+    ]
+  }
+}

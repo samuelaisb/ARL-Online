@@ -20,11 +20,11 @@ If the change is trivial (typo, comment-only, dependency bump with no behavioral
 
 ARL Online is a small inventory browser with an admin flow:
 
-- **Inventory tab** — lists items (title, body, image) loaded from the server. Users can **Reserve Inventory**, which sends a reservation email via Resend.
-- **Admin tab** — opens a modal to add new items (title, body, uploaded image). Images are compressed client-side before upload.
-- **Header auth** — optional Supabase email/password login and registration (Log in / Register in the site header). Session is client-side only; inventory and admin APIs are not gated on auth yet.
+- **Inventory** — lists items (title, body, image, tag) loaded from the server. Filter buttons show **Equipment**, **Books**, or **Rooms** (default: equipment). Each card shows a real-time **Available**, **Check availability** (no bookable window within 7 days), or **Unavailable** badge. **Reserve Inventory** opens a modal with the reservation calendar (date-range selection persisted via API); confirming dates saves the reservation via `POST /api/inventory/:id/reservations`, which triggers Slack (optional) and Resend notification email server-side (fire-and-forget; email failure does not roll back the save).
+- **Header admin** — signed-in users with an `@apathyisboring.com` email see an **Admin** control in the site header (dropdown with Add Item and remove-items list). Opens the same add-item modal; images are compressed client-side before upload.
+- **Header auth** — optional Supabase email/password login and registration (Log in / Register in the site header). Session is client-side only; inventory and admin APIs are not gated on the server yet.
 
-The admin UI remains available to anyone who can open the site (not restricted to signed-in users).
+Admin UI is hidden unless Supabase auth is configured and the user is signed in with an `@apathyisboring.com` email (`isApathyAdmin` in `src/lib/auth.js`).
 
 ---
 
@@ -73,6 +73,7 @@ ARL-Online/
 │   └── dev.js             # Starts Express + Vite together for npm run dev
 ├── package.json
 ├── .env.example           # Required env template (copy to .env)
+├── locales/               # UI copy: en.json + fr.json (nested snake_case keys)
 ├── data/                  # Gitignored — inventory.json created at runtime
 ├── dist/                  # Gitignored — Vite production build output
 ├── docs/                  # Brand / design reference (not app code)
@@ -80,27 +81,33 @@ ARL-Online/
 │   └── assets/
 │       └── fonts/         # Symlink → src/assets/fonts (so Vite resolves @font-face at build)
 ├── src/
-│   ├── main.js            # Mounts App.svelte, imports app.css
-│   ├── App.svelte         # Root layout: tabs, inventory state, modal wiring
+│   ├── main.js            # Mounts App.svelte when #app exists, imports app.css
+│   ├── App.svelte         # Root layout: inventory state, header admin wiring, modal
 │   ├── app.css            # Global styles (fonts, layout, components)
 │   ├── components/
-│   │   ├── InventoryPanel.svelte   # Inventory tab: loading, errors, grid
-│   │   ├── InventoryCard.svelte    # Single item card + reserve button
-│   │   ├── AdminPanel.svelte       # Admin tab: "Add Item" button + remove-items list
-│   │   ├── AddItemModal.svelte     # Dialog form for new items
+│   │   ├── InventoryPanel.svelte   # Tag filter, grid, shared ReserveCalendarModal, availability clock
+│   │   ├── InventoryCard.svelte    # Card: availability badge + Reserve button (opens panel modal)
+│   │   ├── ReserveCalendarModal.svelte # Single dialog in InventoryPanel; ItemCalendar + reservation save
+│   │   ├── ItemCalendar.svelte     # Month calendar: block reserved dates, create reservations
+│   │   ├── AdminPanel.svelte       # Admin UI: "Add Item" button + remove-items list (header dropdown or full panel)
+│   │   ├── AddItemModal.svelte     # Dialog form for new items (includes tag/category selector)
 │   │   ├── AuthModal.svelte        # Login / register dialog (email + password)
-│   │   ├── HeaderAuth.svelte       # Site header auth controls + modal wiring
+│   │   ├── HeaderAuth.svelte       # Site header auth + gated admin dropdown + modal wiring
+│   │   ├── LocaleSwitcher.svelte   # EN/FR toggle in site header
 │   │   └── QuoteFooter.svelte      # Fixed bottom quote rotator (10s rotation, 600ms fade)
 │   ├── lib/
 │   │   ├── auth.js        # Supabase session store + sign-in/up/out helpers
+│   │   ├── i18n.js        # Locale store + `$t()` translate function (en/fr JSON)
 │   │   ├── inventory.js   # API client + legacy localStorage migration
+│   │   ├── calendar.js    # Date/reservation helpers (shared by client + server.js)
+│   │   ├── availability-clock.js # Shared 60s clock for badge + calendar "today"
 │   │   ├── image.js       # Client-side image compression (canvas → JPEG)
 │   │   └── supabase.js    # Supabase browser client (anon key)
 │   └── assets/
 │       ├── brand/         # Apathy is Boring + FES logos; served at /assets/brand
 │       ├── fonts/         # Inter + Ringold; served at /assets/fonts
 │       └── inventory/     # Seed catalog from MyTurn library; served at /assets/inventory/
-│           ├── items.json # 9 items: title, body, image path, sourceId
+│           ├── items.json # 9 items: title, body, image path, sourceId, tag
 │           └── images/    # Downloaded item photos (jpg/jpeg/png)
 ```
 
@@ -113,34 +120,42 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 ### Entry and root
 
 - `index.html` loads `/src/main.js`.
-- `main.js` uses Svelte 5 `mount()` and imports global `app.css`.
-- `App.svelte` holds top-level state: `activeTab`, `items`, `loading`, `loadError`. It loads inventory on mount and wires the site header (logo + `HeaderAuth`), tabs, modal, fixed bottom quote footer, and fixed bottom-right FES attribution.
+- `main.js` uses Svelte 5 `mount()` when `#app` exists and imports global `app.css`.
+- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount and wires the site header (logo + `LocaleSwitcher` + `HeaderAuth` with admin props), inventory panel, add-item modal, fixed bottom quote footer, and fixed bottom-right FES attribution.
 
 ### Components
 
 | Component | Responsibility |
 |-----------|----------------|
-| `InventoryPanel` | Shows loading, load error, empty state, or grid of cards |
-| `InventoryCard` | Displays one item; handles reserve flow and success/error status on the card |
-| `AdminPanel` | Add-item button, list of current items with remove buttons (confirm + DELETE API) |
-| `AddItemModal` | Native `<dialog>`; form validation; image pick + compress; POST new item. Exposes `open()` / `close()` via `export function` |
-| `QuoteFooter` | Fixed site footer; rotates 10 activist quotes every 10s with fade in/out |
-| `HeaderAuth` | Header Log in / Register buttons when signed out; email + Sign out when signed in. Hidden if Supabase env vars are missing |
+| `InventoryPanel` | Tag filter buttons, loading/error/empty states, filtered card grid, single shared `ReserveCalendarModal`, and shared availability clock subscription |
+| `InventoryCard` | Availability badge (**Available**, **Check availability**, **Unavailable**) and **Reserve Inventory** button; opens the panel-level modal via callback |
+| `ReserveCalendarModal` | One instance in `InventoryPanel`; native `<dialog>` with `ItemCalendar`; on confirm, closes modal and signals success to the originating card |
+| `ItemCalendar` | Month-view calendar; tag-specific block selection (equipment/books) or flexible range (rooms); `todayKey` refreshes via shared availability clock; POST reservation via API |
+| `AdminPanel` | Add-item button, list of current items with remove buttons (confirm + DELETE API). `variant="dropdown"` for compact header menu |
+| `AddItemModal` | Native `<dialog>`; form validation; tag/category radio selector; image pick + compress; POST new item. Exposes `open()` / `close()` via `export function` |
+| `QuoteFooter` | Fixed site footer; rotates 10 activist quotes every 10s with fade in/out; resets index on locale change |
+| `HeaderAuth` | Header Log in / Register when signed out; email, gated **Admin** dropdown, and Sign out when signed in. Admin visible only for `@apathyisboring.com` emails via `isApathyAdmin`. Hidden if Supabase env vars are missing |
 | `AuthModal` | Native `<dialog>` for email/password login and registration. Exposes `open(mode)` / `close()` |
+| `LocaleSwitcher` | EN/FR language toggle; persists choice in `localStorage` key `arl-locale` |
 
 ### Shared libraries
 
-- **`src/lib/supabase.js`** — `createClient` wrapper; reads `SUPABASE_URL` + `SUPABASE_API` (or `VITE_` / `SUPABASE_ANON_KEY` aliases). Exports `supabaseConfigured`.
-- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`. Subscribes to `onAuthStateChange` on first init.
-- **`src/lib/inventory.js`** — `fetchInventory`, `createInventoryItem`, `deleteInventoryItem`, `loadInventoryItems`, `reserveInventoryItem`. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty.
+- **`src/lib/i18n.js`** — Store-based i18n (no extra dependency). Imports `locales/en.json` and `locales/fr.json`. Exports `locale` (writable store), `t` (derived translate function — use `$t('domain.key')` in templates), `translateKey()` for non-reactive scripts, and `quotes` (derived quote list). Initial locale: saved `arl-locale`, else `fr` when `navigator.language` starts with `fr`, else `en`. Updates `document.documentElement.lang` on change. Dynamic strings use `{variable}` interpolation (e.g. `$t('admin.remove_confirm', { title })`).
+- **`src/lib/supabase.js`** — `createClient` wrapper; reads `SUPABASE_URL` + `SUPABASE_API` (or `VITE_` / `SUPABASE_ANON_KEY` aliases). Exports `supabaseConfigured` and `getAuthRedirectUrl()` (`SITE_URL` / `VITE_SITE_URL`, else `window.location.origin`).
+- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`, `isApathyAdmin`. `signUpWithEmail` passes `emailRedirectTo` from `getAuthRedirectUrl()`. `isApathyAdmin` returns true when the session user's email ends with `@apathyisboring.com` (case-insensitive). Subscribes to `onAuthStateChange` on first init.
+- **`src/lib/inventory.js`** — `INVENTORY_TAGS`, `DEFAULT_INVENTORY_TAG`, `fetchInventory`, `createInventoryItem`, `deleteInventoryItem`, `loadInventoryItems`, `createReservation`, `deleteReservation`. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty.
+- **`src/lib/calendar.js`** — `parseDateKey`, `compareDateKeys`, `hasReservationCollision`, `isCurrentlyReserved`, `hasAvailabilityWithinDays`, `getCalendarMonthGrid`, `toDateKey`, and related date helpers. Shared by `InventoryCard`, `ItemCalendar`, and `server.js`.
+- **`src/lib/availability-clock.js`** — `availabilityNow` store plus ref-counted 60s interval (`subscribeAvailabilityClock` / `unsubscribeAvailabilityClock`). Used by `InventoryPanel`, `InventoryCard`, and `ItemCalendar` for badge and today highlighting.
+- **`src/lib/reservation-rules.js`** — Tag-specific reservation block rules (`getBlockEndDate`, `validateReservationDates`, `isFixedBlockTag`). Shared by `ItemCalendar.svelte` and `server.js` reservation endpoints.
 - **`src/lib/image.js`** — `compressImageFile(file)` — scales to max 1200px, exports JPEG at 0.8 quality as a data URL.
 
 ### Auth (Supabase)
 
-- Client-only: `@supabase/supabase-js` in the browser; no Express middleware.
-- `vite.config.js` sets `envPrefix: ['VITE_', 'SUPABASE_']` so `.env` keys like `SUPABASE_URL` and `SUPABASE_API` are available to the client build.
+- Client-only: `@supabase/supabase-js` in the browser; no Express middleware. **Recommended follow-up:** verify Supabase JWT on inventory/admin/reservation API routes server-side.
+- `vite.config.js` sets `envPrefix: ['VITE_', 'SUPABASE_', 'SITE_']` so `.env` keys like `SUPABASE_URL`, `SUPABASE_API`, and `SITE_URL` are available to the client build.
 - Enable **Email** provider in the Supabase dashboard. If email confirmation is on, registration shows a “check your email” message and the user logs in after confirming.
-- Header auth UI is omitted entirely when URL or anon key env vars are unset.
+- Set **`SITE_URL`** to the public production origin (no trailing slash) for production Docker/Cloud builds so confirmation emails redirect there instead of localhost. Omit locally to use the current browser origin (`http://localhost:5173` in dev). The same URL must be allowed in Supabase → **Authentication** → **URL Configuration** (Site URL and Redirect URLs).
+- Header auth UI is omitted entirely when URL or anon key env vars are unset. Admin controls are omitted when auth is unset, the user is signed out, or `isApathyAdmin(session)` is false.
 
 ### Styling
 
@@ -173,9 +188,17 @@ Single file: `server.js`.
 ### Data
 
 - Inventory stored in `data/inventory.json` (array of items).
-- Item shape: `{ id, title, body, image, createdAt }`.
-- `image` is either a `data:image/jpeg;base64,...` URL from the client compressor, or a path like `/assets/inventory/images/...` for seeded MyTurn items.
-- Seeding runs via `ensureInventory()`, called by all three inventory endpoints (`GET`, `POST`, `DELETE`). If `data/inventory.json` is missing or empty, 9 items from `src/assets/inventory/items.json` are written to disk before the operation proceeds.
+- Item shape: `{ id, title, body, image, createdAt, tag, reservations }`.
+- `tag` is one of `equipment`, `books`, or `rooms`. Defaults to `equipment` when missing. Existing items in `data/inventory.json` are migrated to include `tag: "equipment"` on read.
+- `reservations` is an array of `{ id, startDate, endDate, status }` where `startDate` / `endDate` are `YYYY-MM-DD` strings and `status` is `reserved` or `available`. New items default to `[]`. Only `reserved` entries block calendar dates and affect the availability badge.
+- **Tag-specific reservation rules** (enforced in `ItemCalendar` and `POST`/`PATCH` reservation APIs via `src/lib/reservation-rules.js`; ranges are inclusive):
+  - **equipment** — Start must be a **Tuesday**; end is automatically the **following Tuesday** (+7 days). One-week block; pickup/drop-off hours message shown on the calendar.
+  - **books** — Start must be a **Tuesday**; end is **four weeks later** (+28 days, also a Tuesday). One-month block; same pickup/drop-off message.
+  - **rooms** — Flexible inclusive range on any days (existing two-click range selection).
+- Calendar UI for equipment/books: only Tuesdays are selectable; clicking a Tuesday selects the full fixed block. Equipment and books modals show localized pickup/drop-off hours (10am–5pm Tuesdays).
+- `image` is either a `data:image/jpeg;base64,...` URL from the client compressor, or a path like `/assets/inventory/images/...` for seeded MyTurn items. `POST /api/inventory` rejects other image formats/paths with 400.
+- Inventory read-modify-write paths are serialized via an in-process lock in `server.js` to avoid `inventory.json` races.
+- Seeding runs via `ensureInventory()`, called by all inventory mutation endpoints. If `data/inventory.json` is missing or empty, 9 items from `src/assets/inventory/items.json` are written to disk before the operation proceeds.
 - Seeded item IDs use the format `myturn-{sourceId}` when `sourceId` is present in the seed file.
 
 ### API endpoints
@@ -183,19 +206,36 @@ Single file: `server.js`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/inventory` | Returns `{ items: [...] }` |
-| `POST` | `/api/inventory` | Body: `{ title, body, image }`. Creates item, returns `{ item }` |
+| `POST` | `/api/inventory` | Body: `{ title, body, image, tag? }`. `image` must be JPEG data URL or `/assets/inventory/...` path. `tag` must be `equipment`, `books`, or `rooms` (defaults to `equipment`). Creates item, returns `{ item }` |
 | `DELETE` | `/api/inventory/:id` | Removes item by id; returns `{ success: true }` or 404 |
-| `POST` | `/api/reserve-inventory` | Body: `{ item }`. Sends reservation email; returns `{ success, id }` |
-| `POST` | `/api/send-email` | Body: `{ subject, body }`. Generic email endpoint (legacy/auxiliary) |
+| `POST` | `/api/inventory/:id/reservations` | Body: `{ startDate, endDate }` (`YYYY-MM-DD`). Validates tag-specific block rules; persists reservation; fires optional Slack webhook and Resend notification email (email failure is logged, does not fail the response); returns `{ reservation, item: { id, reservations } }`, 400 on invalid dates, or 409 on overlap |
+| `PATCH` | `/api/inventory/:id/reservations/:reservationId` | Body: optional `{ startDate, endDate, status }`. Validates tag rules on update; returns `{ item, reservation }`, 400 on invalid dates, or 409 on overlap |
+| `DELETE` | `/api/inventory/:id/reservations/:reservationId` | Removes reservation; returns `{ success: true, item }` |
 
 JSON body limit: 10mb (for image data URLs).
 
 ### Email (Resend)
 
-- Requires `RESEND_API_KEY` in `.env`; server exits on startup if missing.
-- `EMAIL_FROM` defaults to `onboarding@resend.dev`; `EMAIL_TO` and `RESERVE_INVENTORY_EMAIL_TO` default to `samuel@apathyisboring.com` if unset. Set both in `.env` for production.
+- `RESEND_API_KEY` is lazy-initialized: the server starts without it (logs a warning); reservation emails fail with a clear error when sent if unset.
+- `EMAIL_FROM` defaults to `onboarding@resend.dev`; `RESERVE_INVENTORY_EMAIL_TO` falls back to `EMAIL_TO` (default `samuel@apathyisboring.com`). Set in `.env` for production.
 - `RESERVE_INVENTORY_EMAIL_TO` falls back to `EMAIL_TO` when unset.
 - Reservation emails inline-attach uploaded images when `image` is a data URL. For seed items with path-based images, an HTML link is used — these will not render inline in most email clients.
+
+### Slack reservation webhook (optional)
+
+When `SLACK_RESERVATION_WEBHOOK_URL` is set, a successful `POST /api/inventory/:id/reservations` POSTs text-only JSON to the Slack workflow trigger (5s fetch timeout). Failures are logged and do not block the reservation response. Configure the Slack workflow trigger to accept these variables:
+
+| Variable | Content |
+|----------|---------|
+| `item_id` | Inventory item id |
+| `item_title` | Item title |
+| `item_body` | Item description |
+| `item_tag` | `equipment`, `books`, or `rooms` |
+| `reservation_id` | New reservation UUID |
+| `start_date` | Reservation start (`YYYY-MM-DD`) |
+| `end_date` | Reservation end (`YYYY-MM-DD`) |
+
+User email is not sent — auth is client-only and the reservation API does not receive it.
 
 ### Server port
 
@@ -211,18 +251,20 @@ See `.env.example`:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `RESEND_API_KEY` | Yes | Resend API key |
+| `RESEND_API_KEY` | No* | Resend API key; required for reservation emails |
 | `EMAIL_FROM` | No | Sender address |
 | `EMAIL_TO` | No | Default recipient |
 | `RESERVE_INVENTORY_EMAIL_TO` | No | Reservation email recipient |
+| `SLACK_RESERVATION_WEBHOOK_URL` | No | Slack workflow trigger URL; POST text JSON on new reservation |
 | `PORT` | No | Express listen port |
 | `SUPABASE_URL` | No* | Supabase project URL (client auth). Aliases: `VITE_SUPABASE_URL` |
 | `SUPABASE_API` | No* | Supabase anon/public key. Aliases: `SUPABASE_ANON_KEY`, `VITE_SUPABASE_ANON_KEY` |
+| `SITE_URL` | No | Public site origin for Supabase `emailRedirectTo` on sign-up. Aliases: `VITE_SITE_URL`. Baked at build time; omit in local dev to use browser origin |
 | `NODE_ENV` | No | Set to `development` by `npm run dev`; enables strict port mode |
 | `STRICT_PORT` | No | Set `true` to force strict port outside development |
 | `VITE_API_TARGET` | No | Overrides Vite proxy target (default: `http://localhost:${PORT}`) |
 
-\*Both `SUPABASE_URL` and anon key are required for header auth to appear; omit either to hide auth UI.
+\*Both `SUPABASE_URL` and anon key are required for header auth to appear; omit either to hide auth UI. \*Reservation emails require `RESEND_API_KEY` at send time.
 
 ---
 
@@ -238,6 +280,8 @@ See `.env.example`:
 | `npm run serve` | Express only; serves the existing `dist/` without rebuilding |
 | `npm run preview` | Alias for `npm start` |
 | `npm run send-email` | One-off Resend test via `send-email.js` |
+| `npm run docker:build` | Docker image build with `SUPABASE_URL`, `SUPABASE_API`, and `SITE_URL` from `.env` as build args (`scripts/docker-build.sh`; set `IMAGE` for Artifact Registry tag) |
+| `npm run cloud:build` | Build + push + deploy via Google Cloud Build (no local Docker required). Reads Supabase + `SITE_URL` from `.env`; deploys to `arl-online` in `northamerica-northeast1`. |
 
 ---
 
@@ -248,26 +292,28 @@ Production image: multi-stage `Dockerfile` at the repo root.
 | Stage | Role |
 |-------|------|
 | `build` | `npm ci` + `npm run build` (Vite → `dist/`) |
-| `production` | `npm ci --omit=dev`, `node server.js` (no rebuild on start) |
+| `production` | `npm ci --omit=dev`, `node server.js` (copies `src/lib/` for shared calendar/reservation helpers) |
 
-**Build-time args** (optional — omit both to hide header auth in the built UI):
+**Build-time args** (optional — omit Supabase vars to hide header auth in the built UI):
 
 - `SUPABASE_URL`
 - `SUPABASE_API`
+- `SITE_URL` — production origin for Supabase email-confirmation redirects (recommended for Cloud Run deploys)
 
-**Runtime env** (required in Cloud Run / container platform):
+**Runtime env** (Cloud Run / container platform):
 
-- `RESEND_API_KEY` (required — server exits without it)
+- `RESEND_API_KEY` (required for reservation notification emails)
 - `PORT` (Cloud Run sets this automatically, default `3000` locally)
 - `EMAIL_FROM`, `EMAIL_TO`, `RESERVE_INVENTORY_EMAIL_TO` (optional)
 
-**Local build and run:**
+**Local build and run:** `npm run docker:build` reads Supabase vars from `.env` and passes them as Docker build args. Override the tag with `IMAGE=region-docker.pkg.dev/project/repo/arl-online:latest npm run docker:build`.
 
 ```bash
 docker build \
-  --build-arg SUPABASE_URL=https://your-project.supabase.co \
-  --build-arg SUPABASE_API=your-anon-key \
-  -t arl-online .
+ --build-arg SUPABASE_URL=https://your-project.supabase.co \
+ --build-arg SUPABASE_API=your-anon-key \
+ --build-arg SITE_URL=https://arl-online-123477413804.northamerica-northeast1.run.app \
+ -t arl-online .
 
 docker run --rm -p 8080:8080 \
   -e PORT=8080 \
@@ -286,11 +332,14 @@ docker run --rm -p 8080:8080 \
 | Task | Where to edit |
 |------|----------------|
 | New inventory field | `server.js` (`normalizeInventoryItem`), `AddItemModal.svelte`, `InventoryCard.svelte`, API client in `inventory.js` |
+| Inventory tags / filter | `server.js` (`normalizeTag`, `migrateInventoryTags`), `src/assets/inventory/items.json`, `InventoryPanel.svelte`, `AddItemModal.svelte`, `src/lib/inventory.js`, `locales/en.json` + `fr.json`, styles in `app.css` |
+| Reservation calendar | `server.js` (reservation endpoints), `src/lib/calendar.js`, `src/lib/reservation-rules.js`, `ItemCalendar.svelte`, `InventoryCard.svelte`, `locales/en.json` + `fr.json` |
 | New page / tab | `App.svelte`, new component under `components/`, styles in `app.css` |
 | New API route | `server.js`; add client function in `src/lib/` if the UI needs it |
-| Email content | `server.js` reservation / send-email handlers |
+| Email content | `server.js` reservation notification handler |
 | Dev proxy | `vite.config.js` `server.proxy` |
 | Auth UI / session | `HeaderAuth.svelte`, `AuthModal.svelte`, `src/lib/auth.js`, `src/lib/supabase.js` |
+| User-facing copy / new language | Add matching keys to `locales/en.json` and `locales/fr.json`; use `$t('domain.key')` in components or `translateKey()` in `src/lib/` |
 
 After any of the above, **update this file**.
 
@@ -327,3 +376,18 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-11 | `scripts/dev.js` now kills any process already holding the API port before starting, preventing the "Port in use" hard-exit on `npm run dev`. |
 | 2026-06-11 | Code review: fixed `InventoryCard` "Reserving…" label stuck on success; `POST`/`DELETE` now call `ensureInventory()` to prevent seed bypass; removed dead `.panel` CSS; fixed stale server startup log. Updated AGENTS.md for doc accuracy. |
 | 2026-06-11 | Added production multi-stage `Dockerfile` and `.dockerignore` for Cloud Run / container deploys. |
+| 2026-06-11 | FES attribution logo links to https://www.fesplanet.org (opens in a new tab). |
+| 2026-06-11 | Added `scripts/docker-build.sh` + `npm run docker:build` to bake Supabase creds from `.env` into the production Docker image. |
+| 2026-06-11 | Added `cloudbuild.yaml` + `scripts/cloud-build.sh` + `npm run cloud:build` for Cloud Build deploys (no local Docker). Supabase baked in at build time; deployed to Cloud Run service `arl-online`. |
+| 2026-06-11 | Supabase sign-up passes `emailRedirectTo` via `SITE_URL` / `VITE_SITE_URL` (`getAuthRedirectUrl`); Docker/Cloud Build bake `SITE_URL` for production confirmation redirects. |
+| 2026-06-11 | Moved admin from main tab to header dropdown; visible only to signed-in `@apathyisboring.com` users (`isApathyAdmin`). Removed Inventory/Admin tab navigation. |
+| 2026-06-11 | Added i18n: `locales/en.json` + `locales/fr.json`, `src/lib/i18n.js` store-based `$t()`, `LocaleSwitcher` in header; all UI strings extracted (domains: site, language, inventory, auth, admin, add_item, quotes). |
+| 2026-06-11 | Reservation calendar: items include `reservations` array; `POST`/`DELETE` reservation APIs; `src/lib/calendar.js` + `ItemCalendar.svelte`; per-card availability badge and localized EN/FR calendar UI. |
+| 2026-06-11 | Calendar moved to `ReserveCalendarModal` on Reserve Inventory click (not embedded in cards); confirm saves reservation + sends email; wider modal layout for month nav. |
+| 2026-06-11 | Inventory tags: `equipment`, `books`, `rooms` on each item; filter buttons in `InventoryPanel`; tag selector in `AddItemModal`; server validation + migration of existing items to `equipment`; seed data tagged. |
+| 2026-06-11 | Tag-specific reservation rules: equipment (Tue→+7d), books (Tue→+28d), rooms (flexible range); `src/lib/reservation-rules.js`; calendar UX + server validation; localized pickup/drop-off hours on equipment/books calendars. |
+| 2026-06-11 | Optional `SLACK_RESERVATION_WEBHOOK_URL`: POST text-only JSON to Slack workflow trigger on successful reservation create (`POST /api/inventory/:id/reservations`). |
+| 2026-06-11 | Reservation email moved server-side on `POST /api/inventory/:id/reservations` (fire-and-forget); client no longer calls `reserveInventoryItem` after save. Slim reservation response omits item image/body to avoid large-payload failures. |
+| 2026-06-11 | Calendar grid: existing reservations (`status: reserved`) shown on all item tags with branded lavender cell styling and legend swatch; equipment/books mid-week reserved days no longer appear as generic blocked weekdays. |
+| 2026-06-11 | Inventory badge: **Check availability** (lavender) when not reserved today but no bookable window within 7 days; `hasAvailabilityWithinDays` in `calendar.js`; EN/FR `calendar.check_availability`. |
+| 2026-06-11 | Code review fixes: Dockerfile copies `src/lib/`; server imports shared `calendar.js`; in-process inventory file lock; JPEG/path image validation; removed open email relay endpoints; lazy Resend init; single `ReserveCalendarModal` + shared availability clock; package.json devDeps cleanup; assorted UX hardening (reservation copy, AuthModal password, QuoteFooter locale, main.js guard). |
