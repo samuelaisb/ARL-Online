@@ -153,6 +153,8 @@ body {
 .site-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   width: 100%;
   min-height: 5rem;
   padding: 0.5rem 1.5rem;
@@ -171,6 +173,84 @@ body {
   display: block;
   height: 4rem;
   width: auto;
+}
+
+.header-auth {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.header-auth__loading {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.header-auth__email {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.header-auth__error {
+  width: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-plum);
+  text-align: right;
+}
+
+.btn-header {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+}
+
+.btn-header--primary {
+  background: var(--color-lemon);
+  color: var(--color-dark);
+}
+
+.btn-header--primary:hover:not(:disabled) {
+  background: #f5d000;
+}
+
+.btn-header--secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+}
+
+.btn-header--secondary:hover:not(:disabled) {
+  background: #f0eeea;
+}
+
+.auth-modal-switch {
+  margin: 1rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.link-btn {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-mint);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--color-dark);
 }
 
 .app-body {
@@ -248,14 +328,6 @@ h1 {
 .tab.active {
   background: var(--color-lemon);
   color: var(--color-dark);
-}
-
-.panel {
-  display: none;
-}
-
-.panel.active {
-  display: block;
 }
 
 .panel-title {

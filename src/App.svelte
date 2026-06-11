@@ -5,6 +5,7 @@
   import AdminPanel from './components/AdminPanel.svelte';
   import AddItemModal from './components/AddItemModal.svelte';
   import QuoteFooter from './components/QuoteFooter.svelte';
+  import HeaderAuth from './components/HeaderAuth.svelte';
 
   let activeTab = $state('inventory');
   let items = $state([]);
@@ -60,6 +61,7 @@
         height="64"
       />
     </a>
+    <HeaderAuth />
   </header>
 
   <div class="app-body">

@@ -22,8 +22,9 @@ ARL Online is a small inventory browser with an admin flow:
 
 - **Inventory tab** — lists items (title, body, image) loaded from the server. Users can **Reserve Inventory**, which sends a reservation email via Resend.
 - **Admin tab** — opens a modal to add new items (title, body, uploaded image). Images are compressed client-side before upload.
+- **Header auth** — optional Supabase email/password login and registration (Log in / Register in the site header). Session is client-side only; inventory and admin APIs are not gated on auth yet.
 
-There is no user authentication. The admin UI is available to anyone who can open the site.
+The admin UI remains available to anyone who can open the site (not restricted to signed-in users).
 
 ---
 
@@ -52,7 +53,7 @@ There is no user authentication. The admin UI is available to anyone who can ope
 | Vite dev server | `npm run dev` (or `npm run dev:client`) | http://localhost:5173 | Svelte UI with HMR; proxies `/api`, `/assets/brand`, `/assets/fonts`, and `/assets/inventory` to Express |
 | Express API/static server | `npm run dev` (or `npm run dev:server`) | http://localhost:3000 | Serves API routes plus static fonts, brand logos, and inventory seed assets |
 
-In development, Express uses a strict port so Vite's proxy cannot silently point at the wrong server. If port 3000 is already in use, stop the old server or set `PORT` before running `npm run dev`.
+In development, Express uses a strict port so Vite's proxy cannot silently point at the wrong server. `npm run dev` (via `scripts/dev.js`) automatically frees the API port before starting — manual intervention is rarely needed. For `npm run dev:server` alone, if port 3000 is already in use you must stop the old server or set `PORT`.
 
 **Production / preview:** `npm start` rebuilds `dist/` before starting Express. Use `npm run serve` only when you intentionally want to serve the existing built files without rebuilding.
 
@@ -85,16 +86,20 @@ ARL-Online/
 │   ├── components/
 │   │   ├── InventoryPanel.svelte   # Inventory tab: loading, errors, grid
 │   │   ├── InventoryCard.svelte    # Single item card + reserve button
-│   │   ├── AdminPanel.svelte       # Admin tab: "Add Item" button
+│   │   ├── AdminPanel.svelte       # Admin tab: "Add Item" button + remove-items list
 │   │   ├── AddItemModal.svelte     # Dialog form for new items
-│   │   └── QuoteFooter.svelte      # Fixed bottom quote rotator (10s fade cycle)
+│   │   ├── AuthModal.svelte        # Login / register dialog (email + password)
+│   │   ├── HeaderAuth.svelte       # Site header auth controls + modal wiring
+│   │   └── QuoteFooter.svelte      # Fixed bottom quote rotator (10s rotation, 600ms fade)
 │   ├── lib/
+│   │   ├── auth.js        # Supabase session store + sign-in/up/out helpers
 │   │   ├── inventory.js   # API client + legacy localStorage migration
-│   │   └── image.js       # Client-side image compression (canvas → JPEG)
+│   │   ├── image.js       # Client-side image compression (canvas → JPEG)
+│   │   └── supabase.js    # Supabase browser client (anon key)
 │   └── assets/
 │       ├── brand/         # Apathy is Boring + FES logos; served at /assets/brand
 │       ├── fonts/         # Inter + Ringold; served at /assets/fonts
-│       └── inventory/     # Seed catalog from MyTurn library (not served by default)
+│       └── inventory/     # Seed catalog from MyTurn library; served at /assets/inventory/
 │           ├── items.json # 9 items: title, body, image path, sourceId
 │           └── images/    # Downloaded item photos (jpg/jpeg/png)
 ```
@@ -109,7 +114,7 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 
 - `index.html` loads `/src/main.js`.
 - `main.js` uses Svelte 5 `mount()` and imports global `app.css`.
-- `App.svelte` holds top-level state: `activeTab`, `items`, `loading`, `loadError`. It loads inventory on mount and wires the site header, tabs, modal, fixed bottom quote footer, and fixed bottom-right FES attribution.
+- `App.svelte` holds top-level state: `activeTab`, `items`, `loading`, `loadError`. It loads inventory on mount and wires the site header (logo + `HeaderAuth`), tabs, modal, fixed bottom quote footer, and fixed bottom-right FES attribution.
 
 ### Components
 
@@ -120,11 +125,22 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 | `AdminPanel` | Add-item button, list of current items with remove buttons (confirm + DELETE API) |
 | `AddItemModal` | Native `<dialog>`; form validation; image pick + compress; POST new item. Exposes `open()` / `close()` via `export function` |
 | `QuoteFooter` | Fixed site footer; rotates 10 activist quotes every 10s with fade in/out |
+| `HeaderAuth` | Header Log in / Register buttons when signed out; email + Sign out when signed in. Hidden if Supabase env vars are missing |
+| `AuthModal` | Native `<dialog>` for email/password login and registration. Exposes `open(mode)` / `close()` |
 
 ### Shared libraries
 
+- **`src/lib/supabase.js`** — `createClient` wrapper; reads `SUPABASE_URL` + `SUPABASE_API` (or `VITE_` / `SUPABASE_ANON_KEY` aliases). Exports `supabaseConfigured`.
+- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`. Subscribes to `onAuthStateChange` on first init.
 - **`src/lib/inventory.js`** — `fetchInventory`, `createInventoryItem`, `deleteInventoryItem`, `loadInventoryItems`, `reserveInventoryItem`. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty.
 - **`src/lib/image.js`** — `compressImageFile(file)` — scales to max 1200px, exports JPEG at 0.8 quality as a data URL.
+
+### Auth (Supabase)
+
+- Client-only: `@supabase/supabase-js` in the browser; no Express middleware.
+- `vite.config.js` sets `envPrefix: ['VITE_', 'SUPABASE_']` so `.env` keys like `SUPABASE_URL` and `SUPABASE_API` are available to the client build.
+- Enable **Email** provider in the Supabase dashboard. If email confirmation is on, registration shows a “check your email” message and the user logs in after confirming.
+- Header auth UI is omitted entirely when URL or anon key env vars are unset.
 
 ### Styling
 
@@ -134,9 +150,12 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 
 ### Svelte conventions in this repo
 
-- Svelte 5 runes: `$state`, `$props`.
+- Svelte 5 runes (`$state`, `$props`) used in components. Auth state (`session`, `authReady`) uses classic `writable` stores from `src/lib/auth.js`; `HeaderAuth.svelte` subscribes via `$session` / `$authReady`.
 - Callback props instead of `createEventDispatcher` (e.g. `oncreated`, `onAddItem`).
 - Modal opened via `bind:this` on `AddItemModal` and calling `addItemModal.open()`.
+- `initAuth()` is called from `HeaderAuth.svelte` `onMount` (not `App.svelte`).
+- `AuthModal.svelte` enforces a minimum password length of 6 client-side.
+- FES attribution is an inline `<aside class="site-attribution">` in `App.svelte`, not a separate component.
 
 ---
 
@@ -156,7 +175,8 @@ Single file: `server.js`.
 - Inventory stored in `data/inventory.json` (array of items).
 - Item shape: `{ id, title, body, image, createdAt }`.
 - `image` is either a `data:image/jpeg;base64,...` URL from the client compressor, or a path like `/assets/inventory/images/...` for seeded MyTurn items.
-- On first `GET /api/inventory`, if `data/inventory.json` is missing or empty, the server seeds 9 items from `src/assets/inventory/items.json` and writes them to disk.
+- Seeding runs via `ensureInventory()`, called by all three inventory endpoints (`GET`, `POST`, `DELETE`). If `data/inventory.json` is missing or empty, 9 items from `src/assets/inventory/items.json` are written to disk before the operation proceeds.
+- Seeded item IDs use the format `myturn-{sourceId}` when `sourceId` is present in the seed file.
 
 ### API endpoints
 
@@ -173,13 +193,14 @@ JSON body limit: 10mb (for image data URLs).
 ### Email (Resend)
 
 - Requires `RESEND_API_KEY` in `.env`; server exits on startup if missing.
-- `EMAIL_FROM`, `EMAIL_TO`, optional `RESERVE_INVENTORY_EMAIL_TO` (falls back to `EMAIL_TO`).
-- Reservation emails inline-attach uploaded images when `image` is a data URL.
+- `EMAIL_FROM` defaults to `onboarding@resend.dev`; `EMAIL_TO` and `RESERVE_INVENTORY_EMAIL_TO` default to `samuel@apathyisboring.com` if unset. Set both in `.env` for production.
+- `RESERVE_INVENTORY_EMAIL_TO` falls back to `EMAIL_TO` when unset.
+- Reservation emails inline-attach uploaded images when `image` is a data URL. For seed items with path-based images, an HTML link is used — these will not render inline in most email clients.
 
 ### Server port
 
 - Default `PORT=3000`.
-- In development (`npm run dev` / `npm run dev:server`), the server exits if the port is already in use so the Vite proxy target stays correct.
+- In development (`NODE_ENV=development` or `STRICT_PORT=true`), the server exits if the port is already in use so the Vite proxy target stays correct. `npm run dev` pre-clears the port automatically; `npm run dev:server` does not.
 - Outside development, if the port is in use, the server tries successive ports (up to 20 attempts).
 
 ---
@@ -195,6 +216,13 @@ See `.env.example`:
 | `EMAIL_TO` | No | Default recipient |
 | `RESERVE_INVENTORY_EMAIL_TO` | No | Reservation email recipient |
 | `PORT` | No | Express listen port |
+| `SUPABASE_URL` | No* | Supabase project URL (client auth). Aliases: `VITE_SUPABASE_URL` |
+| `SUPABASE_API` | No* | Supabase anon/public key. Aliases: `SUPABASE_ANON_KEY`, `VITE_SUPABASE_ANON_KEY` |
+| `NODE_ENV` | No | Set to `development` by `npm run dev`; enables strict port mode |
+| `STRICT_PORT` | No | Set `true` to force strict port outside development |
+| `VITE_API_TARGET` | No | Overrides Vite proxy target (default: `http://localhost:${PORT}`) |
+
+\*Both `SUPABASE_URL` and anon key are required for header auth to appear; omit either to hide auth UI.
 
 ---
 
@@ -204,12 +232,52 @@ See `.env.example`:
 |--------|-------------|
 | `npm run dev` | Starts Express API/static assets and Vite dev server together |
 | `npm run dev:client` | Vite dev server only; requires an Express server at `VITE_API_TARGET` or `PORT` |
-| `npm run dev:server` | Express API/static asset server in development mode |
+| `npm run dev:server` | Express API/static asset server in development mode (no build step) |
 | `npm run build` | Production build to `dist/` |
 | `npm start` | `build` + Express server, so source changes are reflected after restart |
 | `npm run serve` | Express only; serves the existing `dist/` without rebuilding |
 | `npm run preview` | Alias for `npm start` |
 | `npm run send-email` | One-off Resend test via `send-email.js` |
+
+---
+
+## Docker / Cloud Run
+
+Production image: multi-stage `Dockerfile` at the repo root.
+
+| Stage | Role |
+|-------|------|
+| `build` | `npm ci` + `npm run build` (Vite → `dist/`) |
+| `production` | `npm ci --omit=dev`, `node server.js` (no rebuild on start) |
+
+**Build-time args** (optional — omit both to hide header auth in the built UI):
+
+- `SUPABASE_URL`
+- `SUPABASE_API`
+
+**Runtime env** (required in Cloud Run / container platform):
+
+- `RESEND_API_KEY` (required — server exits without it)
+- `PORT` (Cloud Run sets this automatically, default `3000` locally)
+- `EMAIL_FROM`, `EMAIL_TO`, `RESERVE_INVENTORY_EMAIL_TO` (optional)
+
+**Local build and run:**
+
+```bash
+docker build \
+  --build-arg SUPABASE_URL=https://your-project.supabase.co \
+  --build-arg SUPABASE_API=your-anon-key \
+  -t arl-online .
+
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  -e RESEND_API_KEY=re_xxxx \
+  arl-online
+```
+
+**Cloud Run:** choose **Dockerfile** as the build type; set build args for Supabase if auth is enabled; map runtime secrets for `RESEND_API_KEY` and email vars.
+
+**Persistence:** `data/inventory.json` lives on the container filesystem. Cloud Run disk is ephemeral — inventory resets on redeploy unless you attach a volume or move storage elsewhere.
 
 ---
 
@@ -222,6 +290,7 @@ See `.env.example`:
 | New API route | `server.js`; add client function in `src/lib/` if the UI needs it |
 | Email content | `server.js` reservation / send-email handlers |
 | Dev proxy | `vite.config.js` `server.proxy` |
+| Auth UI / session | `HeaderAuth.svelte`, `AuthModal.svelte`, `src/lib/auth.js`, `src/lib/supabase.js` |
 
 After any of the above, **update this file**.
 
@@ -247,10 +316,14 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-11 | Applied Apathy is Boring brand palette; white-dominant light UI with brand contrast pairings. |
 | 2026-06-11 | Admin panel: remove-item list with confirm dialog; `DELETE /api/inventory/:id`. |
 | 2026-06-11 | Inventory grid: 3 columns on viewports ≥900px; container widens to 56rem on large screens. |
-| 2026-06-11 | `npm start` and `npm run dev:server` now rebuild before serving; added `npm run serve` for serving an existing build. |
+| 2026-06-11 | `npm start` now rebuilds before serving; `npm run dev:server` does not rebuild. Added `npm run serve` for serving an existing build. |
 | 2026-06-11 | Thin full-width site header with Apathy is Boring logo on the left; brand assets at `/assets/brand/`. |
 | 2026-06-11 | Page title and heading renamed to "Activist Resource Library - Montreal". |
 | 2026-06-11 | Fixed Vite font build warnings: `public/assets/fonts` symlink + Inter filename uses literal comma (quoted in CSS). |
 | 2026-06-11 | Fixed bottom-right FES attribution badge with logo and “Activist Resource Library” credit text. |
 | 2026-06-11 | Fixed local dev startup: `npm run dev` now starts Express + Vite together, with strict dev porting and asset/API proxy targets. |
 | 2026-06-11 | Added persistent quote footer (`QuoteFooter.svelte`): 10 quotes rotate every 10s with fade transitions; FES badge sits above footer. |
+| 2026-06-11 | Supabase client auth: header Log in / Register, `AuthModal`, `HeaderAuth`, `src/lib/auth.js` + `supabase.js`; `SUPABASE_URL` + `SUPABASE_API` in `.env`. |
+| 2026-06-11 | `scripts/dev.js` now kills any process already holding the API port before starting, preventing the "Port in use" hard-exit on `npm run dev`. |
+| 2026-06-11 | Code review: fixed `InventoryCard` "Reserving…" label stuck on success; `POST`/`DELETE` now call `ensureInventory()` to prevent seed bypass; removed dead `.panel` CSS; fixed stale server startup log. Updated AGENTS.md for doc accuracy. |
+| 2026-06-11 | Added production multi-stage `Dockerfile` and `.dockerignore` for Cloud Run / container deploys. |

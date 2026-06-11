@@ -4,6 +4,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 const apiTarget = process.env.VITE_API_TARGET || `http://localhost:${process.env.PORT || 3000}`;
 
 export default defineConfig({
+  envPrefix: ['VITE_', 'SUPABASE_'],
   plugins: [svelte()],
   build: {
     outDir: 'dist',

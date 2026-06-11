@@ -184,7 +184,7 @@ app.post('/api/inventory', async (req, res) => {
   }
 
   try {
-    const items = await readInventory();
+    const items = await ensureInventory();
     items.unshift(item);
     await writeInventory(items);
     res.status(201).json({ item });
@@ -202,7 +202,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
   }
 
   try {
-    const items = await readInventory();
+    const items = await ensureInventory();
     const index = items.findIndex((item) => item.id === id);
 
     if (index === -1) {
@@ -341,7 +341,7 @@ function startServer(port, attempt = 1) {
     if (actualPort !== Number(PORT)) {
       console.warn(`Port ${PORT} is in use, using ${actualPort} instead.`);
     }
-    console.log(`Email sender running at http://localhost:${actualPort}`);
+    console.log(`ARL Online server running at http://localhost:${actualPort}`);
   });
 
   server.once('error', (err) => {

@@ -41,6 +41,7 @@
 
     try {
       await reserveInventoryItem(item);
+      reserving = false;
       reserved = true;
       setStatus('Reservation email sent.', 'success');
     } catch (error) {

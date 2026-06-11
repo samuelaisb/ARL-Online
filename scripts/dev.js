@@ -1,10 +1,32 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const apiPort = process.env.PORT || '3000';
 const apiTarget = process.env.VITE_API_TARGET || `http://localhost:${apiPort}`;
 const processes = [];
 let shuttingDown = false;
+
+function freePort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const result = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const pids = [...new Set(result.trim().split('\n').map(line => line.trim().split(/\s+/).pop()).filter(Boolean))];
+      for (const pid of pids) {
+        try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' }); } catch { /* already gone */ }
+      }
+    } else {
+      const pids = execSync(`lsof -ti tcp:${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      if (pids) {
+        execSync(`kill -9 ${pids.split('\n').join(' ')}`, { stdio: 'ignore' });
+        console.log(`Freed port ${port} (killed PID ${pids.replace(/\n/g, ', ')}).`);
+      }
+    }
+  } catch {
+    // Port is not in use or kill failed — proceed anyway
+  }
+}
+
+freePort(apiPort);
 
 function startProcess(label, command, args, env = {}) {
   const child = spawn(command, args, {

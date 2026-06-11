@@ -1,0 +1,14 @@
+node_modules
+dist
+data
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.cursor
+docs
+send-email.js
+scripts
+*.md
+.DS_Store
