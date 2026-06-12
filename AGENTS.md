@@ -103,8 +103,12 @@ ARL-Online/
 │   │   ├── AddItemModal.svelte     # Dialog form for new items (includes tag/category selector)
 │   │   ├── AuthModal.svelte        # Login / register dialog (email + password; register requires member agreement)
 │   │   ├── MemberAgreementModal.svelte # Scrollable member contract dialog on sign-up
+│   │   ├── SiteNav.svelte          # Header nav: Inventory + How it works (client-side routing)
+│   │   ├── HowThisWorksPage.svelte # `/howthisworks` guide: browse, account, reserve, approval, pickup
 │   │   ├── HeaderAuth.svelte       # Site header auth + gated Admin link + modal wiring
 │   │   ├── LocaleSwitcher.svelte   # EN/FR toggle in site header
+│   │   ├── KimchiNotification.svelte # Bottom-right Kimchi widget shell: avatar + stacked bubbles
+│   │   ├── KimchiBubble.svelte       # Single Kimchi chat bubble (pop-in, 350ms fade-out, auto-dismiss)
 │   │   └── QuoteFooter.svelte      # Fixed bottom quote rotator (10s rotation, 600ms fade)
 │   ├── lib/
 │   │   ├── auth.js        # Supabase session store + sign-in/up/out helpers (`signed_member_agreement` on sign-up)
@@ -115,6 +119,7 @@ ARL-Online/
 │   │   ├── calendar.js    # Date/reservation helpers (shared by client + server.js)
 │   │   ├── availability-clock.js # Shared 60s clock for badge + calendar "today"
 │   │   ├── image.js       # Client-side image compression (canvas → JPEG)
+│   │   ├── notification-store.js # Queue store + `notify()` API for Kimchi chat-bubble notifications
 │   │   ├── router.js      # Client-side path store + `navigate()` for `/` and `/admin`
 │   │   ├── supabase.js    # Supabase browser client (anon key)
 │   │   └── supabase-server.js # Supabase service-role client (server only)
@@ -136,7 +141,7 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 
 - `index.html` loads `/src/main.js`.
 - `main.js` uses Svelte 5 `mount()` when `#app` exists and imports global `app.css`.
-- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount, routes between inventory (`/`) and admin (`/admin`) via `src/lib/router.js`, wires a lemon **PSA banner** (localized hyperlink above the header), the site header (logo + `LocaleSwitcher` + `HeaderAuth`), inventory or admin page, add-item modal, fixed bottom quote footer, and fixed bottom-right FES attribution.
+- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount, routes between inventory (`/`), **How it works** (`/howthisworks`), and admin (`/admin`) via `src/lib/router.js`, wires a lemon **PSA banner** (localized hyperlink above the header), the site header (logo + `SiteNav` + `LocaleSwitcher` + `HeaderAuth`), inventory / how-it-works / admin page, add-item modal, fixed bottom quote footer, fixed bottom-right FES attribution, and the `KimchiNotification` chat widget.
 
 ### Components
 
@@ -146,15 +151,19 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 | `InventoryCard` | Equal-height card: clamped title/body, white image frame, availability badge (**Available**, **Check availability**, **Unavailable**), hover lift, and **Reserve Inventory** button pinned to card bottom; opens the panel-level modal via callback |
 | `ReserveAuthRequiredModal` | Native `<dialog>` shown when a signed-out user clicks Reserve (Supabase configured); error message + Register (opens header `AuthModal`) and Log in link |
 | `ReserveCalendarModal` | One instance in `InventoryPanel`; native `<dialog>` with `ItemCalendar`; on confirm, closes modal and signals success to the originating card |
-| `ItemCalendar` | Month-view calendar; tag-specific block selection (equipment/books) or flexible range (rooms); `todayKey` refreshes via shared availability clock; POST reservation via API |
+| `ItemCalendar` | Month-view calendar; tag-specific block selection (equipment/books) or flexible range (rooms); `todayKey` refreshes via shared availability clock; POST reservation via API; Kimchi `kimchi.reservation_sent` on successful pending create |
 | `AdminPage` | `/admin` route: back link, access gate (auth configured, signed in, `isApathyAdmin`), page header, and `AdminPanel` |
-| `AdminPanel` | Add-item, remove-item, **Pending Reservations** (approve/refuse), and edit-reservations toggle buttons; loads full inventory (including member emails) via `GET /api/admin/inventory`; remove list (confirm + `DELETE /api/inventory/:id`); pending list (approve/refuse + member email); approved reservation list (confirm + `DELETE /api/inventory/:id/reservations/:reservationId`, updates shared inventory state) |
-| `AddItemModal` | Native `<dialog>`; form validation; tag/category radio selector; image pick + compress; POST new item. Exposes `open()` / `close()` via `export function` |
+| `AdminPanel` | Add-item, remove-item, **Pending Reservations** (approve/refuse), and edit-reservations toggle buttons; loads full inventory (including member emails) via `GET /api/admin/inventory`; remove list (confirm + `DELETE /api/inventory/:id`); pending list (approve/refuse + member email); approved reservation list (confirm + `DELETE /api/inventory/:id/reservations/:reservationId`, updates shared inventory state); Kimchi confirmations on remove, approve, and delete success |
+| `AddItemModal` | Native `<dialog>`; form validation; tag/category radio selector; image pick + compress; POST new item; Kimchi `kimchi.item_added` on success. Exposes `open()` / `close()` via `export function` |
 | `QuoteFooter` | Fixed site footer; rotates 10 activist quotes every 10s with fade in/out; resets index on locale change |
+| `SiteNav` | Centered header links: **Inventory** (`/`) and **How it works** (`/howthisworks`); active state from `path` store; uses `navigate()` for SPA transitions |
+| `HowThisWorksPage` | `/howthisworks` route: localized five-step guide (browse, account, reserve, approval, pickup) with back link to inventory |
 | `HeaderAuth` | Header Log in / Register when signed out; email, gated **Admin** link to `/admin`, and Sign out when signed in. Admin link visible only for `@apathyisboring.com` emails via `isApathyAdmin`. Exposes `openLogin()` / `openRegister()` for reserve auth prompt. Hidden if Supabase env vars are missing |
 | `AuthModal` | Native `<dialog>` for email/password login and registration; register mode requires member agreement sign-off. Exposes `open(mode)` / `close()` |
 | `MemberAgreementModal` | Scrollable member contract dialog opened from register flow; **Agree to the terms** sets signed state in parent. Exposes `open()` / `close()` |
 | `LocaleSwitcher` | EN/FR language toggle; persists choice in `localStorage` key `arl-locale` |
+| `KimchiNotification` | Fixed bottom-right chat widget shell (above FES badge): Kimchi avatar + `KimchiBubble` stack; signed-out greeting with `/howthisworks` link, or `kimchi.logged_in` confirmation when a session exists; also confirms on login during the visit; avatar tap adds a new random `kimchi.taps` message on top of existing stack; green online status dot; inventory/reservation action confirmations queued from `AddItemModal`, `AdminPanel`, and `ItemCalendar` via `notify()` |
+| `KimchiBubble` | One Kimchi chat bubble: elastic `backOut` pop-in, 350ms fade-out pinned in place during exit (flex stack collapse safe), per-bubble auto-dismiss timer, optional tail when anchored above avatar, close button |
 
 ### Shared libraries
 
@@ -166,7 +175,8 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 - **`src/lib/calendar.js`** — `parseDateKey`, `compareDateKeys`, `hasReservationCollision`, `isCurrentlyReserved`, `hasAvailabilityWithinDays`, `getCalendarMonthGrid`, `toDateKey`, and related date helpers. `getBlockingReservations` (`pending` + `reserved`) drives calendar collision; `getConfirmedReservations` (`reserved` only) drives the unavailable badge. Shared by `InventoryCard`, `ItemCalendar`, and `server.js`.
 - **`src/lib/availability-clock.js`** — `availabilityNow` store plus ref-counted 60s interval (`subscribeAvailabilityClock` / `unsubscribeAvailabilityClock`). `InventoryPanel` subscribes on mount; cards and calendar read `$availabilityNow` without subscribing directly.
 - **`src/lib/reservation-rules.js`** — Tag-specific reservation block rules (`getBlockEndDate`, `validateReservationDates`, `isFixedBlockTag`). Shared by `ItemCalendar.svelte` and `server.js` reservation endpoints.
-- **`src/lib/router.js`** — Writable `path` store synced to `window.location.pathname`; `navigate(to)` for client-side transitions; `isAdminRoute()`. Listens to `popstate` for back/forward.
+- **`src/lib/notification-store.js`** — Queue-based notification API for the Kimchi widget. `notify(message, duration?)` (default 5000ms) accepts a string or `{ text, link: { href, label } }` and returns an id; `dismiss(id)`; `clearNotifications()`; read-only `notifications` store. All queued notifications stack upward in `KimchiNotification.svelte` (newest anchored above the avatar). Action keys: `kimchi.item_added`, `kimchi.item_removed`, `kimchi.reservation_approved`, `kimchi.reservation_deleted`, `kimchi.reservation_sent`.
+- **`src/lib/router.js`** — Writable `path` store synced to `window.location.pathname`; `navigate(to)` for client-side transitions; `isAdminRoute()`; `isHowThisWorksRoute()`. Listens to `popstate` for back/forward.
 - **`src/lib/supabase.js`** — `createClient` wrapper; reads `SUPABASE_URL` + `SUPABASE_API` from `window.__ARL_ENV__` (served by `GET /config.js` at runtime) with fallback to Vite `import.meta.env` (`VITE_SUPABASE_*` aliases). Exports `supabaseConfigured` and `getAuthRedirectUrl()` (`SITE_URL` / `VITE_SITE_URL`, else `window.location.origin`).
 
 ### Auth (Supabase)
@@ -374,7 +384,7 @@ docker run --rm -p 8080:8080 \
 | New inventory field | `src/lib/inventory-store.js`, `AddItemModal.svelte`, `InventoryCard.svelte`, API client in `inventory.js`, SQL migration if needed |
 | Inventory tags / filter | `inventory-store.js`, `src/assets/inventory/items.json`, `InventoryPanel.svelte`, `AddItemModal.svelte`, `src/lib/inventory.js`, `locales/en.json` + `fr.json`, styles in `app.css` |
 | Reservation calendar | `server.js` (reservation endpoints), `inventory-store.js`, `src/lib/calendar.js`, `src/lib/reservation-rules.js`, `ItemCalendar.svelte`, `InventoryCard.svelte`, `locales/en.json` + `fr.json` |
-| New page / tab | `App.svelte`, `src/lib/router.js`, new component under `components/`, styles in `app.css`; add SPA fallback in `server.js` if using a new path |
+| New page / tab | `App.svelte`, `src/lib/router.js`, new component under `components/`, optional `SiteNav.svelte` link, styles in `app.css`; Express already serves `index.html` for unknown GET paths (e.g. `/howthisworks`) |
 | New API route | `server.js`; add client function in `src/lib/` if the UI needs it |
 | Email content | `server.js` reservation notification handler |
 | Dev proxy | `vite.config.js` `server.proxy` |
@@ -454,3 +464,15 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-12 | Inventory page visual polish: equal-height cards with bottom-aligned Reserve buttons, title/body line clamps, white image frames, card hover lift, skeleton loading grid, filter counts, visually hidden inventory heading, plum unavailable badge, extra mobile bottom padding for FES attribution. |
 | 2026-06-12 | Production deploy defaults: Cloud Run `arl-online` in `us-east1` (`https://activistresourcelibrary.com`); Artifact Registry `us-east1`; `SITE_URL` always set on deploy from `.env` or default. |
 | 2026-06-12 | Cloud Run deploy passes `EMAIL_*` and `SLACK_RESERVATION_WEBHOOK_URL` from `.env`; admin notification emails use absolute image URLs via `SITE_URL`. |
+| 2026-06-12 | Kimchi notification widget: `KimchiNotification.svelte` (fixed bottom-right cat-mascot chat bubble, elastic pop transitions, `content/kimchi.jpg` avatar bundled by Vite) + `src/lib/notification-store.js` (`notify`/`dismiss` queue API); mounted in `App.svelte`; greeting with `/howthisworks` link on mount; `kimchi.*` keys in EN/FR locales. |
+| 2026-06-12 | Kimchi avatar click: random localized short messages (`kimchi.taps` in EN/FR) replace any open bubble and pop a new chat message. |
+| 2026-06-12 | Kimchi avatar positioned to sit flush on the FES attribution badge via `--site-attribution-block-height` in `app.css` (replaces fixed `+4rem` offset). |
+| 2026-06-12 | Kimchi notification bubble fades out on dismiss/auto-dismiss (elastic pop retained on enter). |
+| 2026-06-12 | **How it works** page at `/howthisworks` (`HowThisWorksPage.svelte`, `how_this_works.*` locales); `SiteNav` in header (Inventory + How it works); Kimchi greeting link uses client-side `navigate()`. |
+| 2026-06-12 | Kimchi avatar: green "online" status dot (bottom-right, white ring, soft pulse; static under reduced motion). |
+| 2026-06-12 | Kimchi greeting bubble: shrink-to-fit width, no trailing whitespace after link; `kimchi.greeting_cta` locale key (EN/FR) for the CTA line. |
+| 2026-06-12 | Kimchi notifications stack upward (all queued bubbles visible; newest anchored above avatar with tail); 350ms fade-out unchanged; avatar tap dismisses newest bubble before showing tap message. |
+| 2026-06-12 | Kimchi stack fade fix: `KimchiBubble.svelte` child component with lifecycle auto-dismiss timers and exit fade pinned absolute (prevents flex collapse skipping 350ms outro). Avatar tap now adds messages on top of the existing stack (no dismiss-first). |
+| 2026-06-12 | Kimchi logged-in confirmation: signed-in users see `kimchi.logged_in` instead of the anonymous greeting; logging in during a visit queues the same confirmation bubble. |
+| 2026-06-12 | Mobile inventory filter layout: 2-column grid (Rooms full-width) below 640px, single column below 360px; `overflow: hidden` on filter bar — fixes Equipment count badge overlapping the active button background. |
+| 2026-06-12 | Kimchi action confirmations: `notify()` on add/remove item (`AddItemModal`, `AdminPanel`), approve/delete reservation (`AdminPanel`), and pending reservation submit (`ItemCalendar`); new `kimchi.item_added`, `item_removed`, `reservation_approved`, `reservation_deleted`, `reservation_sent` EN/FR keys. |

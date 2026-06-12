@@ -9,7 +9,10 @@
     "attribution_link_aria": "Finance Engage Sustain — opens in a new tab",
     "fes_name": "Finance Engage Sustain",
     "psa_text": "Online feeling...OFF lately? Check out our new PSA!",
-    "psa_link": "https://www.apathyisboring.com/democracyoffline"
+    "psa_link": "https://www.apathyisboring.com/democracyoffline",
+    "nav_aria": "Main navigation",
+    "nav_inventory": "Inventory",
+    "nav_how_it_works": "How it works"
   },
   "language": {
     "switch_aria": "Language",
@@ -146,6 +149,56 @@
     "fill_all_fields": "Please fill in title, body, and choose an image.",
     "save_error": "Could not save inventory item.",
     "process_image_error": "Could not process the image."
+  },
+  "how_this_works": {
+    "heading": "How it works",
+    "subtitle": "A quick guide to browsing and reserving from the Activist Resource Library.",
+    "back_to_inventory": "← Back to inventory",
+    "steps": {
+      "browse": {
+        "title": "Browse the inventory",
+        "body": "Use the Equipment, Books, and Rooms filters to find what you need. Each card shows whether an item is available today, needs a closer look on the calendar, or is already reserved."
+      },
+      "account": {
+        "title": "Create a member account",
+        "body": "Register with your email and password, then read and agree to the member agreement. You need an account before you can submit a reservation request."
+      },
+      "reserve": {
+        "title": "Pick your dates",
+        "body": "Click Reserve Inventory on an item to open the calendar. Equipment and books reserve in fixed Tuesday blocks (one week or one month). Rooms use a flexible date range."
+      },
+      "approval": {
+        "title": "Wait for confirmation",
+        "body": "Your request is submitted as pending. Apathy is Boring reviews it and emails you when it is approved or declined. Pending dates are held on the calendar until a decision is made."
+      },
+      "pickup": {
+        "title": "Pick up and return",
+        "body": "For equipment and books, pickup and drop-off are on Tuesdays between 10am and 5pm at the Apathy is Boring office. Return items on time so other members can use them."
+      }
+    }
+  },
+  "kimchi": {
+    "name": "Kimchi",
+    "widget_aria": "Messages from Kimchi the cat",
+    "avatar_alt": "Kimchi the cat",
+    "dismiss_aria": "Dismiss message",
+    "tap_aria": "Say hello to Kimchi",
+    "greeting": "Meow! I'm Kimchi, the library cat.",
+    "greeting_cta": "New around here?",
+    "greeting_link": "See how this works",
+    "logged_in": "Meow! You're logged in, you can reserve inventory now.",
+    "item_added": "Meow! New item added to the library.",
+    "item_removed": "Meow! Item removed from the library.",
+    "reservation_approved": "Meow! Reservation approved, the member will get an email.",
+    "reservation_deleted": "Meow! Reservation deleted.",
+    "reservation_sent": "Meow! Your reservation request is sent, AisB will review it.",
+    "taps": [
+      "Meow!",
+      "Hello!",
+      "How's it going?",
+      "Purr…",
+      "Meow meow!"
+    ]
   },
   "quotes": {
     "aria_label": "Inspirational quotes",

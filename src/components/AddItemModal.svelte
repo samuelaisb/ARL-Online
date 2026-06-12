@@ -5,7 +5,8 @@
     DEFAULT_INVENTORY_TAG,
   } from '../lib/inventory.js';
   import { compressImageFile } from '../lib/image.js';
-  import { t } from '../lib/i18n.js';
+  import { t, translateKey } from '../lib/i18n.js';
+  import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
 
   let { oncreated } = $props();
 
@@ -103,6 +104,7 @@
         tag,
       });
       oncreated?.(item);
+      notify(translateKey('kimchi.item_added'), DEFAULT_NOTIFICATION_DURATION);
       close();
     } catch (error) {
       showFormStatus(error.message || $t('add_item.save_error'), 'error');

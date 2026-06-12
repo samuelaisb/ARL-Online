@@ -9,7 +9,10 @@
     "attribution_link_aria": "Finance Engage Sustain — ouvre un nouvel onglet",
     "fes_name": "Finance Engage Sustain",
     "psa_text": "Quelque chose cloche en ligne ce temps-ci...? Clique pour découvrir pourquoi !",
-    "psa_link": "https://www.lapathiecestplate.com/democratiehorsligne"
+    "psa_link": "https://www.lapathiecestplate.com/democratiehorsligne",
+    "nav_aria": "Navigation principale",
+    "nav_inventory": "Inventaire",
+    "nav_how_it_works": "Comment ça marche"
   },
   "language": {
     "switch_aria": "Langue",
@@ -144,6 +147,56 @@
     "fill_all_fields": "Remplissez le titre, la description et choisissez une image.",
     "save_error": "Impossible d'enregistrer l'article.",
     "process_image_error": "Impossible de traiter l'image."
+  },
+  "how_this_works": {
+    "heading": "Comment ça marche",
+    "subtitle": "Un guide rapide pour parcourir l'inventaire et réserver à la Bibliothèque ressources activistes.",
+    "back_to_inventory": "← Retour à l'inventaire",
+    "steps": {
+      "browse": {
+        "title": "Parcourir l'inventaire",
+        "body": "Utilisez les filtres Équipement, Livres et Salles pour trouver ce dont vous avez besoin. Chaque fiche indique si l'article est disponible aujourd'hui, nécessite une vérification au calendrier ou est déjà réservé."
+      },
+      "account": {
+        "title": "Créer un compte membre",
+        "body": "Inscrivez-vous avec votre courriel et un mot de passe, puis lisez et acceptez l'entente de membre. Un compte est requis pour soumettre une demande de réservation."
+      },
+      "reserve": {
+        "title": "Choisir vos dates",
+        "body": "Cliquez sur Réserver l'inventaire pour ouvrir le calendrier. L'équipement et les livres se réservent par blocs fixes du mardi (une semaine ou un mois). Les salles utilisent une plage de dates flexible."
+      },
+      "approval": {
+        "title": "Attendre la confirmation",
+        "body": "Votre demande est soumise en attente. Apathy is Boring l'examine et vous envoie un courriel lorsqu'elle est approuvée ou refusée. Les dates en attente restent bloquées au calendrier jusqu'à la décision."
+      },
+      "pickup": {
+        "title": "Cueillette et retour",
+        "body": "Pour l'équipement et les livres, la cueillette et le retour ont lieu les mardis entre 10 h et 17 h au bureau d'Apathy is Boring. Remettez les articles à temps pour que d'autres membres puissent les utiliser."
+      }
+    }
+  },
+  "kimchi": {
+    "name": "Kimchi",
+    "widget_aria": "Messages de Kimchi le chat",
+    "avatar_alt": "Kimchi le chat",
+    "dismiss_aria": "Fermer le message",
+    "tap_aria": "Dire bonjour à Kimchi",
+    "greeting": "Miaou ! Je suis Kimchi, le chat de la bibliothèque.",
+    "greeting_cta": "C'est ta première visite ?",
+    "greeting_link": "Découvre comment ça marche",
+    "logged_in": "Miaou ! Tu es connecté(e), tu peux réserver du matériel maintenant.",
+    "item_added": "Miaou ! Nouvel article ajouté à la bibliothèque.",
+    "item_removed": "Miaou ! Article retiré de la bibliothèque.",
+    "reservation_approved": "Miaou ! Réservation approuvée, le membre recevra un courriel.",
+    "reservation_deleted": "Miaou ! Réservation supprimée.",
+    "reservation_sent": "Miaou ! Ta demande de réservation est envoyée, AisB va l'examiner.",
+    "taps": [
+      "Miaou !",
+      "Coucou !",
+      "Ça va ?",
+      "Ronron…",
+      "Miaou miaou !"
+    ]
   },
   "quotes": {
     "aria_label": "Citations inspirantes",

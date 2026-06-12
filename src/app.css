@@ -16,6 +16,7 @@
 
 :root {
   --quote-footer-height: 4.75rem;
+  --site-attribution-block-height: 3.7rem;
 
   /* Apathy is Boring brand palette */
   --color-light: #faf9f7;
@@ -189,9 +190,9 @@ body {
 }
 
 .site-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   width: 100%;
   min-height: 5rem;
@@ -211,6 +212,39 @@ body {
   display: block;
   height: 4rem;
   width: auto;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+}
+
+.site-nav__link {
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.site-nav__link:hover {
+  color: var(--color-dark);
+  background: rgba(35, 31, 32, 0.05);
+}
+
+.site-nav__link--active {
+  color: var(--color-dark);
+  background: var(--color-lemon);
+}
+
+.site-nav__link:focus-visible {
+  outline: 2px solid var(--color-dark);
+  outline-offset: 2px;
 }
 
 .site-header__actions {
@@ -449,6 +483,7 @@ h1 {
   border-radius: 0.625rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  overflow: hidden;
 }
 
 .inventory-filter__btn {
@@ -514,18 +549,71 @@ h1 {
   margin-bottom: 0;
 }
 
+.how-this-works-page__back,
 .admin-page__back {
   margin: 0 0 1.5rem;
 }
 
+.how-this-works-page__back-link,
 .admin-page__back-link {
   color: var(--color-mint);
   font-weight: 600;
   text-decoration: none;
 }
 
+.how-this-works-page__back-link:hover,
 .admin-page__back-link:hover {
   text-decoration: underline;
+}
+
+.how-this-works-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.how-this-works-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.how-this-works-step__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--color-lavender);
+  color: var(--color-dark);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.how-this-works-step__content {
+  min-width: 0;
+}
+
+.how-this-works-step__title {
+  margin: 0 0 0.375rem;
+  font-size: 1.0625rem;
+}
+
+.how-this-works-step__body {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.55;
 }
 
 .admin-access {
@@ -1497,6 +1585,7 @@ button:disabled {
 @media (max-width: 640px) {
   :root {
     --quote-footer-height: 6.5rem;
+    --site-attribution-block-height: 5.32rem;
   }
 
   .app {
@@ -1525,8 +1614,51 @@ button:disabled {
     padding: 1.25rem;
   }
 
+  .site-header {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0.5rem 1rem;
+  }
+
+  .site-nav {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    padding-top: 0.25rem;
+  }
+
+  .site-nav__link {
+    font-size: 0.8125rem;
+    padding: 0.4375rem 0.75rem;
+  }
+
   .inventory-grid,
   .inventory-skeleton-grid {
     grid-template-columns: 1fr;
+  }
+
+  .inventory-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-filter__btn {
+    flex: unset;
+    min-width: 0;
+    padding-inline: 0.75rem;
+  }
+
+  .inventory-filter__btn:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 360px) {
+  .inventory-filter {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-filter__btn:nth-child(3) {
+    grid-column: auto;
   }
 }

@@ -2,13 +2,16 @@
   import { onMount } from 'svelte';
   import { loadInventoryItems } from './lib/inventory.js';
   import { t } from './lib/i18n.js';
-  import { isAdminRoute, path } from './lib/router.js';
+  import { isAdminRoute, isHowThisWorksRoute, path } from './lib/router.js';
   import InventoryPanel from './components/InventoryPanel.svelte';
   import AdminPage from './components/AdminPage.svelte';
+  import HowThisWorksPage from './components/HowThisWorksPage.svelte';
+  import SiteNav from './components/SiteNav.svelte';
   import AddItemModal from './components/AddItemModal.svelte';
   import QuoteFooter from './components/QuoteFooter.svelte';
   import HeaderAuth from './components/HeaderAuth.svelte';
   import LocaleSwitcher from './components/LocaleSwitcher.svelte';
+  import KimchiNotification from './components/KimchiNotification.svelte';
 
   let items = $state([]);
   let loading = $state(true);
@@ -18,6 +21,7 @@
   let headerAuth = $state();
 
   const onAdminPage = $derived(isAdminRoute($path));
+  const onHowThisWorksPage = $derived(isHowThisWorksRoute($path));
 
   async function refreshInventory() {
     loadError = '';
@@ -58,9 +62,13 @@
   }
 
   $effect(() => {
-    document.title = onAdminPage
-      ? `${$t('admin.heading')} — ${$t('site.title')}`
-      : $t('site.title');
+    if (onAdminPage) {
+      document.title = `${$t('admin.heading')} — ${$t('site.title')}`;
+    } else if (onHowThisWorksPage) {
+      document.title = `${$t('how_this_works.heading')} — ${$t('site.title')}`;
+    } else {
+      document.title = $t('site.title');
+    }
   });
 
   onMount(() => {
@@ -90,6 +98,7 @@
         height="64"
       />
     </a>
+    <SiteNav />
     <div class="site-header__actions">
       <LocaleSwitcher />
       <HeaderAuth bind:this={headerAuth} />
@@ -108,6 +117,8 @@
         onOpenLogin={openLoginFromReserve}
         onOpenRegister={openRegisterFromReserve}
       />
+    {:else if onHowThisWorksPage}
+      <HowThisWorksPage />
     {:else}
       <main class="container">
         <header class="page-header">
@@ -152,3 +163,5 @@
 </aside>
 
 <AddItemModal bind:this={addItemModal} oncreated={handleItemCreated} />
+
+<KimchiNotification />

@@ -8,7 +8,8 @@
     refuseReservation,
   } from '../lib/inventory.js';
   import { parseDateKey } from '../lib/calendar.js';
-  import { locale, t } from '../lib/i18n.js';
+  import { locale, t, translateKey } from '../lib/i18n.js';
+  import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
 
   let { items = [], onAddItem, onItemRemoved, onItemUpdated } = $props();
 
@@ -127,6 +128,7 @@
       await deleteInventoryItem(item.id);
       adminItems = adminItems.filter((candidate) => candidate.id !== item.id);
       onItemRemoved?.(item.id);
+      notify(translateKey('kimchi.item_removed'), DEFAULT_NOTIFICATION_DURATION);
     } catch (error) {
       removeError = error.message || $t('admin.remove_error');
     } finally {
@@ -159,6 +161,7 @@
     try {
       const result = await deleteReservation(entry.itemId, entry.id);
       applyItemUpdate(entry, result);
+      notify(translateKey('kimchi.reservation_deleted'), DEFAULT_NOTIFICATION_DURATION);
     } catch (error) {
       reservationError = error.message || $t('admin.delete_reservation_error');
     } finally {
@@ -192,6 +195,7 @@
     try {
       const result = await approveReservation(entry.itemId, entry.id);
       applyItemUpdate(entry, result);
+      notify(translateKey('kimchi.reservation_approved'), DEFAULT_NOTIFICATION_DURATION);
     } catch (error) {
       pendingError = error.message || $t('admin.approve_reservation_error');
     } finally {

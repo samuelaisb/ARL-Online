@@ -25,6 +25,10 @@ export function isAdminRoute(pathname) {
   return normalizePath(pathname) === '/admin';
 }
 
+export function isHowThisWorksRoute(pathname) {
+  return normalizePath(pathname) === '/howthisworks';
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => {
     path.set(getPath());

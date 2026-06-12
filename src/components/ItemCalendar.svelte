@@ -1,7 +1,8 @@
 <script>
   import { createReservation } from '../lib/inventory.js';
   import { availabilityNow } from '../lib/availability-clock.js';
-  import { locale, t } from '../lib/i18n.js';
+  import { locale, t, translateKey } from '../lib/i18n.js';
+  import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import {
     compareDateKeys,
     formatMonthYear,
@@ -200,6 +201,9 @@
 
       onupdated?.(updatedItem);
       onconfirmed?.({ item: updatedItem, reservation: result.reservation });
+      if (result.reservation?.status === 'pending') {
+        notify(translateKey('kimchi.reservation_sent'), DEFAULT_NOTIFICATION_DURATION);
+      }
       rangeStart = null;
       rangeEnd = null;
       statusMessage =
