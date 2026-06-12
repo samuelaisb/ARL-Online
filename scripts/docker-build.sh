@@ -41,7 +41,10 @@ echo "Building ${IMAGE} with Supabase URL: ${SUPABASE_URL}"
 docker build \
   --build-arg "SUPABASE_URL=${SUPABASE_URL}" \
   --build-arg "SUPABASE_API=${SUPABASE_API}" \
+  --build-arg "VITE_SUPABASE_URL=${SUPABASE_URL}" \
+  --build-arg "VITE_SUPABASE_ANON_KEY=${SUPABASE_API}" \
   --build-arg "SITE_URL=${SITE_URL:-}" \
+  --build-arg "VITE_SITE_URL=${SITE_URL:-}" \
   -t "${IMAGE}" \
   .
 

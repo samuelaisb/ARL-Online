@@ -49,6 +49,13 @@ export function compareDateKeys(a, b) {
   return 0;
 }
 
+const RESERVATION_STATUSES = ['pending', 'reserved', 'refused', 'available'];
+
+export function normalizeReservationStatus(rawStatus) {
+  const status = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : '';
+  return RESERVATION_STATUSES.includes(status) ? status : 'reserved';
+}
+
 export function normalizeReservation(raw) {
   if (!raw || typeof raw !== 'object') {
     return null;
@@ -56,8 +63,10 @@ export function normalizeReservation(raw) {
 
   const startDate = typeof raw.startDate === 'string' ? raw.startDate.trim() : '';
   const endDate = typeof raw.endDate === 'string' ? raw.endDate.trim() : '';
-  const status = raw.status === 'available' ? 'available' : 'reserved';
+  const status = normalizeReservationStatus(raw.status);
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : '';
+  const userEmail =
+    typeof raw.userEmail === 'string' && raw.userEmail.trim() ? raw.userEmail.trim() : null;
 
   if (!parseDateKey(startDate) || !parseDateKey(endDate) || compareDateKeys(startDate, endDate) > 0) {
     return null;
@@ -67,7 +76,7 @@ export function normalizeReservation(raw) {
     return null;
   }
 
-  return { id, startDate, endDate, status };
+  return { id, startDate, endDate, status, userEmail };
 }
 
 export function normalizeReservations(raw) {
@@ -78,8 +87,21 @@ export function normalizeReservations(raw) {
   return raw.map(normalizeReservation).filter(Boolean);
 }
 
-export function getActiveReservations(reservations) {
+/** Approved reservations only — drives the card "Unavailable" badge. */
+export function getConfirmedReservations(reservations) {
   return normalizeReservations(reservations).filter((r) => r.status === 'reserved');
+}
+
+/** Pending + approved — block calendar dates while awaiting or after approval. */
+export function getBlockingReservations(reservations) {
+  return normalizeReservations(reservations).filter(
+    (r) => r.status === 'pending' || r.status === 'reserved',
+  );
+}
+
+/** @deprecated Use getBlockingReservations or getConfirmedReservations. */
+export function getActiveReservations(reservations) {
+  return getBlockingReservations(reservations);
 }
 
 export function isDateInRange(dateKey, startDate, endDate) {
@@ -87,13 +109,16 @@ export function isDateInRange(dateKey, startDate, endDate) {
 }
 
 export function isDateReserved(reservations, dateKey) {
-  return getActiveReservations(reservations).some((r) =>
+  return getBlockingReservations(reservations).some((r) =>
     isDateInRange(dateKey, r.startDate, r.endDate),
   );
 }
 
 export function isCurrentlyReserved(reservations, now = new Date()) {
-  return isDateReserved(reservations, toDateKey(now));
+  const todayKey = toDateKey(now);
+  return getConfirmedReservations(reservations).some((r) =>
+    isDateInRange(todayKey, r.startDate, r.endDate),
+  );
 }
 
 /**
@@ -115,7 +140,7 @@ export function hasAvailabilityWithinDays(
     return false;
   }
 
-  const active = getActiveReservations(reservations);
+  const blocking = getBlockingReservations(reservations);
 
   if (isFixedBlockTag(normalizedTag)) {
     for (let cursor = startKey; compareDateKeys(cursor, endKey) <= 0; cursor = addDays(cursor, 1)) {
@@ -125,7 +150,7 @@ export function hasAvailabilityWithinDays(
 
       if (
         isTuesday(cursor) &&
-        !hasReservationCollision(active, cursor, getBlockEndDate(normalizedTag, cursor))
+        !hasReservationCollision(blocking, cursor, getBlockEndDate(normalizedTag, cursor))
       ) {
         return true;
       }
@@ -139,7 +164,8 @@ export function hasAvailabilityWithinDays(
       break;
     }
 
-    if (!isDateReserved(active, cursor)) {
+    const blocked = blocking.some((r) => isDateInRange(cursor, r.startDate, r.endDate));
+    if (!blocked) {
       return true;
     }
   }
@@ -148,7 +174,7 @@ export function hasAvailabilityWithinDays(
 }
 
 export function hasReservationCollision(reservations, startDate, endDate, excludeId = null) {
-  return getActiveReservations(reservations).some((reservation) => {
+  return getBlockingReservations(reservations).some((reservation) => {
     if (excludeId && reservation.id === excludeId) {
       return false;
     }

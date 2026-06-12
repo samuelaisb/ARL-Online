@@ -2,7 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
-import { compareDateKeys, hasReservationCollision, parseDateKey } from './calendar.js';
+import { compareDateKeys, hasReservationCollision, normalizeReservationStatus, parseDateKey } from './calendar.js';
+import { validateReservationDates } from './reservation-rules.js';
 import { getSupabaseAdmin } from './supabase-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,7 +14,33 @@ const INVENTORY_IMAGE_BASE = '/assets/inventory';
 const INVENTORY_TAGS = ['equipment', 'books', 'rooms'];
 const DEFAULT_INVENTORY_TAG = 'equipment';
 
-const JPEG_DATA_URL_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=\s]+$/;
+const JPEG_DATA_URL_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
+
+/** In-process per-item lock — safe for single-instance Cloud Run only, not across replicas. */
+const itemLocks = new Map();
+
+async function withItemLock(itemId, fn) {
+  let release;
+  const waitFor = itemLocks.get(itemId) ?? Promise.resolve();
+  const next = waitFor.then(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  itemLocks.set(itemId, next);
+  await waitFor;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (itemLocks.get(itemId) === next) {
+      itemLocks.delete(itemId);
+    }
+  }
+}
+
+let inventorySeeded = false;
 
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE, JPEG_DATA_URL_RE };
 
@@ -43,7 +70,9 @@ export function normalizeReservation(raw) {
 
   const startDate = typeof raw.startDate === 'string' ? raw.startDate.trim() : '';
   const endDate = typeof raw.endDate === 'string' ? raw.endDate.trim() : '';
-  const status = raw.status === 'available' ? 'available' : 'reserved';
+  const status = normalizeReservationStatus(raw.status);
+  const userEmail =
+    typeof raw.userEmail === 'string' && raw.userEmail.trim() ? raw.userEmail.trim() : null;
 
   if (!parseDateKey(startDate) || !parseDateKey(endDate)) {
     return null;
@@ -55,7 +84,7 @@ export function normalizeReservation(raw) {
 
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID();
 
-  return { id, startDate, endDate, status };
+  return { id, startDate, endDate, status, userEmail };
 }
 
 export function normalizeReservations(rawReservations) {
@@ -100,6 +129,7 @@ function reservationRowToApi(row) {
     startDate: row.start_date,
     endDate: row.end_date,
     status: row.status,
+    userEmail: row.user_email ?? null,
   };
 }
 
@@ -133,6 +163,7 @@ function reservationToRow(itemId, reservation) {
     start_date: reservation.startDate,
     end_date: reservation.endDate,
     status: reservation.status,
+    user_email: reservation.userEmail ?? null,
   };
 }
 
@@ -266,8 +297,13 @@ export async function fetchInventoryItems() {
 }
 
 export async function ensureInventory() {
+  if (inventorySeeded) {
+    return fetchInventoryItems();
+  }
+
   const existingCount = await countInventoryItems();
   if (existingCount > 0) {
+    inventorySeeded = true;
     return fetchInventoryItems();
   }
 
@@ -275,16 +311,19 @@ export async function ensureInventory() {
   if (legacyItems.length > 0) {
     await insertInventoryItems(legacyItems);
     console.log(`Imported ${legacyItems.length} inventory items from data/inventory.json into Supabase.`);
+    inventorySeeded = true;
     return fetchInventoryItems();
   }
 
   const seedItems = await loadSeedInventory();
   if (seedItems.length === 0) {
+    inventorySeeded = true;
     return [];
   }
 
   await insertInventoryItems(seedItems);
   console.log(`Seeded ${seedItems.length} inventory items from MyTurn library into Supabase.`);
+  inventorySeeded = true;
   return fetchInventoryItems();
 }
 
@@ -335,35 +374,59 @@ export async function findInventoryItem(id) {
   return itemRowToApi(data, reservations);
 }
 
-export async function addReservation(itemId, { startDate, endDate }) {
-  const item = await findInventoryItem(itemId);
+export async function countPendingReservationsByEmail(userEmail) {
+  const email = typeof userEmail === 'string' ? userEmail.trim() : '';
 
-  if (!item) {
-    return { notFound: true };
+  if (!email) {
+    return 0;
   }
-
-  const reservations = Array.isArray(item.reservations) ? item.reservations : [];
-
-  if (hasReservationCollision(reservations, startDate, endDate)) {
-    return { collision: true };
-  }
-
-  const reservation = {
-    id: randomUUID(),
-    startDate,
-    endDate,
-    status: 'reserved',
-  };
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from('reservations').insert(reservationToRow(itemId, reservation));
+  const { count, error } = await supabase
+    .from('reservations')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending')
+    .eq('user_email', email);
 
   if (error) {
-    throw new Error(error.message || 'Could not create reservation.');
+    throw new Error(error.message || 'Could not count pending reservations.');
   }
 
-  item.reservations = [...reservations, reservation];
-  return { item, reservation };
+  return count ?? 0;
+}
+
+export async function addReservation(itemId, { startDate, endDate, userEmail = null }) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item) {
+      return { notFound: true };
+    }
+
+    const reservations = Array.isArray(item.reservations) ? item.reservations : [];
+
+    if (hasReservationCollision(reservations, startDate, endDate)) {
+      return { collision: true };
+    }
+
+    const reservation = {
+      id: randomUUID(),
+      startDate,
+      endDate,
+      status: userEmail ? 'pending' : 'reserved',
+      userEmail: typeof userEmail === 'string' && userEmail.trim() ? userEmail.trim() : null,
+    };
+
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from('reservations').insert(reservationToRow(itemId, reservation));
+
+    if (error) {
+      throw new Error(error.message || 'Could not create reservation.');
+    }
+
+    item.reservations = [...reservations, reservation];
+    return { item, reservation };
+  });
 }
 
 export async function removeReservation(itemId, reservationId) {
@@ -414,14 +477,21 @@ export async function patchReservation(itemId, reservationId, updates) {
     startDate: updates.startDate ?? existing.startDate,
     endDate: updates.endDate ?? existing.endDate,
     status: updates.status ?? existing.status,
+    userEmail: updates.userEmail ?? existing.userEmail,
   });
 
   if (!updated) {
     return { invalidUpdate: true };
   }
 
+  const tagValidation = validateReservationDates(item.tag, updated.startDate, updated.endDate);
+
+  if (!tagValidation.ok) {
+    return { invalidUpdate: true, validationError: tagValidation.error };
+  }
+
   if (
-    updated.status === 'reserved' &&
+    (updated.status === 'reserved' || updated.status === 'pending') &&
     hasReservationCollision(item.reservations, updated.startDate, updated.endDate, reservationId)
   ) {
     return { collision: true };
@@ -434,12 +504,93 @@ export async function patchReservation(itemId, reservationId, updates) {
       start_date: updated.startDate,
       end_date: updated.endDate,
       status: updated.status,
+      user_email: updated.userEmail ?? null,
     })
     .eq('id', reservationId)
     .eq('item_id', itemId);
 
   if (error) {
     throw new Error(error.message || 'Could not update reservation.');
+  }
+
+  item.reservations = [...item.reservations];
+  item.reservations[reservationIndex] = updated;
+  return { item, reservation: updated };
+}
+
+export async function approveReservation(itemId, reservationId) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item) {
+      return { notFound: true };
+    }
+
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+
+    if (existing.status !== 'pending') {
+      return { invalidStatus: true };
+    }
+
+    const updated = { ...existing, status: 'reserved' };
+
+    if (hasReservationCollision(item.reservations, updated.startDate, updated.endDate, reservationId)) {
+      return { collision: true };
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'reserved' })
+      .eq('id', reservationId)
+      .eq('item_id', itemId);
+
+    if (error) {
+      throw new Error(error.message || 'Could not approve reservation.');
+    }
+
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated };
+  });
+}
+
+export async function refuseReservation(itemId, reservationId) {
+  const item = await findInventoryItem(itemId);
+
+  if (!item) {
+    return { notFound: true };
+  }
+
+  const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+  if (reservationIndex === -1) {
+    return { reservationNotFound: true };
+  }
+
+  const existing = item.reservations[reservationIndex];
+
+  if (existing.status !== 'pending') {
+    return { invalidStatus: true };
+  }
+
+  const updated = { ...existing, status: 'refused' };
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from('reservations')
+    .update({ status: 'refused' })
+    .eq('id', reservationId)
+    .eq('item_id', itemId);
+
+  if (error) {
+    throw new Error(error.message || 'Could not refuse reservation.');
   }
 
   item.reservations = [...item.reservations];

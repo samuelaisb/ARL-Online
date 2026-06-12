@@ -1,11 +1,6 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
   import { createReservation } from '../lib/inventory.js';
-  import {
-    availabilityNow,
-    subscribeAvailabilityClock,
-    unsubscribeAvailabilityClock,
-  } from '../lib/availability-clock.js';
+  import { availabilityNow } from '../lib/availability-clock.js';
   import { locale, t } from '../lib/i18n.js';
   import {
     compareDateKeys,
@@ -184,14 +179,6 @@
     clearStatus();
   }
 
-  onMount(() => {
-    subscribeAvailabilityClock();
-  });
-
-  onDestroy(() => {
-    unsubscribeAvailabilityClock();
-  });
-
   async function handleConfirm() {
     if (!selectedStart || !selectedEnd || saving) {
       return;
@@ -215,7 +202,10 @@
       onconfirmed?.({ item: updatedItem, reservation: result.reservation });
       rangeStart = null;
       rangeEnd = null;
-      statusMessage = $t('calendar.reservation_saved');
+      statusMessage =
+        result.reservation?.status === 'pending'
+          ? $t('calendar.reservation_pending')
+          : $t('calendar.reservation_saved');
       statusType = 'success';
     } catch (error) {
       statusMessage = error.message || $t('calendar.create_error');

@@ -10,15 +10,23 @@ RUN npm ci
 COPY index.html vite.config.js svelte.config.js ./
 COPY public ./public
 COPY locales ./locales
+COPY content ./content
 COPY src ./src
 
 # Baked into the client bundle at build time (Vite envPrefix: SUPABASE_, VITE_, SITE_).
+# Runtime /config.js also serves these from Cloud Run env — build args are a fallback.
 ARG SUPABASE_URL=
 ARG SUPABASE_API=
+ARG VITE_SUPABASE_URL=
+ARG VITE_SUPABASE_ANON_KEY=
 ARG SITE_URL=
+ARG VITE_SITE_URL=
 ENV SUPABASE_URL=${SUPABASE_URL} \
     SUPABASE_API=${SUPABASE_API} \
-    SITE_URL=${SITE_URL}
+    VITE_SUPABASE_URL=${VITE_SUPABASE_URL} \
+    VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY} \
+    SITE_URL=${SITE_URL} \
+    VITE_SITE_URL=${VITE_SITE_URL}
 
 RUN npm run build
 

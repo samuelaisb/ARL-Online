@@ -17,8 +17,29 @@ function freePort(port) {
     } else {
       const pids = execSync(`lsof -ti tcp:${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
       if (pids) {
-        execSync(`kill -9 ${pids.split('\n').join(' ')}`, { stdio: 'ignore' });
-        console.log(`Freed port ${port} (killed PID ${pids.replace(/\n/g, ', ')}).`);
+        for (const pid of pids.split('\n').filter(Boolean)) {
+          try {
+            execSync(`kill -TERM ${pid}`, { stdio: 'ignore' });
+          } catch {
+            /* already gone */
+          }
+        }
+        // Allow graceful shutdown before force-kill
+        try {
+          execSync('sleep 0.5', { stdio: 'ignore' });
+        } catch {
+          /* ignore */
+        }
+        const remaining = execSync(`lsof -ti tcp:${port}`, {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+        }).trim();
+        if (remaining) {
+          execSync(`kill -9 ${remaining.split('\n').join(' ')}`, { stdio: 'ignore' });
+          console.log(`Freed port ${port} (killed PID ${remaining.replace(/\n/g, ', ')}).`);
+        } else {
+          console.log(`Freed port ${port} (SIGTERM).`);
+        }
       }
     }
   } catch {

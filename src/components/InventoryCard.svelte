@@ -1,10 +1,6 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
-  import {
-    availabilityNow,
-    subscribeAvailabilityClock,
-    unsubscribeAvailabilityClock,
-  } from '../lib/availability-clock.js';
+  import { onDestroy } from 'svelte';
+  import { availabilityNow } from '../lib/availability-clock.js';
   import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
   import { t } from '../lib/i18n.js';
 
@@ -26,10 +22,6 @@
   let checkAvailability = $derived(
     !unavailable && !hasAvailabilityWithinDays(reservations, itemTag, 7, new Date($availabilityNow)),
   );
-
-  onMount(() => {
-    subscribeAvailabilityClock();
-  });
 
   function clearStatusTimeouts() {
     clearTimeout(fadeTimeout);
@@ -59,15 +51,17 @@
   }
 
   $effect(() => {
-    const { id, at } = reserveSuccessTick;
+    const { id, at, pending } = reserveSuccessTick;
     if (id === item.id && at) {
-      setStatus($t('inventory.reservation_complete'), 'success');
+      setStatus(
+        pending ? $t('inventory.reservation_pending') : $t('inventory.reservation_complete'),
+        'success',
+      );
     }
   });
 
   onDestroy(() => {
     clearStatusTimeouts();
-    unsubscribeAvailabilityClock();
   });
 </script>
 

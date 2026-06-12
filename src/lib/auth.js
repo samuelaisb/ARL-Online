@@ -23,7 +23,10 @@ export async function initAuth() {
     return;
   }
 
-  const { data } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error('Failed to get auth session:', error);
+  }
   session.set(data.session);
 
   if (!authSubscription) {
@@ -44,13 +47,21 @@ export async function signInWithEmail(email, password) {
   return data;
 }
 
-export async function signUpWithEmail(email, password) {
+export async function signUpWithEmail(email, password, { signedMemberAgreement = false } = {}) {
   if (!supabase) throw new Error('Auth is not configured.');
   const redirectTo = getAuthRedirectUrl();
+  const options = {
+    data: {
+      signed_member_agreement: signedMemberAgreement,
+    },
+  };
+  if (redirectTo) {
+    options.emailRedirectTo = redirectTo;
+  }
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+    options,
   });
   if (error) throw error;
   if (data.session) {

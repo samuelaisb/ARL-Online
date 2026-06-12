@@ -12,12 +12,6 @@
   let timer;
 
   $effect(() => {
-    if ($quotes.length > 0 && index >= $quotes.length) {
-      index = 0;
-    }
-  });
-
-  $effect(() => {
     $locale;
     index = 0;
   });

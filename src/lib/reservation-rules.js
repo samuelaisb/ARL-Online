@@ -24,8 +24,9 @@ export function addDays(dateKey, days) {
     return '';
   }
 
-  date.setDate(date.getDate() + days);
-  return toDateKey(date);
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return toDateKey(next);
 }
 
 export function getBlockEndDate(tag, startDate) {

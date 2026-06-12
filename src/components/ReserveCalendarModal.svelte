@@ -28,7 +28,7 @@
   }
 
   function handleConfirmed(detail) {
-    onsuccess?.(detail?.item ?? item);
+    onsuccess?.(detail);
     close();
   }
 </script>

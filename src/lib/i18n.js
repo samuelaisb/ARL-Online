@@ -64,7 +64,12 @@ export const locale = writable(resolveInitialLocale());
 locale.subscribe((code) => {
   if (typeof document !== 'undefined') {
     document.documentElement.lang = code;
+  }
+
+  try {
     localStorage.setItem(STORAGE_KEY, code);
+  } catch {
+    // private browsing or storage disabled
   }
 });
 

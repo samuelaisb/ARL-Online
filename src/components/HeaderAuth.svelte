@@ -2,35 +2,16 @@
   import { onMount } from 'svelte';
   import { supabaseConfigured } from '../lib/supabase.js';
   import { authReady, initAuth, isApathyAdmin, session, signOut } from '../lib/auth.js';
+  import { navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
-  import AdminPanel from './AdminPanel.svelte';
   import AuthModal from './AuthModal.svelte';
-
-  let {
-    items = [],
-    loading = false,
-    loadError = '',
-    onAddItem,
-    onItemRemoved,
-  } = $props();
 
   let authModal = $state();
   let signingOut = $state(false);
   let signOutError = $state('');
-  let adminOpen = $state(false);
-  let adminRoot = $state();
 
   onMount(() => {
     initAuth();
-
-    function handleWindowClick(event) {
-      if (adminOpen && adminRoot && !adminRoot.contains(event.target)) {
-        adminOpen = false;
-      }
-    }
-
-    window.addEventListener('click', handleWindowClick);
-    return () => window.removeEventListener('click', handleWindowClick);
   });
 
   export function openLogin() {
@@ -41,20 +22,14 @@
     authModal?.open('register');
   }
 
-  function toggleAdmin(event) {
-    event.stopPropagation();
-    adminOpen = !adminOpen;
-  }
-
-  function handleAddItem() {
-    adminOpen = false;
-    onAddItem?.();
+  function openAdmin(event) {
+    event.preventDefault();
+    navigate('/admin');
   }
 
   async function handleSignOut() {
     signOutError = '';
     signingOut = true;
-    adminOpen = false;
 
     try {
       await signOut();
@@ -73,30 +48,9 @@
     {:else if $session}
       <span class="header-auth__email" title={$session.user.email}>{$session.user.email}</span>
       {#if isApathyAdmin($session)}
-        <div class="header-admin" bind:this={adminRoot}>
-          <button
-            type="button"
-            class="btn-header btn-header--secondary"
-            aria-expanded={adminOpen}
-            aria-controls="header-admin-menu"
-            aria-haspopup="true"
-            onclick={toggleAdmin}
-          >
-            {$t('auth.admin')}
-          </button>
-          {#if adminOpen}
-            <div id="header-admin-menu" class="header-admin__dropdown">
-              <AdminPanel
-                variant="dropdown"
-                {items}
-                {loading}
-                {loadError}
-                onAddItem={handleAddItem}
-                {onItemRemoved}
-              />
-            </div>
-          {/if}
-        </div>
+        <a href="/admin" class="btn-header btn-header--secondary" onclick={openAdmin}>
+          {$t('auth.admin')}
+        </a>
       {/if}
       <button
         type="button"

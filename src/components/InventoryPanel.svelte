@@ -23,6 +23,15 @@
     items.filter((item) => (item.tag || DEFAULT_INVENTORY_TAG) === activeTag),
   );
 
+  const tagCounts = $derived(
+    Object.fromEntries(
+      INVENTORY_TAGS.map((tag) => [
+        tag,
+        items.filter((item) => (item.tag || DEFAULT_INVENTORY_TAG) === tag).length,
+      ]),
+    ),
+  );
+
   const tagLabels = {
     equipment: 'inventory.filter_equipment',
     books: 'inventory.filter_books',
@@ -42,9 +51,16 @@
     onItemUpdated?.(updatedItem);
   }
 
-  function handleReserveSuccess(updatedItem) {
-    reserveSuccessTick = { id: updatedItem.id, at: Date.now() };
-    onItemUpdated?.(updatedItem);
+  function handleReserveSuccess(detail) {
+    const updatedItem = detail?.item;
+    reserveSuccessTick = {
+      id: updatedItem?.id ?? null,
+      at: Date.now(),
+      pending: detail?.reservation?.status === 'pending',
+    };
+    if (updatedItem) {
+      onItemUpdated?.(updatedItem);
+    }
   }
 
   onMount(() => {
@@ -61,7 +77,7 @@
   class="panel active"
   aria-labelledby="inventory-heading"
 >
-  <h2 id="inventory-heading" class="panel-title">{$t('inventory.heading')}</h2>
+  <h2 id="inventory-heading" class="visually-hidden">{$t('inventory.heading')}</h2>
 
   <div class="inventory-filter" role="group" aria-label={$t('inventory.filter_aria')}>
     {#each INVENTORY_TAGS as tag (tag)}
@@ -70,15 +86,32 @@
         class="inventory-filter__btn"
         class:inventory-filter__btn--active={activeTag === tag}
         aria-pressed={activeTag === tag}
+        aria-label={$t('inventory.filter_with_count', {
+          label: $t(tagLabels[tag]),
+          count: tagCounts[tag],
+        })}
         onclick={() => (activeTag = tag)}
       >
-        {$t(tagLabels[tag])}
+        <span class="inventory-filter__label">{$t(tagLabels[tag])}</span>
+        <span class="inventory-filter__count" aria-hidden="true">{tagCounts[tag]}</span>
       </button>
     {/each}
   </div>
 
   {#if loading}
-    <p class="empty-state">{$t('inventory.loading')}</p>
+    <div class="inventory-skeleton-grid" aria-busy="true" aria-label={$t('inventory.loading')}>
+      {#each Array(6) as _, index (index)}
+        <div class="inventory-skeleton-card">
+          <div class="inventory-skeleton-card__image"></div>
+          <div class="inventory-skeleton-card__body">
+            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
+            <div class="inventory-skeleton-card__line"></div>
+            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--short"></div>
+            <div class="inventory-skeleton-card__button"></div>
+          </div>
+        </div>
+      {/each}
+    </div>
   {:else if loadError}
     <p class="status error inventory-load-error" role="alert">{loadError}</p>
   {:else if items.length === 0}

@@ -135,22 +135,22 @@
       bind:value={title}
     />
 
-    <fieldset class="tag-fieldset">
-      <legend>{$t('add_item.tag_label')}</legend>
-      <div class="tag-options">
+    <div class="tag-fieldset">
+      <span class="tag-fieldset__label" id="item-tag-label">{$t('add_item.tag_label')}</span>
+      <div class="inventory-filter" role="group" aria-labelledby="item-tag-label">
         {#each INVENTORY_TAGS as tagOption (tagOption)}
-          <label class="tag-option">
-            <input
-              type="radio"
-              name="item-tag"
-              value={tagOption}
-              bind:group={tag}
-            />
-            <span>{$t(`add_item.tag_${tagOption}`)}</span>
-          </label>
+          <button
+            type="button"
+            class="inventory-filter__btn"
+            class:inventory-filter__btn--active={tag === tagOption}
+            aria-pressed={tag === tagOption}
+            onclick={() => (tag = tagOption)}
+          >
+            {$t(`add_item.tag_${tagOption}`)}
+          </button>
         {/each}
       </div>
-    </fieldset>
+    </div>
 
     <label for="item-body">{$t('add_item.body_label')}</label>
     <textarea

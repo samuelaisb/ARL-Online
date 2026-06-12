@@ -1,13 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
+function readRuntimeEnv() {
+  if (typeof window === 'undefined') return null;
+  const runtime = window.__ARL_ENV__;
+  return runtime && typeof runtime === 'object' ? runtime : null;
+}
+
+const runtimeEnv = readRuntimeEnv();
+
+const supabaseUrl =
+  runtimeEnv?.SUPABASE_URL ||
+  import.meta.env.SUPABASE_URL ||
+  import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey =
+  runtimeEnv?.SUPABASE_API ||
   import.meta.env.SUPABASE_API ||
   import.meta.env.SUPABASE_ANON_KEY ||
   import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const configuredSiteUrl = (
-  import.meta.env.SITE_URL || import.meta.env.VITE_SITE_URL || ''
+  runtimeEnv?.SITE_URL || import.meta.env.SITE_URL || import.meta.env.VITE_SITE_URL || ''
 ).replace(/\/$/, '');
 
 /** URL Supabase should redirect to after email confirmation (and similar auth flows). */

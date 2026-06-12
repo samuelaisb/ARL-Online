@@ -1,14 +1,21 @@
 <script>
   import { signInWithEmail, signUpWithEmail } from '../lib/auth.js';
   import { t } from '../lib/i18n.js';
+  import MemberAgreementModal from './MemberAgreementModal.svelte';
 
   let dialog = $state();
+  let agreementModal = $state();
   let activeMode = $state('login');
   let email = $state('');
   let password = $state('');
+  let contractSigned = $state(false);
   let submitting = $state(false);
   let formStatus = $state('');
   let formStatusType = $state('');
+
+  function resetRegisterState() {
+    contractSigned = false;
+  }
 
   export function open(nextMode = 'login') {
     activeMode = nextMode;
@@ -16,6 +23,7 @@
     password = '';
     formStatus = '';
     formStatusType = '';
+    resetRegisterState();
     dialog?.showModal();
   }
 
@@ -38,6 +46,15 @@
     close();
   }
 
+  function openAgreement() {
+    agreementModal?.open();
+  }
+
+  function handleAgreementSigned() {
+    contractSigned = true;
+    clearFormStatus();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     clearFormStatus();
@@ -49,8 +66,13 @@
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       showFormStatus($t('auth.password_min_length'), 'error');
+      return;
+    }
+
+    if (activeMode === 'register' && !contractSigned) {
+      showFormStatus($t('auth.contract_required'), 'error');
       return;
     }
 
@@ -58,11 +80,14 @@
 
     try {
       if (activeMode === 'register') {
-        const { session: newSession } = await signUpWithEmail(trimmedEmail, password);
+        const { session: newSession } = await signUpWithEmail(trimmedEmail, password, {
+          signedMemberAgreement: true,
+        });
         if (!newSession) {
           showFormStatus($t('auth.account_created_check_email'), 'success');
           activeMode = 'login';
           password = '';
+          resetRegisterState();
           return;
         }
       } else {
@@ -81,6 +106,9 @@
     activeMode = nextMode;
     clearFormStatus();
     password = '';
+    if (nextMode === 'register') {
+      resetRegisterState();
+    }
   }
 </script>
 
@@ -115,6 +143,21 @@
       bind:value={password}
     />
 
+    {#if activeMode === 'register'}
+      <div class="auth-contract">
+        {#if contractSigned}
+          <p class="auth-contract-signed" role="status">
+            <span class="auth-contract-signed__icon" aria-hidden="true">✓</span>
+            {$t('auth.contract_signed')}
+          </p>
+        {:else}
+          <button type="button" class="btn-sign-contract" onclick={openAgreement}>
+            {$t('auth.sign_contract')}
+          </button>
+        {/if}
+      </div>
+    {/if}
+
     {#if formStatus}
       <p class="status {formStatusType}" role="status" aria-live="polite">
         {formStatus}
@@ -143,3 +186,5 @@
     </p>
   </form>
 </dialog>
+
+<MemberAgreementModal bind:this={agreementModal} onagreed={handleAgreementSigned} />

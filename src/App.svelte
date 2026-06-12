@@ -2,7 +2,9 @@
   import { onMount } from 'svelte';
   import { loadInventoryItems } from './lib/inventory.js';
   import { t } from './lib/i18n.js';
+  import { isAdminRoute, path } from './lib/router.js';
   import InventoryPanel from './components/InventoryPanel.svelte';
+  import AdminPage from './components/AdminPage.svelte';
   import AddItemModal from './components/AddItemModal.svelte';
   import QuoteFooter from './components/QuoteFooter.svelte';
   import HeaderAuth from './components/HeaderAuth.svelte';
@@ -14,6 +16,8 @@
 
   let addItemModal;
   let headerAuth = $state();
+
+  const onAdminPage = $derived(isAdminRoute($path));
 
   async function refreshInventory() {
     loadError = '';
@@ -54,7 +58,9 @@
   }
 
   $effect(() => {
-    document.title = $t('site.title');
+    document.title = onAdminPage
+      ? `${$t('admin.heading')} — ${$t('site.title')}`
+      : $t('site.title');
   });
 
   onMount(() => {
@@ -63,6 +69,17 @@
 </script>
 
 <div class="app">
+  <div class="site-psa-banner">
+    <a
+      class="site-psa-banner__link"
+      href={$t('site.psa_link')}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {$t('site.psa_text')}
+    </a>
+  </div>
+
   <header class="site-header">
     <a class="site-header__brand" href="/" aria-label={$t('site.brand_home_aria')}>
       <img
@@ -75,33 +92,39 @@
     </a>
     <div class="site-header__actions">
       <LocaleSwitcher />
-      <HeaderAuth
-        bind:this={headerAuth}
+      <HeaderAuth bind:this={headerAuth} />
+    </div>
+  </header>
+
+  <div class="app-body">
+    {#if onAdminPage}
+      <AdminPage
         {items}
         {loading}
         {loadError}
         onAddItem={openAddItemModal}
         onItemRemoved={handleItemRemoved}
-      />
-    </div>
-  </header>
-
-  <div class="app-body">
-    <main class="container">
-      <header class="page-header">
-        <h1>{$t('site.title')}</h1>
-        <p class="subtitle">{$t('site.subtitle')}</p>
-      </header>
-
-      <InventoryPanel
-        items={items}
-        loading={loading}
-        loadError={loadError}
         onItemUpdated={handleItemUpdated}
-        onOpenRegister={openRegisterFromReserve}
         onOpenLogin={openLoginFromReserve}
+        onOpenRegister={openRegisterFromReserve}
       />
-    </main>
+    {:else}
+      <main class="container">
+        <header class="page-header">
+          <h1>{$t('site.title')}</h1>
+          <p class="subtitle">{$t('site.subtitle')}</p>
+        </header>
+
+        <InventoryPanel
+          items={items}
+          loading={loading}
+          loadError={loadError}
+          onItemUpdated={handleItemUpdated}
+          onOpenRegister={openRegisterFromReserve}
+          onOpenLogin={openLoginFromReserve}
+        />
+      </main>
+    {/if}
   </div>
 </div>
 

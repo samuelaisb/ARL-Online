@@ -12,7 +12,10 @@ steps:
       - build
       - --build-arg=SUPABASE_URL=${_SUPABASE_URL}
       - --build-arg=SUPABASE_API=${_SUPABASE_API}
+      - --build-arg=VITE_SUPABASE_URL=${_SUPABASE_URL}
+      - --build-arg=VITE_SUPABASE_ANON_KEY=${_SUPABASE_API}
       - --build-arg=SITE_URL=${_SITE_URL}
+      - --build-arg=VITE_SITE_URL=${_SITE_URL}
       - -t
       - ${_IMAGE}
       - .
