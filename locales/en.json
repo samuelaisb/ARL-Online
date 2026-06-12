@@ -74,7 +74,9 @@
     "account_created_check_email": "Account created. Check your email to confirm, then log in.",
     "auth_failed": "Authentication failed.",
     "already_have_account": "Already have an account?",
-    "need_account": "Need an account?"
+    "need_account": "Need an account?",
+    "reserve_requires_account_title": "Account required",
+    "reserve_requires_account_message": "You need an account to reserve inventory. Sign up to continue."
   },
   "admin": {
     "heading": "Admin",

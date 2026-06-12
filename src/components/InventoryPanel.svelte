@@ -1,7 +1,10 @@
 <script>
   import InventoryCard from './InventoryCard.svelte';
+  import ReserveAuthRequiredModal from './ReserveAuthRequiredModal.svelte';
   import ReserveCalendarModal from './ReserveCalendarModal.svelte';
+  import { authReady, session } from '../lib/auth.js';
   import { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG } from '../lib/inventory.js';
+  import { supabaseConfigured } from '../lib/supabase.js';
   import {
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
@@ -9,10 +12,11 @@
   import { t } from '../lib/i18n.js';
   import { onDestroy, onMount } from 'svelte';
 
-  let { items, loading, loadError, onItemUpdated } = $props();
+  let { items, loading, loadError, onItemUpdated, onOpenRegister, onOpenLogin } = $props();
 
   let activeTag = $state(DEFAULT_INVENTORY_TAG);
   let reserveModal = $state();
+  let authRequiredModal = $state();
   let reserveSuccessTick = $state({ id: null, at: 0 });
 
   const filteredItems = $derived(
@@ -26,6 +30,11 @@
   };
 
   function openReserve(item) {
+    if (supabaseConfigured && $authReady && !$session) {
+      authRequiredModal?.open();
+      return;
+    }
+
     reserveModal?.open(item);
   }
 
@@ -84,6 +93,12 @@
     </div>
   {/if}
 </section>
+
+<ReserveAuthRequiredModal
+  bind:this={authRequiredModal}
+  onSignUp={onOpenRegister}
+  onLogIn={onOpenLogin}
+/>
 
 <ReserveCalendarModal
   bind:this={reserveModal}

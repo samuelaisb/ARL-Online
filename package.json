@@ -12,7 +12,8 @@
     "dev:server": "NODE_ENV=development node server.js",
     "preview": "npm start",
     "docker:build": "bash scripts/docker-build.sh",
-    "cloud:build": "bash scripts/cloud-build.sh"
+    "cloud:build": "bash scripts/cloud-build.sh",
+    "migrate:inventory": "node scripts/migrate-inventory-to-supabase.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",

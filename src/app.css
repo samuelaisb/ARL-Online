@@ -786,7 +786,11 @@ h1 {
   cursor: not-allowed;
 }
 
+/* Override the global button:disabled { opacity: 0.6 } so the lavender
+   highlight remains fully visible even when the button is disabled. */
+.item-calendar__day--reserved:disabled,
 .item-calendar__day--reserved:hover:disabled {
+  opacity: 1;
   background: color-mix(in srgb, var(--color-lavender) 42%, white);
   border-color: color-mix(in srgb, var(--color-lavender) 70%, var(--color-grape));
 }
@@ -1085,7 +1089,8 @@ button:disabled {
   background: rgba(35, 31, 32, 0.4);
 }
 
-.modal form {
+.modal form,
+.modal-body {
   padding: 1.5rem;
 }
 

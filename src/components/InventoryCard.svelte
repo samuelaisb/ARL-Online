@@ -1,6 +1,10 @@
 <script>
-  import { onDestroy } from 'svelte';
-  import { availabilityNow } from '../lib/availability-clock.js';
+  import { onDestroy, onMount } from 'svelte';
+  import {
+    availabilityNow,
+    subscribeAvailabilityClock,
+    unsubscribeAvailabilityClock,
+  } from '../lib/availability-clock.js';
   import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
   import { t } from '../lib/i18n.js';
 
@@ -13,18 +17,19 @@
   let fadeTimeout;
   let hideTimeout;
 
-  let unavailable = $derived(
-    isCurrentlyReserved(item.reservations ?? [], new Date($availabilityNow)),
-  );
+  // Explicit reactive snapshot of the reservations array so Svelte 5 fine-grained
+  // tracking is guaranteed even when item.reservations is mutated in-place on the proxy.
+  const reservations = $derived(item.reservations ?? []);
+  const itemTag = $derived(item.tag ?? 'equipment');
+
+  let unavailable = $derived(isCurrentlyReserved(reservations, new Date($availabilityNow)));
   let checkAvailability = $derived(
-    !unavailable &&
-      !hasAvailabilityWithinDays(
-        item.reservations ?? [],
-        item.tag ?? 'equipment',
-        7,
-        new Date($availabilityNow),
-      ),
+    !unavailable && !hasAvailabilityWithinDays(reservations, itemTag, 7, new Date($availabilityNow)),
   );
+
+  onMount(() => {
+    subscribeAvailabilityClock();
+  });
 
   function clearStatusTimeouts() {
     clearTimeout(fadeTimeout);
@@ -62,6 +67,7 @@
 
   onDestroy(() => {
     clearStatusTimeouts();
+    unsubscribeAvailabilityClock();
   });
 </script>
 

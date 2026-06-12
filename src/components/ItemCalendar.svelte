@@ -30,6 +30,10 @@
   const fixedBlock = $derived(isFixedBlockTag(itemTag));
   const showPickupNotice = $derived(itemTag === 'equipment' || itemTag === 'books');
 
+  // Explicit reactive snapshot so Svelte 5 fine-grained tracking picks up
+  // any change to item.reservations when the item prop updates.
+  const itemReservations = $derived(item?.reservations ?? []);
+
   let viewYear = $state(new Date().getFullYear());
   let viewMonth = $state(new Date().getMonth());
   let rangeStart = $state(null);
@@ -68,7 +72,7 @@
 
   let canConfirm = $derived(
     Boolean(selectedStart && selectedEnd) &&
-      !hasReservationCollision(item.reservations, selectedStart, selectedEnd),
+      !hasReservationCollision(itemReservations, selectedStart, selectedEnd),
   );
 
   function clearStatus() {
@@ -109,16 +113,16 @@
       }
 
       const blockEnd = getBlockEndDate(itemTag, dateKey);
-      return hasReservationCollision(item.reservations, dateKey, blockEnd);
+      return hasReservationCollision(itemReservations, dateKey, blockEnd);
     }
 
-    return isDateReserved(item.reservations, dateKey);
+    return isDateReserved(itemReservations, dateKey);
   }
 
   function handleFixedBlockClick(dateKey) {
     const blockEnd = getBlockEndDate(itemTag, dateKey);
 
-    if (hasReservationCollision(item.reservations, dateKey, blockEnd)) {
+    if (hasReservationCollision(itemReservations, dateKey, blockEnd)) {
       statusMessage = $t('calendar.block_unavailable');
       statusType = 'error';
       rangeStart = null;
@@ -131,7 +135,7 @@
   }
 
   function handleFlexibleRangeClick(dateKey) {
-    if (isDateReserved(item.reservations, dateKey)) {
+    if (isDateReserved(itemReservations, dateKey)) {
       return;
     }
 
@@ -151,7 +155,7 @@
     const start = compareDateKeys(rangeStart, rangeEnd) <= 0 ? rangeStart : rangeEnd;
     const end = compareDateKeys(rangeStart, rangeEnd) <= 0 ? rangeEnd : rangeStart;
 
-    if (hasReservationCollision(item.reservations, start, end)) {
+    if (hasReservationCollision(itemReservations, start, end)) {
       statusMessage = $t('calendar.collision_error');
       statusType = 'error';
       rangeStart = null;
@@ -267,7 +271,7 @@
     {#each monthGrid as week}
       {#each week as day}
         {@const reserved =
-          day.inCurrentMonth && isDateReserved(item.reservations, day.dateKey)}
+          day.inCurrentMonth && isDateReserved(itemReservations, day.dateKey)}
         {@const past = isPastDate(day.dateKey)}
         {@const selected = isDateInSelection(rangeStart, rangeEnd, day.dateKey)}
         {@const disabled = isDayDisabled(day.dateKey, day.inCurrentMonth)}

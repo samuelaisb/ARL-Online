@@ -36,7 +36,7 @@ COPY --from=build /app/dist ./dist
 COPY src/lib ./src/lib
 COPY src/assets ./src/assets
 
-RUN mkdir -p data && chown -R node:node /app
+RUN chown -R node:node /app
 
 USER node
 

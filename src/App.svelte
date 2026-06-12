@@ -13,6 +13,7 @@
   let loadError = $state('');
 
   let addItemModal;
+  let headerAuth = $state();
 
   async function refreshInventory() {
     loadError = '';
@@ -44,6 +45,14 @@
     addItemModal?.open();
   }
 
+  function openRegisterFromReserve() {
+    headerAuth?.openRegister();
+  }
+
+  function openLoginFromReserve() {
+    headerAuth?.openLogin();
+  }
+
   $effect(() => {
     document.title = $t('site.title');
   });
@@ -67,6 +76,7 @@
     <div class="site-header__actions">
       <LocaleSwitcher />
       <HeaderAuth
+        bind:this={headerAuth}
         {items}
         {loading}
         {loadError}
@@ -88,6 +98,8 @@
         loading={loading}
         loadError={loadError}
         onItemUpdated={handleItemUpdated}
+        onOpenRegister={openRegisterFromReserve}
+        onOpenLogin={openLoginFromReserve}
       />
     </main>
   </div>

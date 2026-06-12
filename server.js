@@ -1,21 +1,35 @@
 import 'dotenv/config';
 import express from 'express';
-import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { randomUUID } from 'crypto';
 import { Resend } from 'resend';
-import {
-  compareDateKeys,
-  hasReservationCollision,
-  parseDateKey,
-} from './src/lib/calendar.js';
+import { compareDateKeys, parseDateKey } from './src/lib/calendar.js';
 import { validateReservationDates } from './src/lib/reservation-rules.js';
+import {
+  addReservation,
+  createInventoryItem,
+  deleteInventoryItem,
+  ensureInventory,
+  findInventoryItem,
+  isValidInventoryImage,
+  isValidTag,
+  normalizeInventoryItem,
+  patchReservation,
+  removeReservation,
+} from './src/lib/inventory-store.js';
+import { assertSupabaseAdminConfigured } from './src/lib/supabase-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 const STRICT_PORT = process.env.NODE_ENV === 'development' || process.env.STRICT_PORT === 'true';
+
+try {
+  assertSupabaseAdminConfigured();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
 
 const apiKey = process.env.RESEND_API_KEY;
 if (!apiKey) {
@@ -42,220 +56,6 @@ const FROM = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const RESERVE_INVENTORY_EMAIL_TO =
   process.env.RESERVE_INVENTORY_EMAIL_TO || process.env.EMAIL_TO || 'samuel@apathyisboring.com';
 const SLACK_RESERVATION_WEBHOOK_URL = process.env.SLACK_RESERVATION_WEBHOOK_URL?.trim() || '';
-
-const INVENTORY_FILE = path.join(__dirname, 'data', 'inventory.json');
-const SEED_INVENTORY_FILE = path.join(__dirname, 'src', 'assets', 'inventory', 'items.json');
-const INVENTORY_ASSETS_DIR = path.join(__dirname, 'src', 'assets', 'inventory');
-const INVENTORY_IMAGE_BASE = '/assets/inventory';
-const INVENTORY_TAGS = ['equipment', 'books', 'rooms'];
-const DEFAULT_INVENTORY_TAG = 'equipment';
-
-const JPEG_DATA_URL_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=\s]+$/;
-
-let inventoryLock = Promise.resolve();
-
-function withInventoryLock(task) {
-  const run = inventoryLock.then(task);
-  inventoryLock = run.catch(() => {});
-  return run;
-}
-
-function normalizeTag(raw) {
-  const tag = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  return INVENTORY_TAGS.includes(tag) ? tag : DEFAULT_INVENTORY_TAG;
-}
-
-function isValidTag(raw) {
-  const tag = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  return INVENTORY_TAGS.includes(tag);
-}
-
-function isValidInventoryImage(image) {
-  if (typeof image !== 'string' || !image.trim()) {
-    return false;
-  }
-
-  const trimmed = image.trim();
-  return JPEG_DATA_URL_RE.test(trimmed) || trimmed.startsWith(`${INVENTORY_IMAGE_BASE}/`);
-}
-
-async function readInventoryFile() {
-  try {
-    const raw = await fs.readFile(INVENTORY_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-
-    throw error;
-  }
-}
-
-async function writeInventoryFile(items) {
-  await fs.mkdir(path.dirname(INVENTORY_FILE), { recursive: true });
-  await fs.writeFile(INVENTORY_FILE, JSON.stringify(items, null, 2), 'utf8');
-}
-
-async function migrateInventoryTags(items) {
-  if (items.length === 0) {
-    return items;
-  }
-
-  let changed = false;
-  const migrated = items.map((raw) => {
-    const item = normalizeInventoryItem(raw, { requireAll: false });
-    if (!item) {
-      return raw;
-    }
-
-    if (raw.tag !== item.tag) {
-      changed = true;
-    }
-
-    return item;
-  });
-
-  if (changed) {
-    await writeInventoryFile(migrated);
-  }
-
-  return migrated;
-}
-
-async function readInventory() {
-  const items = await readInventoryFile();
-  return migrateInventoryTags(items);
-}
-
-async function writeInventory(items) {
-  await writeInventoryFile(items);
-}
-
-function resolveSeedImagePath(image) {
-  if (typeof image !== 'string' || !image.trim()) {
-    return '';
-  }
-
-  const trimmed = image.trim();
-  if (trimmed.startsWith('/')) {
-    return trimmed;
-  }
-
-  return `${INVENTORY_IMAGE_BASE}/${trimmed.replace(/^\//, '')}`;
-}
-
-async function loadSeedInventory() {
-  try {
-    const raw = await fs.readFile(SEED_INVENTORY_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    const seededAt = Date.now();
-
-    return parsed
-      .map((item, index) =>
-        normalizeInventoryItem(
-          {
-            id:
-              typeof item.sourceId === 'string' && item.sourceId.trim()
-                ? `myturn-${item.sourceId.trim()}`
-                : undefined,
-            title: item.title,
-            body: item.body,
-            image: resolveSeedImagePath(item.image),
-            tag: item.tag,
-            createdAt: seededAt - (parsed.length - index) * 1000,
-          },
-          { requireAll: true },
-        ),
-      )
-      .filter(Boolean);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-
-    throw error;
-  }
-}
-
-async function ensureInventory() {
-  const items = await readInventory();
-  if (items.length > 0) {
-    return items;
-  }
-
-  const seedItems = await loadSeedInventory();
-  if (seedItems.length === 0) {
-    return items;
-  }
-
-  await writeInventory(seedItems);
-  console.log(`Seeded ${seedItems.length} inventory items from MyTurn library.`);
-  return seedItems;
-}
-
-function normalizeReservation(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-
-  const startDate = typeof raw.startDate === 'string' ? raw.startDate.trim() : '';
-  const endDate = typeof raw.endDate === 'string' ? raw.endDate.trim() : '';
-  const status = raw.status === 'available' ? 'available' : 'reserved';
-
-  if (!parseDateKey(startDate) || !parseDateKey(endDate)) {
-    return null;
-  }
-
-  if (compareDateKeys(startDate, endDate) > 0) {
-    return null;
-  }
-
-  const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID();
-
-  return { id, startDate, endDate, status };
-}
-
-function normalizeReservations(rawReservations) {
-  if (!Array.isArray(rawReservations)) {
-    return [];
-  }
-
-  return rawReservations.map((reservation) => normalizeReservation(reservation)).filter(Boolean);
-}
-
-function normalizeInventoryItem(raw, { requireAll = true } = {}) {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-
-  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
-  const body = typeof raw.body === 'string' ? raw.body.trim() : '';
-  const image = typeof raw.image === 'string' ? raw.image.trim() : '';
-
-  if (requireAll && (!title || !body || !image)) {
-    return null;
-  }
-
-  if (requireAll && !isValidInventoryImage(image)) {
-    return null;
-  }
-
-  const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID();
-  const createdAt =
-    typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt)
-      ? raw.createdAt
-      : Date.now();
-  const reservations = normalizeReservations(raw.reservations);
-  const tag = normalizeTag(raw.tag);
-
-  return { id, title, body, image, createdAt, reservations, tag };
-}
 
 function escapeHtml(text) {
   return text
@@ -422,6 +222,9 @@ function parseDataUrlImage(dataUrl) {
   };
 }
 
+const INVENTORY_ASSETS_DIR = path.join(__dirname, 'src', 'assets', 'inventory');
+const INVENTORY_IMAGE_BASE = '/assets/inventory';
+
 app.use(express.json({ limit: '10mb' }));
 app.use('/assets/fonts', express.static(path.join(__dirname, 'src', 'assets', 'fonts')));
 app.use('/assets/brand', express.static(path.join(__dirname, 'src', 'assets', 'brand')));
@@ -430,7 +233,7 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('/api/inventory', async (_req, res) => {
   try {
-    const items = await withInventoryLock(() => ensureInventory());
+    const items = await ensureInventory();
     res.json({ items });
   } catch (error) {
     console.error('Failed to read inventory:', error);
@@ -460,11 +263,8 @@ app.post('/api/inventory', async (req, res) => {
   }
 
   try {
-    await withInventoryLock(async () => {
-      const current = await ensureInventory();
-      current.unshift(item);
-      await writeInventory(current);
-    });
+    await ensureInventory();
+    await createInventoryItem(item);
     res.status(201).json({ item });
   } catch (error) {
     console.error('Failed to save inventory item:', error);
@@ -490,60 +290,36 @@ app.post('/api/inventory/:id/reservations', async (req, res) => {
   }
 
   try {
-    const result = await withInventoryLock(async () => {
-      const items = await ensureInventory();
-      const index = items.findIndex((entry) => entry.id === itemId);
+    await ensureInventory();
+    const item = await findInventoryItem(itemId);
 
-      if (index === -1) {
-        return { notFound: true };
-      }
-
-      const item = normalizeInventoryItem(items[index], { requireAll: false });
-      const tagValidation = validateReservationDates(item.tag, startDate, endDate);
-
-      if (!tagValidation.ok) {
-        return { validationError: tagValidation.error };
-      }
-
-      const reservations = Array.isArray(item.reservations) ? item.reservations : [];
-
-      if (hasReservationCollision(reservations, startDate, endDate)) {
-        return { collision: true };
-      }
-
-      const reservation = {
-        id: randomUUID(),
-        startDate,
-        endDate,
-        status: 'reserved',
-      };
-
-      item.reservations = [...reservations, reservation];
-      items[index] = item;
-      await writeInventory(items);
-
-      return { item, reservation };
-    });
-
-    if (result.notFound) {
+    if (!item) {
       return res.status(404).json({ error: 'Item not found.' });
     }
 
-    if (result.validationError) {
-      return res.status(400).json({ error: result.validationError });
+    const tagValidation = validateReservationDates(item.tag, startDate, endDate);
+
+    if (!tagValidation.ok) {
+      return res.status(400).json({ error: tagValidation.error });
+    }
+
+    const result = await addReservation(itemId, { startDate, endDate });
+
+    if (result.notFound) {
+      return res.status(404).json({ error: 'Item not found.' });
     }
 
     if (result.collision) {
       return res.status(409).json({ error: 'Selected dates overlap an existing reservation.' });
     }
 
-    const { item, reservation } = result;
-    notifySlackReservation({ item, reservation });
-    sendReservationNotificationEmail(item, reservation).catch((error) => {
-      console.error('Reservation notification email failed:', error);
+    const { item: updatedItem, reservation } = result;
+    notifySlackReservation({ item: updatedItem, reservation });
+    sendReservationNotificationEmail(updatedItem, reservation).catch((emailError) => {
+      console.error('Reservation notification email failed:', emailError);
     });
 
-    res.status(201).json({ reservation, item: reservationItemPayload(item) });
+    res.status(201).json({ reservation, item: reservationItemPayload(updatedItem) });
   } catch (error) {
     console.error('Failed to create reservation:', error);
     res.status(500).json({ error: 'Could not create reservation.' });
@@ -560,28 +336,7 @@ app.delete('/api/inventory/:id/reservations/:reservationId', async (req, res) =>
   }
 
   try {
-    const result = await withInventoryLock(async () => {
-      const items = await ensureInventory();
-      const index = items.findIndex((entry) => entry.id === itemId);
-
-      if (index === -1) {
-        return { notFound: true };
-      }
-
-      const item = items[index];
-      const reservations = Array.isArray(item.reservations) ? item.reservations : [];
-      const reservationIndex = reservations.findIndex((entry) => entry.id === reservationId);
-
-      if (reservationIndex === -1) {
-        return { reservationNotFound: true };
-      }
-
-      item.reservations = reservations.filter((entry) => entry.id !== reservationId);
-      items[index] = item;
-      await writeInventory(items);
-
-      return { item };
-    });
+    const result = await removeReservation(itemId, reservationId);
 
     if (result.notFound) {
       return res.status(404).json({ error: 'Item not found.' });
@@ -608,64 +363,36 @@ app.patch('/api/inventory/:id/reservations/:reservationId', async (req, res) => 
   }
 
   try {
-    const result = await withInventoryLock(async () => {
-      const items = await ensureInventory();
-      const index = items.findIndex((entry) => entry.id === itemId);
+    const item = await findInventoryItem(itemId);
 
-      if (index === -1) {
-        return { notFound: true };
-      }
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found.' });
+    }
 
-      const item = normalizeInventoryItem(items[index], { requireAll: false });
-      const reservationIndex = item.reservations.findIndex((r) => r.id === reservationId);
+    const existing = item.reservations.find((entry) => entry.id === reservationId);
 
-      if (reservationIndex === -1) {
-        return { reservationNotFound: true };
-      }
+    if (!existing) {
+      return res.status(404).json({ error: 'Reservation not found.' });
+    }
 
-      const existing = item.reservations[reservationIndex];
-      const updated = normalizeReservation({
-        id: existing.id,
-        startDate:
-          typeof req.body?.startDate === 'string' ? req.body.startDate.trim() : existing.startDate,
-        endDate:
-          typeof req.body?.endDate === 'string' ? req.body.endDate.trim() : existing.endDate,
-        status:
-          req.body?.status === 'available'
-            ? 'available'
-            : req.body?.status === 'reserved'
-              ? 'reserved'
-              : existing.status,
-      });
+    const startDate =
+      typeof req.body?.startDate === 'string' ? req.body.startDate.trim() : existing.startDate;
+    const endDate =
+      typeof req.body?.endDate === 'string' ? req.body.endDate.trim() : existing.endDate;
+    const status =
+      req.body?.status === 'available'
+        ? 'available'
+        : req.body?.status === 'reserved'
+          ? 'reserved'
+          : existing.status;
 
-      if (!updated) {
-        return { invalidUpdate: true };
-      }
+    const tagValidation = validateReservationDates(item.tag, startDate, endDate);
 
-      const tagValidation = validateReservationDates(
-        item.tag,
-        updated.startDate,
-        updated.endDate,
-      );
+    if (!tagValidation.ok) {
+      return res.status(400).json({ error: tagValidation.error });
+    }
 
-      if (!tagValidation.ok) {
-        return { validationError: tagValidation.error };
-      }
-
-      if (
-        updated.status === 'reserved' &&
-        hasReservationCollision(item.reservations, updated.startDate, updated.endDate, reservationId)
-      ) {
-        return { collision: true };
-      }
-
-      item.reservations = [...item.reservations];
-      item.reservations[reservationIndex] = updated;
-      items[index] = item;
-      await writeInventory(items);
-
-      return { item, reservation: updated };
-    });
+    const result = await patchReservation(itemId, reservationId, { startDate, endDate, status });
 
     if (result.notFound) {
       return res.status(404).json({ error: 'Item not found.' });
@@ -677,10 +404,6 @@ app.patch('/api/inventory/:id/reservations/:reservationId', async (req, res) => 
 
     if (result.invalidUpdate) {
       return res.status(400).json({ error: 'Invalid reservation update.' });
-    }
-
-    if (result.validationError) {
-      return res.status(400).json({ error: result.validationError });
     }
 
     if (result.collision) {
@@ -702,19 +425,7 @@ app.delete('/api/inventory/:id', async (req, res) => {
   }
 
   try {
-    const result = await withInventoryLock(async () => {
-      const items = await ensureInventory();
-      const index = items.findIndex((entry) => entry.id === id);
-
-      if (index === -1) {
-        return { notFound: true };
-      }
-
-      items.splice(index, 1);
-      await writeInventory(items);
-
-      return { success: true };
-    });
+    const result = await deleteInventoryItem(id);
 
     if (result.notFound) {
       return res.status(404).json({ error: 'Item not found.' });
@@ -738,6 +449,9 @@ function startServer(port, attempt = 1) {
       console.warn(`Port ${PORT} is in use, using ${actualPort} instead.`);
     }
     console.log(`ARL Online server running at http://localhost:${actualPort}`);
+    if (apiKey) {
+      console.log(`Reservation notification emails → ${RESERVE_INVENTORY_EMAIL_TO}`);
+    }
   });
 
   server.once('error', (err) => {

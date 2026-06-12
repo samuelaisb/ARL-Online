@@ -26,6 +26,11 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_API:-}" ]]; then
   exit 1
 fi
 
+if [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+  echo "Missing SUPABASE_SERVICE_ROLE_KEY in .env (required for inventory on Cloud Run)" >&2
+  exit 1
+fi
+
 echo "Cloud Build → ${IMAGE}"
 gcloud builds submit \
   --project "${PROJECT}" \
@@ -37,7 +42,8 @@ echo "Deploying ${SERVICE} in ${REGION}..."
 gcloud run deploy "${SERVICE}" \
   --project "${PROJECT}" \
   --region "${REGION}" \
-  --image "${IMAGE}"
+  --image "${IMAGE}" \
+  --set-env-vars "SUPABASE_URL=${SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
 
 echo ""
 echo "Done. Open: https://arl-online-123477413804.${REGION}.run.app"

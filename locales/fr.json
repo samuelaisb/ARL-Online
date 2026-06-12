@@ -74,7 +74,9 @@
     "account_created_check_email": "Compte créé. Confirmez par courriel, puis connectez-vous.",
     "auth_failed": "Échec de l'authentification.",
     "already_have_account": "Déjà un compte?",
-    "need_account": "Pas de compte?"
+    "need_account": "Pas de compte?",
+    "reserve_requires_account_title": "Compte requis",
+    "reserve_requires_account_message": "Vous devez avoir un compte pour réserver. Inscrivez-vous pour continuer."
   },
   "admin": {
     "heading": "Admin",

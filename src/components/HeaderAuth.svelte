@@ -33,11 +33,11 @@
     return () => window.removeEventListener('click', handleWindowClick);
   });
 
-  function openLogin() {
+  export function openLogin() {
     authModal?.open('login');
   }
 
-  function openRegister() {
+  export function openRegister() {
     authModal?.open('register');
   }
 
