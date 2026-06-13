@@ -4,8 +4,8 @@
     "subtitle": "Browse inventory and reserve items for your work.",
     "brand_home_aria": "Apathy is Boring home",
     "brand_name": "Apathy is Boring",
-    "attribution_aria": "Created by Finance Engage Sustain",
-    "attribution_text": "The Activist Resource Library was created by Finance Engage Sustain",
+    "attribution_aria": "Created by",
+    "attribution_text": "The Activist Resource Library was created by",
     "attribution_link_aria": "Finance Engage Sustain — opens in a new tab",
     "fes_name": "Finance Engage Sustain",
     "psa_text": "Online feeling...OFF lately? Check out our new PSA!",
@@ -183,6 +183,9 @@
     "avatar_alt": "Kimchi the cat",
     "dismiss_aria": "Dismiss message",
     "tap_aria": "Say hello to Kimchi",
+    "status_online_aria": "Kimchi is awake — click to put Kimchi to sleep",
+    "status_offline_aria": "Kimchi is asleep — click to wake Kimchi up",
+    "sleep": "Zzz…",
     "greeting": "Meow! I'm Kimchi, the library cat.",
     "greeting_cta": "New around here?",
     "greeting_link": "See how this works",
@@ -192,12 +195,21 @@
     "reservation_approved": "Meow! Reservation approved, the member will get an email.",
     "reservation_deleted": "Meow! Reservation deleted.",
     "reservation_sent": "Meow! Your reservation request is sent, AisB will review it.",
+    "signed_out": "You've signed out! See you next time 👋",
+    "register_click": "You want to join? Awesome! 🎉",
     "taps": [
       "Meow!",
       "Hello!",
       "How's it going?",
       "Purr…",
-      "Meow meow!"
+      "Meow meow!",
+      "Welcome to the Activist Resource Library!"
+    ],
+    "item_reactions": [
+      "What do you think? 🤔",
+      "Oh I haven't tried that one…",
+      "Looks nifty!",
+      "That one's pretty cool 😸"
     ]
   },
   "quotes": {

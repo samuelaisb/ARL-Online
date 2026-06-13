@@ -1,3 +1,37 @@
+<script module>
+  import { translateKey } from '../lib/i18n.js';
+  import { notify } from '../lib/notification-store.js';
+
+  // Shared across all card instances: shuffle cycle + cooldown for item reactions.
+  const ITEM_HOVER_DELAY = 3000;
+  const ITEM_REACTION_COOLDOWN = 3000;
+  let lastItemReactionTime = 0;
+  let reactionShuffledIndices = [];
+  let reactionShufflePos = 0;
+
+  function getNextReaction() {
+    const reactions = translateKey('kimchi.item_reactions');
+    const messages = Array.isArray(reactions) ? reactions : [];
+    if (messages.length === 0) return null;
+
+    if (reactionShufflePos >= reactionShuffledIndices.length || reactionShuffledIndices.length !== messages.length) {
+      reactionShuffledIndices = [...Array(messages.length).keys()].sort(() => Math.random() - 0.5);
+      reactionShufflePos = 0;
+    }
+
+    return messages[reactionShuffledIndices[reactionShufflePos++]];
+  }
+
+  function triggerItemReaction() {
+    const now = Date.now();
+    if (now - lastItemReactionTime < ITEM_REACTION_COOLDOWN) return;
+    const text = getNextReaction();
+    if (!text) return;
+    lastItemReactionTime = now;
+    notify(text);
+  }
+</script>
+
 <script>
   import { onDestroy } from 'svelte';
   import { availabilityNow } from '../lib/availability-clock.js';
@@ -12,6 +46,7 @@
 
   let fadeTimeout;
   let hideTimeout;
+  let hoverTimer;
 
   // Explicit reactive snapshot of the reservations array so Svelte 5 fine-grained
   // tracking is guaranteed even when item.reservations is mutated in-place on the proxy.
@@ -47,7 +82,17 @@
   }
 
   function openReserveModal() {
+    triggerItemReaction();
     onOpenReserve?.(item);
+  }
+
+  function handleMouseEnter() {
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(triggerItemReaction, ITEM_HOVER_DELAY);
+  }
+
+  function handleMouseLeave() {
+    clearTimeout(hoverTimer);
   }
 
   $effect(() => {
@@ -62,10 +107,11 @@
 
   onDestroy(() => {
     clearStatusTimeouts();
+    clearTimeout(hoverTimer);
   });
 </script>
 
-<article class="inventory-card">
+<article class="inventory-card" onmouseenter={handleMouseEnter} onmouseleave={handleMouseLeave}>
   <div class="inventory-image-frame">
     <img class="inventory-image" src={item.image} alt={item.title} loading="lazy" />
     <span

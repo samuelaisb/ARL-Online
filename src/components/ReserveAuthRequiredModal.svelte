@@ -1,5 +1,6 @@
 <script>
-  import { t } from '../lib/i18n.js';
+  import { t, translateKey } from '../lib/i18n.js';
+  import { notify } from '../lib/notification-store.js';
 
   let { onSignUp, onLogIn } = $props();
 
@@ -19,6 +20,7 @@
   }
 
   function handleSignUp() {
+    notify(translateKey('kimchi.register_click'));
     close();
     onSignUp?.();
   }

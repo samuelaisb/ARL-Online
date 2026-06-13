@@ -3,7 +3,8 @@
   import { supabaseConfigured } from '../lib/supabase.js';
   import { authReady, initAuth, isApathyAdmin, session, signOut } from '../lib/auth.js';
   import { navigate } from '../lib/router.js';
-  import { t } from '../lib/i18n.js';
+  import { t, translateKey } from '../lib/i18n.js';
+  import { notify } from '../lib/notification-store.js';
   import AuthModal from './AuthModal.svelte';
 
   let authModal = $state();
@@ -33,11 +34,17 @@
 
     try {
       await signOut();
+      notify(translateKey('kimchi.signed_out'));
     } catch (error) {
       signOutError = error.message || $t('auth.sign_out_error');
     } finally {
       signingOut = false;
     }
+  }
+
+  function handleRegisterClick() {
+    notify(translateKey('kimchi.register_click'));
+    openRegister();
   }
 </script>
 
@@ -67,7 +74,7 @@
       <button type="button" class="btn-header btn-header--secondary" onclick={openLogin}>
         {$t('auth.log_in')}
       </button>
-      <button type="button" class="btn-header btn-header--primary" onclick={openRegister}>
+      <button type="button" class="btn-header btn-header--primary" onclick={handleRegisterClick}>
         {$t('auth.register')}
       </button>
     {/if}

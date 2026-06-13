@@ -81,9 +81,9 @@
     box-sizing: border-box;
     padding: 0.875rem 2.25rem 0.9375rem 1.125rem;
     background: #fff;
-    border: 2px solid #ffb35c;
+    border: 2px solid var(--color-lemon, #ffdd2a);
     border-radius: 1.25rem 1.25rem 0.375rem 1.25rem;
-    box-shadow: 0 8px 24px rgba(255, 138, 31, 0.28);
+    box-shadow: 0 8px 24px rgba(255, 221, 42, 0.35);
     transform-origin: bottom right;
     pointer-events: auto;
   }
@@ -95,8 +95,8 @@
     width: 1.125rem;
     height: 1.125rem;
     background: #fff;
-    border-right: 2px solid #ffb35c;
-    border-bottom: 2px solid #ffb35c;
+    border-right: 2px solid var(--color-lemon, #ffdd2a);
+    border-bottom: 2px solid var(--color-lemon, #ffdd2a);
     border-bottom-right-radius: 0.25rem;
     transform: rotate(45deg);
   }
@@ -108,11 +108,11 @@
     font-size: 1.0625rem;
     font-weight: 700;
     letter-spacing: 0.03em;
-    color: #ff8a1f;
+    color: #c4a800;
     text-shadow:
       0 1px 0 #fff,
-      0 2px 0 rgba(255, 138, 31, 0.35),
-      0 3px 6px rgba(255, 138, 31, 0.3);
+      0 2px 0 rgba(255, 221, 42, 0.4),
+      0 3px 6px rgba(255, 221, 42, 0.35);
   }
 
   .kimchi-bubble__text {
@@ -129,14 +129,14 @@
 
   .kimchi-bubble__link {
     font-weight: 600;
-    color: #ff8a1f;
+    color: #c4a800;
     text-decoration: underline;
     text-decoration-thickness: 2px;
     text-underline-offset: 2px;
   }
 
   .kimchi-bubble__link:hover {
-    color: #e06f00;
+    color: #9a8200;
   }
 
   .kimchi-bubble__close {
@@ -156,13 +156,13 @@
   }
 
   .kimchi-bubble__close:hover {
-    background: #fff1e0;
-    color: #ff8a1f;
+    background: #fffbe6;
+    color: #c4a800;
   }
 
   .kimchi-bubble__close:focus-visible,
   .kimchi-bubble__link:focus-visible {
-    outline: 2px solid #ff8a1f;
+    outline: 2px solid var(--color-lemon, #ffdd2a);
     outline-offset: 2px;
   }
 </style>

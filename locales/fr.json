@@ -4,8 +4,8 @@
     "subtitle": "Parcourez l'inventaire et réservez des articles.",
     "brand_home_aria": "Accueil Apathy is Boring",
     "brand_name": "Apathy is Boring",
-    "attribution_aria": "Créé par Finance Engage Sustain",
-    "attribution_text": "La bibliothèque a été créée par Finance Engage Sustain",
+    "attribution_aria": "Créé par",
+    "attribution_text": "La bibliothèque a été créée par",
     "attribution_link_aria": "Finance Engage Sustain — ouvre un nouvel onglet",
     "fes_name": "Finance Engage Sustain",
     "psa_text": "Quelque chose cloche en ligne ce temps-ci...? Clique pour découvrir pourquoi !",
@@ -181,6 +181,9 @@
     "avatar_alt": "Kimchi le chat",
     "dismiss_aria": "Fermer le message",
     "tap_aria": "Dire bonjour à Kimchi",
+    "status_online_aria": "Kimchi est éveillé — clique pour endormir Kimchi",
+    "status_offline_aria": "Kimchi dort — clique pour réveiller Kimchi",
+    "sleep": "Zzz…",
     "greeting": "Miaou ! Je suis Kimchi, le chat de la bibliothèque.",
     "greeting_cta": "C'est ta première visite ?",
     "greeting_link": "Découvre comment ça marche",
@@ -190,12 +193,21 @@
     "reservation_approved": "Miaou ! Réservation approuvée, le membre recevra un courriel.",
     "reservation_deleted": "Miaou ! Réservation supprimée.",
     "reservation_sent": "Miaou ! Ta demande de réservation est envoyée, AisB va l'examiner.",
+    "signed_out": "Tu t'es déconnecté(e) ! À bientôt 👋",
+    "register_click": "Tu veux nous rejoindre ? Super ! 🎉",
     "taps": [
       "Miaou !",
       "Coucou !",
       "Ça va ?",
       "Ronron…",
-      "Miaou miaou !"
+      "Miaou miaou !",
+      "Bienvenue à la Bibliothèque ressources activistes !"
+    ],
+    "item_reactions": [
+      "Qu'est-ce que tu en penses ? 🤔",
+      "Oh, je n'ai pas encore essayé celui-là…",
+      "Ça a l'air sympa !",
+      "Celui-là est vraiment cool 😸"
     ]
   },
   "quotes": {

@@ -1,12 +1,20 @@
 <script>
+  import { onDestroy } from 'svelte';
   import { backOut } from 'svelte/easing';
   import { t, translateKey } from '../lib/i18n.js';
   import { navigate } from '../lib/router.js';
   import { authReady, session } from '../lib/auth.js';
   import { supabaseConfigured } from '../lib/supabase.js';
-  import { notifications, notify, dismiss } from '../lib/notification-store.js';
+  import {
+    notifications,
+    notify,
+    dismiss,
+    clearNotifications,
+    setKimchiNotificationsEnabled,
+  } from '../lib/notification-store.js';
   import KimchiBubble from './KimchiBubble.svelte';
-  import kimchiAvatar from '../../content/kimchi.jpg';
+  import kimchiAwake from '../../content/kimchi-awake.jpg';
+  import kimchiSleep from '../../content/kimchi-sleep.jpg';
 
   /**
    * Animate existing bubbles sliding upward when a new one pushes in below.
@@ -23,25 +31,40 @@
   }
 
   const GREETING_DURATION = 8000;
+  const GREETING_SPLIT_DELAY = 1000;
   const LOGGED_IN_DURATION = 5000;
   const TAP_DURATION = 5000;
+  const SLEEP_ZZZ_DURATION = 3500;
 
   let authGreetingHandled = false;
   let previousUserId = null;
+  let isAwake = $state(true);
+
+  const avatarSrc = $derived(isAwake ? kimchiAwake : kimchiSleep);
+
+  let greetingSplitTimeout = null;
 
   function notifyGreeting() {
-    notify(
-      {
-        text: translateKey('kimchi.greeting'),
-        link: {
-          href: '/howthisworks',
-          cta: translateKey('kimchi.greeting_cta'),
-          label: translateKey('kimchi.greeting_link'),
+    notify(translateKey('kimchi.greeting'), GREETING_DURATION);
+    greetingSplitTimeout = setTimeout(() => {
+      greetingSplitTimeout = null;
+      notify(
+        {
+          text: '',
+          link: {
+            href: '/howthisworks',
+            cta: translateKey('kimchi.greeting_cta'),
+            label: translateKey('kimchi.greeting_link'),
+          },
         },
-      },
-      GREETING_DURATION
-    );
+        GREETING_DURATION
+      );
+    }, GREETING_SPLIT_DELAY);
   }
+
+  onDestroy(() => {
+    if (greetingSplitTimeout) clearTimeout(greetingSplitTimeout);
+  });
 
   function notifyLoggedIn() {
     notify(translateKey('kimchi.logged_in'), LOGGED_IN_DURATION);
@@ -54,13 +77,45 @@
     navigate(href);
   }
 
-  function handleAvatarClick() {
+  let tapShuffledIndices = [];
+  let tapShufflePos = 0;
+
+  function getNextTapMessage() {
     const taps = translateKey('kimchi.taps');
     const messages = Array.isArray(taps) ? taps : [];
-    if (messages.length === 0) return;
+    if (messages.length === 0) return null;
 
-    const text = messages[Math.floor(Math.random() * messages.length)];
+    if (tapShufflePos >= tapShuffledIndices.length || tapShuffledIndices.length !== messages.length) {
+      tapShuffledIndices = [...Array(messages.length).keys()].sort(() => Math.random() - 0.5);
+      tapShufflePos = 0;
+    }
+
+    return messages[tapShuffledIndices[tapShufflePos++]];
+  }
+
+  function notifyRandomTap() {
+    const text = getNextTapMessage();
+    if (text == null) return;
     notify(text, TAP_DURATION);
+  }
+
+  function handleAvatarClick() {
+    if (!isAwake) return;
+    notifyRandomTap();
+  }
+
+  function handleStatusClick() {
+    if (isAwake) {
+      clearNotifications();
+      notify(translateKey('kimchi.sleep'), SLEEP_ZZZ_DURATION, { force: true });
+      isAwake = false;
+      setKimchiNotificationsEnabled(false);
+      return;
+    }
+
+    isAwake = true;
+    setKimchiNotificationsEnabled(true);
+    notifyRandomTap();
   }
 
   $effect(() => {
@@ -101,25 +156,31 @@
     {/each}
   </div>
 
-  <button
-    type="button"
-    class="kimchi-widget__avatar"
-    class:kimchi-widget__avatar--talking={$notifications.length > 0}
-    aria-label={$t('kimchi.tap_aria')}
-    onclick={handleAvatarClick}
-  >
-    <img src={kimchiAvatar} alt="" width="64" height="64" />
-    <span class="kimchi-widget__status" aria-hidden="true"></span>
-  </button>
+  <div class="kimchi-widget__avatar-wrap">
+    <button
+      type="button"
+      class="kimchi-widget__avatar"
+      class:kimchi-widget__avatar--talking={$notifications.length > 0}
+      aria-label={$t('kimchi.tap_aria')}
+      onclick={handleAvatarClick}
+    >
+      <img src={avatarSrc} alt={$t('kimchi.avatar_alt')} width="64" height="64" />
+    </button>
+    <button
+      type="button"
+      class="kimchi-widget__status"
+      class:kimchi-widget__status--offline={!isAwake}
+      aria-label={isAwake ? $t('kimchi.status_online_aria') : $t('kimchi.status_offline_aria')}
+      onclick={handleStatusClick}
+    ></button>
+  </div>
 </div>
 
 <style>
   .kimchi-widget {
     position: fixed;
     right: 1rem;
-    bottom: calc(
-      var(--quote-footer-height) + 0.75rem + var(--site-attribution-block-height, 3.7rem) + 2px
-    );
+    bottom: calc(var(--quote-footer-height) + 0.75rem);
     z-index: 30;
     display: flex;
     flex-direction: column;
@@ -145,6 +206,11 @@
     width: 100%;
   }
 
+  .kimchi-widget__avatar-wrap {
+    position: relative;
+    pointer-events: auto;
+  }
+
   .kimchi-widget__avatar {
     position: relative;
     width: 4rem;
@@ -154,18 +220,17 @@
     border: 3px solid #fff;
     box-shadow: 0 4px 14px rgba(30, 30, 30, 0.25);
     background: #fff;
-    pointer-events: auto;
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 
   .kimchi-widget__avatar:hover {
     transform: scale(1.06);
-    box-shadow: 0 6px 18px rgba(255, 138, 31, 0.35);
+    box-shadow: 0 6px 18px rgba(255, 221, 42, 0.4);
   }
 
   .kimchi-widget__avatar:focus-visible {
-    outline: 2px solid #ff8a1f;
+    outline: 2px solid var(--color-lemon, #ffdd2a);
     outline-offset: 3px;
   }
 
@@ -188,11 +253,28 @@
     bottom: -1px;
     width: 0.875rem;
     height: 0.875rem;
+    padding: 0;
     border-radius: 50%;
     background: #34c759;
     border: 2.5px solid #fff;
     box-shadow: 0 1px 3px rgba(30, 30, 30, 0.25);
     animation: kimchi-online-pulse 2.4s ease-in-out infinite;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .kimchi-widget__status:hover {
+    transform: scale(1.12);
+  }
+
+  .kimchi-widget__status:focus-visible {
+    outline: 2px solid var(--color-lemon, #ffdd2a);
+    outline-offset: 2px;
+  }
+
+  .kimchi-widget__status--offline {
+    background: #9e9e9e;
+    animation: none;
   }
 
   @keyframes kimchi-online-pulse {
