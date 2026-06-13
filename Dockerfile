@@ -12,6 +12,7 @@ COPY public ./public
 COPY locales ./locales
 COPY content ./content
 COPY src ./src
+COPY scripts ./scripts
 
 # Baked into the client bundle at build time (Vite envPrefix: SUPABASE_, VITE_, SITE_).
 # Runtime /config.js also serves these from Cloud Run env — build args are a fallback.
