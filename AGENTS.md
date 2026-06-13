@@ -398,6 +398,9 @@ After any of the above, **update this file**.
 ## Related documentation
 
 - `docs/Apathy_is_Boring_Brand_Guidelines.md` — brand/design reference (not wired into the app automatically).
+- `docs/automated-notifications.md` — Kimchi chat bubbles: every `notify()` trigger, locale keys, durations, and sleep suppression.
+- `docs/automated-emails.md` — Resend emails: triggers, recipients, subjects, env vars, and failure behavior.
+- `docs/automated-webhooks.md` — Slack reservation webhook: payload, env var, timeout, and failure behavior.
 
 ---
 
@@ -489,4 +492,7 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-13 | Kimchi signed-out intro split into two stacked bubbles: `kimchi.greeting` immediately, then `kimchi.greeting_cta` + `/howthisworks` link after 1 second; `kimchi.logged_in` unchanged for signed-in users. |
 | 2026-06-13 | Kimchi signed-out intro CTA bubble delay increased from 500ms to 1 second (`GREETING_SPLIT_DELAY` in `KimchiNotification.svelte`). |
 | 2026-06-13 | Site header layout: desktop stays single-line (no wrap); mobile uses a fixed two-row grid (logo + locale/auth on row 1, centered nav on row 2). |
+| 2026-06-13 | Fixed mobile header overlap bug: switched mobile header to a 3-row single-column grid (logo row 1, nav row 2, locale+auth row 3) so the logged-in auth area (email + Admin + Sign Out) never overflows into the logo. Email address hidden on mobile to reduce row-3 width. |
 | 2026-06-13 | Quote footer mobile pin fix: fixed height + absolute quote stack (no rotation layout shift), `100dvh` page min-height, safe-area padding, `viewport-fit=cover`, and GPU compositing on `.quote-footer`. |
+| 2026-06-13 | Fixed mobile scroll gap under quote footer: removed `transform: translateZ(0)` from `.quote-footer`; the GPU compositing layer caused iOS Safari to lag repositioning the fixed element when the browser chrome hid/showed, creating a ~½ inch gap. |
+| 2026-06-13 | Added `docs/automated-notifications.md`, `docs/automated-emails.md`, and `docs/automated-webhooks.md` — scannable reference for Kimchi bubbles, Resend emails, and Slack webhook triggers. |
