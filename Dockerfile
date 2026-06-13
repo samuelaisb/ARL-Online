@@ -44,6 +44,7 @@ COPY server.js ./
 COPY --from=build /app/dist ./dist
 COPY src/lib ./src/lib
 COPY src/assets ./src/assets
+COPY locales ./locales
 
 RUN chown -R node:node /app
 
