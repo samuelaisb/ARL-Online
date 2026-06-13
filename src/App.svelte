@@ -100,8 +100,8 @@
     </a>
     <SiteNav />
     <div class="site-header__actions">
-      <LocaleSwitcher />
       <HeaderAuth bind:this={headerAuth} />
+      <LocaleSwitcher />
     </div>
   </header>
 
