@@ -6,7 +6,7 @@ import {
   normalizeSeoPath,
   ROUTE_SEO_KEYS,
 } from './seo.js';
-import { getItemRouteParams } from './router.js';
+import { getItemRouteParams } from './item-routes.js';
 
 const SUPPORTED_LOCALES = ['en', 'fr'];
 
