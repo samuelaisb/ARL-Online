@@ -541,3 +541,4 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-13 | Item overlay calendar column: removed redundant “Reserve: {title}” heading above `ItemCalendar`; dropped `.item-detail__calendar-heading` CSS. |
 | 2026-06-13 | Item overlay availability badge moved from the description column to the breadcrumb current-page crumb (e.g. `Transport buggy (AVAILABLE)`); reuses `availability-badge` variants; removed `.item-detail__badge` CSS. |
 | 2026-06-13 | Fixed breadcrumb availability badge not showing: `.item-detail-breadcrumb__badge` CSS rule was declared before `.availability-badge` in `app.css`, so the later rule's `position: absolute` clobbered the `position: static` override; moved breadcrumb badge rule to after the `.availability-badge` block so it wins the cascade. |
+| 2026-06-13 | Dockerfile build stage copies `scripts/` so `npm run build` prerender step succeeds in Cloud Build. |

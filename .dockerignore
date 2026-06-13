@@ -9,6 +9,5 @@ data
 .cursor
 docs
 send-email.js
-scripts
 *.md
 .DS_Store
