@@ -19,7 +19,7 @@
     isTuesday,
   } from '../lib/reservation-rules.js';
 
-  let { item, onupdated, onconfirmed, hideHeading = false } = $props();
+  let { item, onupdated, onconfirmed, onbeforeconfirm, hideHeading = false } = $props();
 
   let todayKey = $derived(toDateKey(new Date($availabilityNow)));
   const itemTag = $derived(item?.tag ?? 'equipment');
@@ -182,6 +182,10 @@
 
   async function handleConfirm() {
     if (!selectedStart || !selectedEnd || saving) {
+      return;
+    }
+
+    if (onbeforeconfirm && onbeforeconfirm() === false) {
       return;
     }
 

@@ -9,12 +9,14 @@
   let email = $state('');
   let password = $state('');
   let contractSigned = $state(false);
+  let emailUpdatesOptIn = $state(false);
   let submitting = $state(false);
   let formStatus = $state('');
   let formStatusType = $state('');
 
   function resetRegisterState() {
     contractSigned = false;
+    emailUpdatesOptIn = false;
   }
 
   export function open(nextMode = 'login') {
@@ -82,6 +84,7 @@
       if (activeMode === 'register') {
         const { session: newSession } = await signUpWithEmail(trimmedEmail, password, {
           signedMemberAgreement: true,
+          emailUpdatesOptIn,
         });
         if (!newSession) {
           showFormStatus($t('auth.account_created_check_email'), 'success');
@@ -156,6 +159,15 @@
           </button>
         {/if}
       </div>
+
+      <label class="auth-opt-in">
+        <input
+          type="checkbox"
+          name="email-updates-opt-in"
+          bind:checked={emailUpdatesOptIn}
+        />
+        <span>{$t('auth.email_updates_opt_in')}</span>
+      </label>
     {/if}
 
     {#if formStatus}

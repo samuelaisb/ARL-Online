@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { compareDateKeys, hasReservationCollision, normalizeReservationStatus, parseDateKey } from './calendar.js';
 import { validateReservationDates } from './reservation-rules.js';
+import { ensureUniqueSlug, slugifyTitle } from './slug.js';
 import { getSupabaseAdmin } from './supabase-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,7 +15,8 @@ const INVENTORY_IMAGE_BASE = '/assets/inventory';
 const INVENTORY_TAGS = ['equipment', 'books', 'rooms'];
 const DEFAULT_INVENTORY_TAG = 'equipment';
 
-const JPEG_DATA_URL_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
+const IMAGE_DATA_URL_RE = /^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const JPEG_DATA_URL_RE = IMAGE_DATA_URL_RE;
 
 /** In-process per-item lock — safe for single-instance Cloud Run only, not across replicas. */
 const itemLocks = new Map();
@@ -41,6 +43,7 @@ async function withItemLock(itemId, fn) {
 }
 
 let inventorySeeded = false;
+let slugsBackfilled = false;
 
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE, JPEG_DATA_URL_RE };
 
@@ -60,7 +63,7 @@ export function isValidInventoryImage(image) {
   }
 
   const trimmed = image.trim();
-  return JPEG_DATA_URL_RE.test(trimmed) || trimmed.startsWith(`${INVENTORY_IMAGE_BASE}/`);
+  return IMAGE_DATA_URL_RE.test(trimmed) || trimmed.startsWith(`${INVENTORY_IMAGE_BASE}/`);
 }
 
 export function normalizeReservation(raw) {
@@ -119,8 +122,10 @@ export function normalizeInventoryItem(raw, { requireAll = true } = {}) {
       : Date.now();
   const reservations = normalizeReservations(raw.reservations);
   const tag = normalizeTag(raw.tag);
+  const slug =
+    typeof raw.slug === 'string' && raw.slug.trim() ? raw.slug.trim() : null;
 
-  return { id, title, body, image, createdAt, reservations, tag };
+  return { id, title, body, image, createdAt, reservations, tag, slug };
 }
 
 function reservationRowToApi(row) {
@@ -140,6 +145,7 @@ function itemRowToApi(itemRow, reservationRows = []) {
     body: itemRow.body,
     image: itemRow.image,
     tag: itemRow.tag,
+    slug: itemRow.slug ?? null,
     createdAt: Number(itemRow.created_at),
     reservations: reservationRows.map(reservationRowToApi),
   };
@@ -152,8 +158,88 @@ function itemToRow(item) {
     body: item.body,
     image: item.image,
     tag: item.tag,
+    slug: item.slug ?? null,
     created_at: item.createdAt,
   };
+}
+
+function assignSlugsToItems(items) {
+  const slugsByTag = Object.fromEntries(INVENTORY_TAGS.map((tag) => [tag, []]));
+
+  return items.map((item) => {
+    const tag = normalizeTag(item.tag);
+    const baseSlug = slugifyTitle(item.title);
+    const slug = ensureUniqueSlug(baseSlug, slugsByTag[tag]);
+    slugsByTag[tag].push(slug);
+    return { ...item, tag, slug };
+  });
+}
+
+async function fetchSlugsForTag(tag) {
+  const supabase = getSupabaseAdmin();
+  const normalizedTag = normalizeTag(tag);
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('slug')
+    .eq('tag', normalizedTag);
+
+  if (error) {
+    throw new Error(error.message || 'Could not load inventory slugs.');
+  }
+
+  return (data ?? [])
+    .map((row) => row.slug)
+    .filter((value) => typeof value === 'string' && value.trim());
+}
+
+async function backfillMissingSlugs() {
+  const supabase = getSupabaseAdmin();
+  const { data: rows, error } = await supabase
+    .from('inventory_items')
+    .select('id, title, tag, slug')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || 'Could not load inventory for slug backfill.');
+  }
+
+  const slugsByTag = Object.fromEntries(INVENTORY_TAGS.map((tag) => [tag, []]));
+  const updates = [];
+
+  for (const row of rows ?? []) {
+    const tag = normalizeTag(row.tag);
+    if (typeof row.slug === 'string' && row.slug.trim()) {
+      slugsByTag[tag].push(row.slug.trim());
+    }
+  }
+
+  for (const row of rows ?? []) {
+    if (typeof row.slug === 'string' && row.slug.trim()) {
+      continue;
+    }
+
+    const tag = normalizeTag(row.tag);
+    const slug = ensureUniqueSlug(slugifyTitle(row.title), slugsByTag[tag]);
+    slugsByTag[tag].push(slug);
+    updates.push({ id: row.id, slug });
+  }
+
+  for (const update of updates) {
+    const { error: updateError } = await supabase
+      .from('inventory_items')
+      .update({ slug: update.slug })
+      .eq('id', update.id);
+
+    if (updateError) {
+      throw new Error(updateError.message || 'Could not backfill inventory slug.');
+    }
+  }
+
+  if (updates.length > 0) {
+    console.log(`Backfilled slugs for ${updates.length} inventory item(s).`);
+  }
+
+  return updates.length;
 }
 
 function reservationToRow(itemId, reservation) {
@@ -296,46 +382,71 @@ export async function fetchInventoryItems() {
   });
 }
 
-export async function ensureInventory() {
+async function seedInventoryIfEmpty() {
   if (inventorySeeded) {
-    return fetchInventoryItems();
+    return;
   }
 
   const existingCount = await countInventoryItems();
-  if (existingCount > 0) {
-    inventorySeeded = true;
-    return fetchInventoryItems();
+
+  if (existingCount === 0) {
+    const legacyItems = assignSlugsToItems(await readLegacyInventoryFile());
+    if (legacyItems.length > 0) {
+      await insertInventoryItems(legacyItems);
+      console.log(`Imported ${legacyItems.length} inventory items from data/inventory.json into Supabase.`);
+    } else {
+      const seedItems = assignSlugsToItems(await loadSeedInventory());
+      if (seedItems.length > 0) {
+        await insertInventoryItems(seedItems);
+        console.log(`Seeded ${seedItems.length} inventory items from MyTurn library into Supabase.`);
+      }
+    }
   }
 
-  const legacyItems = await readLegacyInventoryFile();
-  if (legacyItems.length > 0) {
-    await insertInventoryItems(legacyItems);
-    console.log(`Imported ${legacyItems.length} inventory items from data/inventory.json into Supabase.`);
-    inventorySeeded = true;
-    return fetchInventoryItems();
-  }
-
-  const seedItems = await loadSeedInventory();
-  if (seedItems.length === 0) {
-    inventorySeeded = true;
-    return [];
-  }
-
-  await insertInventoryItems(seedItems);
-  console.log(`Seeded ${seedItems.length} inventory items from MyTurn library into Supabase.`);
   inventorySeeded = true;
+}
+
+/**
+ * Backfill missing slugs once per process. Independent of the `inventorySeeded`
+ * flag so existing rows (e.g. seeded before slugs existed, or after applying
+ * 004_inventory_slug.sql) always get slugs. Retries on the next call if it fails;
+ * errors are logged, never swallowed silently, and never break the inventory read.
+ */
+async function ensureSlugsBackfilled() {
+  if (slugsBackfilled) {
+    return;
+  }
+
+  try {
+    await backfillMissingSlugs();
+    slugsBackfilled = true;
+  } catch (error) {
+    console.error(
+      'Inventory slug backfill failed; will retry on next request:',
+      error?.message || error,
+    );
+  }
+}
+
+export async function ensureInventory() {
+  await seedInventoryIfEmpty();
+  await ensureSlugsBackfilled();
   return fetchInventoryItems();
 }
 
 export async function createInventoryItem(item) {
+  const existingSlugs = await fetchSlugsForTag(item.tag);
+  const slug = ensureUniqueSlug(slugifyTitle(item.title), existingSlugs);
+  const itemWithSlug = { ...item, slug };
+
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from('inventory_items').insert(itemToRow(item));
+  const { error } = await supabase.from('inventory_items').insert(itemToRow(itemWithSlug));
 
   if (error) {
     throw new Error(error.message || 'Could not save inventory item.');
   }
 
-  return item;
+  return itemWithSlug;
 }
 
 export async function deleteInventoryItem(id) {
@@ -351,6 +462,40 @@ export async function deleteInventoryItem(id) {
   }
 
   return { success: true };
+}
+
+export async function findInventoryItemBySlug(tag, slug) {
+  const normalizedTag = normalizeTag(tag);
+
+  if (!isValidTag(normalizedTag)) {
+    return null;
+  }
+
+  const normalizedSlug = typeof slug === 'string' ? slug.trim() : '';
+
+  if (!normalizedSlug) {
+    return null;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('*, reservations(*)')
+    .eq('tag', normalizedTag)
+    .eq('slug', normalizedSlug)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Could not load inventory item.');
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const reservations = Array.isArray(data.reservations) ? data.reservations : [];
+  reservations.sort((a, b) => compareDateKeys(a.start_date, b.start_date));
+  return itemRowToApi(data, reservations);
 }
 
 export async function findInventoryItem(id) {
@@ -600,17 +745,36 @@ export async function refuseReservation(itemId, reservationId) {
 
 /** Upsert all items from a legacy JSON array (manual migration script). */
 export async function upsertInventoryFromJson(items) {
-  const normalized = items
-    .map((entry) => normalizeInventoryItem(entry, { requireAll: false }))
-    .filter(Boolean);
+  const normalized = assignSlugsToItems(
+    items
+      .map((entry) => normalizeInventoryItem(entry, { requireAll: false }))
+      .filter(Boolean),
+  );
 
   if (normalized.length === 0) {
     return { inserted: 0 };
   }
 
   const supabase = getSupabaseAdmin();
+  const existingSlugsByTag = Object.fromEntries(
+    await Promise.all(
+      INVENTORY_TAGS.map(async (tag) => [tag, await fetchSlugsForTag(tag)]),
+    ),
+  );
+
+  const withUniqueSlugs = normalized.map((item) => {
+    if (item.slug && !existingSlugsByTag[item.tag]?.includes(item.slug)) {
+      existingSlugsByTag[item.tag].push(item.slug);
+      return item;
+    }
+
+    const slug = ensureUniqueSlug(slugifyTitle(item.title), existingSlugsByTag[item.tag]);
+    existingSlugsByTag[item.tag].push(slug);
+    return { ...item, slug };
+  });
+
   const { error: itemError } = await supabase.from('inventory_items').upsert(
-    normalized.map(itemToRow),
+    withUniqueSlugs.map(itemToRow),
     { onConflict: 'id' },
   );
 
@@ -618,7 +782,9 @@ export async function upsertInventoryFromJson(items) {
     throw new Error(itemError.message || 'Could not upsert inventory items.');
   }
 
-  const reservationRows = normalized.flatMap((item) =>
+  await backfillMissingSlugs();
+
+  const reservationRows = withUniqueSlugs.flatMap((item) =>
     (item.reservations ?? []).map((reservation) => reservationToRow(item.id, reservation)),
   );
 
@@ -632,5 +798,7 @@ export async function upsertInventoryFromJson(items) {
     }
   }
 
-  return { inserted: normalized.length, reservations: reservationRows.length };
+  return { inserted: withUniqueSlugs.length, reservations: reservationRows.length };
 }
+
+export { backfillMissingSlugs };

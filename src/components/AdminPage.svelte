@@ -22,7 +22,7 @@
   }
 </script>
 
-<main class="container admin-page">
+<main id="main-content" class="container admin-page">
   <p class="admin-page__back">
     <a href="/" class="admin-page__back-link" onclick={goHome}>{$t('admin.back_to_inventory')}</a>
   </p>

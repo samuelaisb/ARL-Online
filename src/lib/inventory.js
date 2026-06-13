@@ -46,6 +46,23 @@ async function authHeaders(includeJson = false) {
   return headers;
 }
 
+export async function fetchInventoryItem(tag, slug) {
+  const response = await fetch(
+    `/api/inventory/by-slug/${encodeURIComponent(tag)}/${encodeURIComponent(slug)}`,
+  );
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+
+    throw new Error(result.error || translateKey('inventory.load_error'));
+  }
+
+  return result.item ?? null;
+}
+
 export async function fetchInventory() {
   const response = await fetch('/api/inventory');
   const result = await response.json().catch(() => ({}));

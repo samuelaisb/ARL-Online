@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * One-time import of data/inventory.json into Supabase (upsert by id).
- * Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and applied SQL migration.
+ * Generates unique per-tag slugs and backfills any items missing slugs.
+ * Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and applied SQL migrations.
  *
  * Usage: npm run migrate:inventory
  */

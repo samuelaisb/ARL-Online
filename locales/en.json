@@ -1,7 +1,10 @@
 {
   "site": {
-    "title": "Activist Resource Library - Montreal",
-    "subtitle": "Browse inventory and reserve items for your work.",
+    "title": "Activist Resource Library",
+    "subtitle": "Browse and reserve equipment, books, and rooms for activist work across Canada.",
+    "intro": "The Activist Resource Library is a shared lending library for organizers, educators, and community groups across Canada.",
+    "intro_extended": "Browse our inventory of equipment, books, and meeting rooms. Create a free member account to request reservations — Apathy is Boring reviews each request and confirms pickup details by email.",
+    "skip_to_content": "Skip to main content",
     "brand_home_aria": "Apathy is Boring home",
     "brand_name": "Apathy is Boring",
     "attribution_aria": "Created by",
@@ -12,7 +15,8 @@
     "psa_link": "https://www.apathyisboring.com/democracyoffline",
     "nav_aria": "Main navigation",
     "nav_inventory": "Inventory",
-    "nav_how_it_works": "How it works"
+    "nav_how_it_works": "How it works",
+    "nav_about": "About"
   },
   "language": {
     "switch_aria": "Language",
@@ -34,7 +38,8 @@
     "filter_equipment": "Equipment",
     "filter_books": "Books",
     "filter_rooms": "Rooms",
-    "empty_filtered": "No items in this category yet."
+    "empty_filtered": "No items in this category yet.",
+    "image_alt": "Photo of {title} from the Activist Resource Library inventory"
   },
   "calendar": {
     "heading": "Availability",
@@ -91,7 +96,8 @@
     "member_agreement_title": "Member agreement",
     "agree_to_terms": "Agree to the terms",
     "contract_signed": "Member agreement signed",
-    "contract_required": "Please read and agree to the member agreement before creating your account."
+    "contract_required": "Please read and agree to the member agreement before creating your account.",
+    "email_updates_opt_in": "I agree to receive email updates from the Activist Resource Library"
   },
   "admin": {
     "heading": "Hello lovely AisBer! Welcome to the Admin Page",
@@ -175,7 +181,57 @@
         "title": "Pick up and return",
         "body": "For equipment and books, pickup and drop-off are on Tuesdays between 10am and 5pm at the Apathy is Boring office. Return items on time so other members can use them."
       }
-    }
+    },
+    "faq_heading": "Frequently asked questions",
+    "faq": [
+      {
+        "question": "Do I need an account to reserve inventory?",
+        "answer": "Yes. You must register with your email and password, agree to the member agreement, and sign in before you can submit a reservation request."
+      },
+      {
+        "question": "What happens after I submit a reservation?",
+        "answer": "Your request is saved as pending. Apathy is Boring reviews it and emails you when it is approved or declined. Pending dates are held on the calendar until a decision is made."
+      },
+      {
+        "question": "How do equipment and book reservations work?",
+        "answer": "Equipment reserves in a one-week block starting on a Tuesday (through the following Tuesday). Books reserve in a one-month block starting on a Tuesday (four weeks later). Only Tuesdays are selectable on the calendar."
+      },
+      {
+        "question": "Can I choose any dates for rooms?",
+        "answer": "Yes. Room reservations use a flexible inclusive date range — click a start date and an end date on the calendar, subject to availability."
+      },
+      {
+        "question": "Where do I pick up and return items?",
+        "answer": "Equipment and books are picked up and returned at the Apathy is Boring office in Montreal on Tuesdays between 10am and 5pm. Room access details are confirmed by email after approval."
+      },
+      {
+        "question": "What do the availability badges mean?",
+        "answer": "Available means the item is not reserved today. Unavailable means it is currently reserved. Check availability means it is not reserved today but has no bookable window within the next seven days."
+      },
+      {
+        "question": "How many pending reservations can I have?",
+        "answer": "You can have up to five pending reservation requests at a time. Submit more after Apathy is Boring approves or declines your existing requests."
+      },
+      {
+        "question": "Is the library only for Montreal?",
+        "answer": "The Activist Resource Library serves organizers across Canada. Inventory is based in Montreal, but members from anywhere in Canada can browse online and request reservations."
+      }
+    ]
+  },
+  "about": {
+    "heading": "About the Activist Resource Library",
+    "subtitle": "A shared lending library for organizers, educators, and community groups across Canada.",
+    "back_to_inventory": "← Back to inventory",
+    "mission_heading": "Our mission",
+    "mission_body": "The Activist Resource Library makes equipment, books, and meeting space available to people doing grassroots organizing, civic education, and community work. By sharing resources, we help movements stretch limited budgets and get tools into the hands of people who need them.",
+    "canada_heading": "Serving organizers across Canada",
+    "canada_body": "Although pickup is based in Montreal, the library is built for a Canada-wide community. Members anywhere in the country can browse inventory online, create a free account, and request reservations. Our goal is to lower barriers to participation in democracy and social change from coast to coast to coast.",
+    "partners_heading": "Partners",
+    "partners_intro": "The Activist Resource Library is a collaboration between organizations committed to youth engagement and democratic participation.",
+    "partner_aib_name": "Apathy is Boring",
+    "partner_aib_body": "Apathy is Boring is a national non-partisan charitable organization that supports youth engagement and participation in Canada's democracy. AisB operates the library, reviews reservation requests, and hosts pickup in Montreal.",
+    "partner_fes_name": "Finance Engage Sustain (FES)",
+    "partner_fes_body": "FES supports projects that strengthen democratic culture and civic participation. FES partnered with Apathy is Boring to help launch and sustain the Activist Resource Library."
   },
   "kimchi": {
     "name": "Kimchi",
@@ -211,6 +267,33 @@
       "Looks nifty!",
       "That one's pretty cool 😸"
     ]
+  },
+  "item_detail": {
+    "breadcrumb_aria": "Breadcrumb",
+    "breadcrumb_home": "Home",
+    "not_found": "Item not found",
+    "reserve": "Reserve Inventory",
+    "back_to_category": "Back to category"
+  },
+  "seo": {
+    "default_title": "Activist Resource Library | Apathy is Boring",
+    "default_description": "Browse and reserve activist equipment, books, and meeting rooms from Apathy is Boring's shared lending library serving organizers across Canada.",
+    "og_type": "website",
+    "og_site_name": "Activist Resource Library",
+    "twitter_card": "summary_large_image",
+    "home_title": "Activist Resource Library | Browse & Reserve Inventory",
+    "home_description": "Browse equipment, books, and rooms from Canada's Activist Resource Library. Reserve items online for your organizing, education, and community work.",
+    "how_this_works_title": "How It Works | Activist Resource Library",
+    "how_this_works_description": "Learn how to browse inventory, create a member account, request reservations, and pick up items from the Activist Resource Library.",
+    "about_title": "About the Activist Resource Library",
+    "about_description": "Learn about Apathy is Boring's Activist Resource Library — a shared lending library for organizers and community groups across Canada.",
+    "category_equipment_title": "Equipment | Activist Resource Library",
+    "category_equipment_description": "Reserve cameras, projectors, and activist equipment from the Activist Resource Library inventory.",
+    "category_books_title": "Books | Activist Resource Library",
+    "category_books_description": "Browse and reserve books on activism, organizing, and social change from the Activist Resource Library.",
+    "category_rooms_title": "Rooms | Activist Resource Library",
+    "category_rooms_description": "Reserve meeting and workshop rooms from the Activist Resource Library for your community events and organizing.",
+    "admin_title": "Admin | Activist Resource Library"
   },
   "quotes": {
     "aria_label": "Inspirational quotes",

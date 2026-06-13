@@ -1,11 +1,30 @@
 <script>
   import { onMount } from 'svelte';
   import { loadInventoryItems } from './lib/inventory.js';
-  import { t } from './lib/i18n.js';
-  import { isAdminRoute, isHowThisWorksRoute, path } from './lib/router.js';
+  import { locale, t } from './lib/i18n.js';
+  import {
+    isAboutRoute,
+    isAdminRoute,
+    isHowThisWorksRoute,
+    isInventoryHomePath,
+    isItemDetailRoute,
+    path,
+  } from './lib/router.js';
+  import {
+    applyHreflangTags,
+    applySeoTags,
+    clearRobotsMeta,
+    getFaqJsonLd,
+    getItemSeoConfig,
+    getOrganizationJsonLd,
+    getProductJsonLd,
+    getSeoForRoute,
+    getSiteOrigin,
+    removeJsonLd,
+    setRobotsMeta,
+    upsertJsonLd,
+  } from './lib/seo.js';
   import InventoryPanel from './components/InventoryPanel.svelte';
-  import AdminPage from './components/AdminPage.svelte';
-  import HowThisWorksPage from './components/HowThisWorksPage.svelte';
   import SiteNav from './components/SiteNav.svelte';
   import AddItemModal from './components/AddItemModal.svelte';
   import QuoteFooter from './components/QuoteFooter.svelte';
@@ -16,12 +35,17 @@
   let items = $state([]);
   let loading = $state(true);
   let loadError = $state('');
+  let itemDetailSeoItem = $state(null);
+  let reserveSuccessTick = $state({ id: null, at: 0 });
 
   let addItemModal;
   let headerAuth = $state();
 
   const onAdminPage = $derived(isAdminRoute($path));
   const onHowThisWorksPage = $derived(isHowThisWorksRoute($path));
+  const onAboutPage = $derived(isAboutRoute($path));
+  const onItemDetailPage = $derived(isItemDetailRoute($path));
+  const onInventoryPage = $derived(isInventoryHomePath($path));
 
   async function refreshInventory() {
     loadError = '';
@@ -47,6 +71,25 @@
 
   function handleItemUpdated(updatedItem) {
     items = items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
+    if (itemDetailSeoItem?.id === updatedItem.id) {
+      itemDetailSeoItem = updatedItem;
+    }
+  }
+
+  function handleItemDetailLoaded(loadedItem) {
+    itemDetailSeoItem = loadedItem;
+  }
+
+  function handleReserveSuccess(detail) {
+    const updatedItem = detail?.item;
+    reserveSuccessTick = {
+      id: updatedItem?.id ?? null,
+      at: Date.now(),
+      pending: detail?.reservation?.status === 'pending',
+    };
+    if (updatedItem) {
+      handleItemUpdated(updatedItem);
+    }
   }
 
   function openAddItemModal() {
@@ -61,14 +104,58 @@
     headerAuth?.openLogin();
   }
 
-  $effect(() => {
-    if (onAdminPage) {
-      document.title = `${$t('admin.heading')} — ${$t('site.title')}`;
-    } else if (onHowThisWorksPage) {
-      document.title = `${$t('how_this_works.heading')} — ${$t('site.title')}`;
-    } else {
-      document.title = $t('site.title');
+  function trackPlausiblePageview() {
+    if (typeof window.plausible === 'function') {
+      window.plausible('pageview', { u: window.location.href });
     }
+  }
+
+  $effect(() => {
+    const currentPath = $path;
+    const currentLocale = $locale;
+    const origin = getSiteOrigin();
+
+    if (onItemDetailPage && itemDetailSeoItem) {
+      const seo = getItemSeoConfig(itemDetailSeoItem, currentLocale, origin);
+      clearRobotsMeta();
+      applySeoTags(seo);
+      applyHreflangTags(currentPath, origin);
+      upsertJsonLd('organization', getOrganizationJsonLd(origin));
+      upsertJsonLd('product', getProductJsonLd(itemDetailSeoItem, origin));
+      removeJsonLd('faq');
+      return;
+    }
+
+    const seo = getSeoForRoute(currentPath, currentLocale);
+    removeJsonLd('product');
+
+    if (seo.noindex) {
+      setRobotsMeta('noindex, nofollow');
+      removeJsonLd('organization');
+      removeJsonLd('faq');
+    } else {
+      clearRobotsMeta();
+      upsertJsonLd('organization', getOrganizationJsonLd(origin));
+
+      if (currentPath === '/howthisworks') {
+        const faqJsonLd = getFaqJsonLd(currentLocale);
+        if (faqJsonLd) {
+          upsertJsonLd('faq', faqJsonLd);
+        } else {
+          removeJsonLd('faq');
+        }
+      } else {
+        removeJsonLd('faq');
+      }
+    }
+
+    applySeoTags(seo);
+    applyHreflangTags(currentPath, origin);
+  });
+
+  $effect(() => {
+    $path;
+    trackPlausiblePageview();
   });
 
   onMount(() => {
@@ -77,6 +164,8 @@
 </script>
 
 <div class="app">
+  <a class="skip-link" href="#main-content">{$t('site.skip_to_content')}</a>
+
   <div class="site-psa-banner">
     <a
       class="site-psa-banner__link"
@@ -107,37 +196,57 @@
 
   <div class="app-body">
     {#if onAdminPage}
-      <AdminPage
-        {items}
-        {loading}
-        {loadError}
-        onAddItem={openAddItemModal}
-        onItemRemoved={handleItemRemoved}
-        onItemUpdated={handleItemUpdated}
-        onOpenLogin={openLoginFromReserve}
-        onOpenRegister={openRegisterFromReserve}
-      />
+      {#await import('./components/AdminPage.svelte') then { default: AdminPage }}
+        <AdminPage
+          {items}
+          {loading}
+          {loadError}
+          onAddItem={openAddItemModal}
+          onItemRemoved={handleItemRemoved}
+          onItemUpdated={handleItemUpdated}
+          onOpenLogin={openLoginFromReserve}
+          onOpenRegister={openRegisterFromReserve}
+        />
+      {/await}
     {:else if onHowThisWorksPage}
-      <HowThisWorksPage />
-    {:else}
-      <main class="container">
+      {#await import('./components/HowThisWorksPage.svelte') then { default: HowThisWorksPage }}
+        <HowThisWorksPage />
+      {/await}
+    {:else if onAboutPage}
+      {#await import('./components/AboutPage.svelte') then { default: AboutPage }}
+        <AboutPage />
+      {/await}
+    {:else if onInventoryPage || onItemDetailPage}
+      <main id="main-content" class="container">
         <header class="page-header">
           <h1>{$t('site.title')}</h1>
           <p class="subtitle">{$t('site.subtitle')}</p>
+          <p class="page-intro">{$t('site.intro')}</p>
+          <p class="page-intro page-intro--extended">{$t('site.intro_extended')}</p>
         </header>
 
         <InventoryPanel
           items={items}
           loading={loading}
           loadError={loadError}
-          onItemUpdated={handleItemUpdated}
-          onOpenRegister={openRegisterFromReserve}
-          onOpenLogin={openLoginFromReserve}
         />
       </main>
     {/if}
   </div>
 </div>
+
+{#if onItemDetailPage}
+  {#await import('./components/ItemDetailPage.svelte') then { default: ItemDetailPage }}
+    <ItemDetailPage
+      {reserveSuccessTick}
+      onItemUpdated={handleItemUpdated}
+      onItemLoaded={handleItemDetailLoaded}
+      onReserveSuccess={handleReserveSuccess}
+      onOpenRegister={openRegisterFromReserve}
+      onOpenLogin={openLoginFromReserve}
+    />
+  {/await}
+{/if}
 
 <QuoteFooter />
 

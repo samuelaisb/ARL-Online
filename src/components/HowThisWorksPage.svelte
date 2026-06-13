@@ -1,6 +1,6 @@
 <script>
   import { navigate } from '../lib/router.js';
-  import { t } from '../lib/i18n.js';
+  import { faq, t } from '../lib/i18n.js';
 
   const steps = [
     'browse',
@@ -16,7 +16,7 @@
   }
 </script>
 
-<main class="container how-this-works-page">
+<main id="main-content" class="container how-this-works-page">
   <p class="how-this-works-page__back">
     <a href="/" class="how-this-works-page__back-link" onclick={goHome}>
       {$t('how_this_works.back_to_inventory')}
@@ -39,4 +39,19 @@
       </li>
     {/each}
   </ol>
+
+  <section class="how-this-works-faq" aria-labelledby="how-this-works-faq-heading">
+    <h2 id="how-this-works-faq-heading" class="how-this-works-faq__heading">
+      {$t('how_this_works.faq_heading')}
+    </h2>
+
+    <div class="how-this-works-faq__list">
+      {#each $faq as item, index (index)}
+        <details class="how-this-works-faq__item">
+          <summary class="how-this-works-faq__question">{item.question}</summary>
+          <p class="how-this-works-faq__answer">{item.answer}</p>
+        </details>
+      {/each}
+    </div>
+  </section>
 </main>

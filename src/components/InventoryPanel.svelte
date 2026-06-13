@@ -1,23 +1,24 @@
 <script>
   import InventoryCard from './InventoryCard.svelte';
-  import ReserveAuthRequiredModal from './ReserveAuthRequiredModal.svelte';
-  import ReserveCalendarModal from './ReserveCalendarModal.svelte';
-  import { authReady, session } from '../lib/auth.js';
   import { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG } from '../lib/inventory.js';
-  import { supabaseConfigured } from '../lib/supabase.js';
   import {
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
   import { t } from '../lib/i18n.js';
+  import {
+    categoryToPath,
+    getCategoryFromPath,
+    getItemRouteParams,
+    navigate,
+    navigateToItemWithReserve,
+    path,
+  } from '../lib/router.js';
   import { onDestroy, onMount } from 'svelte';
 
-  let { items, loading, loadError, onItemUpdated, onOpenRegister, onOpenLogin } = $props();
+  let { items, loading, loadError } = $props();
 
   let activeTag = $state(DEFAULT_INVENTORY_TAG);
-  let reserveModal = $state();
-  let authRequiredModal = $state();
-  let reserveSuccessTick = $state({ id: null, at: 0 });
 
   const filteredItems = $derived(
     items.filter((item) => (item.tag || DEFAULT_INVENTORY_TAG) === activeTag),
@@ -38,29 +39,39 @@
     rooms: 'inventory.filter_rooms',
   };
 
-  function openReserve(item) {
-    if (supabaseConfigured && $authReady && !$session) {
-      authRequiredModal?.open();
+  $effect(() => {
+    const category = getCategoryFromPath($path);
+    if (category) {
+      activeTag = category;
       return;
     }
 
-    reserveModal?.open(item);
-  }
-
-  function handleReserveUpdated(updatedItem) {
-    onItemUpdated?.(updatedItem);
-  }
-
-  function handleReserveSuccess(detail) {
-    const updatedItem = detail?.item;
-    reserveSuccessTick = {
-      id: updatedItem?.id ?? null,
-      at: Date.now(),
-      pending: detail?.reservation?.status === 'pending',
-    };
-    if (updatedItem) {
-      onItemUpdated?.(updatedItem);
+    // On item detail routes (/{tag}/{slug}) the overlay sits on top of the grid;
+    // keep the grid filtered to the item's category so closing reveals the right list.
+    const itemParams = getItemRouteParams($path);
+    if (itemParams) {
+      activeTag = itemParams.tag;
     }
+  });
+
+  function selectTag(tag) {
+    navigate(categoryToPath(tag));
+  }
+
+  function openReserve(item) {
+    if (!item) {
+      return;
+    }
+
+    if (!item.slug) {
+      // Defensive: server slug backfill should populate this. Fall back to a
+      // client-generated slug (via itemToPath) so Reserve never silently no-ops.
+      console.warn(
+        `Inventory item "${item.title ?? item.id}" has no slug; using a generated slug for navigation. Run "npm run backfill:slugs" (or restart the server) to populate slugs.`,
+      );
+    }
+
+    navigateToItemWithReserve(item);
   }
 
   onMount(() => {
@@ -90,7 +101,7 @@
           label: $t(tagLabels[tag]),
           count: tagCounts[tag],
         })}
-        onclick={() => (activeTag = tag)}
+        onclick={() => selectTag(tag)}
       >
         <span class="inventory-filter__label">{$t(tagLabels[tag])}</span>
         <span class="inventory-filter__count" aria-hidden="true">{tagCounts[tag]}</span>
@@ -121,20 +132,9 @@
   {:else}
     <div class="inventory-grid">
       {#each filteredItems as item (item.id)}
-        <InventoryCard {item} {reserveSuccessTick} onOpenReserve={openReserve} />
+        <InventoryCard {item} onOpenReserve={openReserve} />
       {/each}
     </div>
   {/if}
 </section>
 
-<ReserveAuthRequiredModal
-  bind:this={authRequiredModal}
-  onSignUp={onOpenRegister}
-  onLogIn={onOpenLogin}
-/>
-
-<ReserveCalendarModal
-  bind:this={reserveModal}
-  onupdated={handleReserveUpdated}
-  onsuccess={handleReserveSuccess}
-/>

@@ -47,12 +47,17 @@ export async function signInWithEmail(email, password) {
   return data;
 }
 
-export async function signUpWithEmail(email, password, { signedMemberAgreement = false } = {}) {
+export async function signUpWithEmail(
+  email,
+  password,
+  { signedMemberAgreement = false, emailUpdatesOptIn = false } = {},
+) {
   if (!supabase) throw new Error('Auth is not configured.');
   const redirectTo = getAuthRedirectUrl();
   const options = {
     data: {
       signed_member_agreement: signedMemberAgreement,
+      email_updates_opt_in: emailUpdatesOptIn,
     },
   };
   if (redirectTo) {

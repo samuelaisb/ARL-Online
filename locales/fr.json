@@ -1,7 +1,10 @@
 {
   "site": {
-    "title": "Bibliothèque ressources activistes — Montréal",
-    "subtitle": "Parcourez l'inventaire et réservez des articles.",
+    "title": "Bibliothèque ressources activistes",
+    "subtitle": "Parcourez et réservez de l'équipement, des livres et des salles pour le travail militant partout au Canada.",
+    "intro": "La bibliothèque ressources activistes est une bibliothèque partagée pour les organisateurs, éducateurs et groupes communautaires partout au Canada.",
+    "intro_extended": "Parcourez notre inventaire d'équipement, de livres et de salles. Créez un compte membre gratuit pour demander une réservation — Apathy is Boring examine chaque demande et confirme les détails de cueillette par courriel.",
+    "skip_to_content": "Aller au contenu principal",
     "brand_home_aria": "Accueil Apathy is Boring",
     "brand_name": "Apathy is Boring",
     "attribution_aria": "Créé par",
@@ -12,7 +15,8 @@
     "psa_link": "https://www.lapathiecestplate.com/democratiehorsligne",
     "nav_aria": "Navigation principale",
     "nav_inventory": "Inventaire",
-    "nav_how_it_works": "Comment ça marche"
+    "nav_how_it_works": "Comment ça marche",
+    "nav_about": "À propos"
   },
   "language": {
     "switch_aria": "Langue",
@@ -33,7 +37,8 @@
     "filter_equipment": "Équipement",
     "filter_books": "Livres",
     "filter_rooms": "Salles",
-    "empty_filtered": "Aucun article dans cette catégorie."
+    "empty_filtered": "Aucun article dans cette catégorie.",
+    "image_alt": "Photo de {title} dans l'inventaire de la bibliothèque ressources activistes"
   },
   "calendar": {
     "heading": "Disponibilité",
@@ -89,7 +94,8 @@
     "member_agreement_title": "Entente de membre",
     "agree_to_terms": "Accepter les conditions",
     "contract_signed": "Entente de membre signée",
-    "contract_required": "Veuillez lire et accepter l'entente de membre avant de créer votre compte."
+    "contract_required": "Veuillez lire et accepter l'entente de membre avant de créer votre compte.",
+    "email_updates_opt_in": "J'accepte de recevoir des mises à jour par courriel de la Bibliothèque de ressources militantes"
   },
   "admin": {
     "heading": "Bonjour lovely AisBer! Bienvenue sur la page Admin",
@@ -173,7 +179,57 @@
         "title": "Cueillette et retour",
         "body": "Pour l'équipement et les livres, la cueillette et le retour ont lieu les mardis entre 10 h et 17 h au bureau d'Apathy is Boring. Remettez les articles à temps pour que d'autres membres puissent les utiliser."
       }
-    }
+    },
+    "faq_heading": "Foire aux questions",
+    "faq": [
+      {
+        "question": "Ai-je besoin d'un compte pour réserver?",
+        "answer": "Oui. Vous devez vous inscrire avec votre courriel et un mot de passe, accepter l'entente de membre et vous connecter avant de soumettre une demande de réservation."
+      },
+      {
+        "question": "Que se passe-t-il après ma demande de réservation?",
+        "answer": "Votre demande est enregistrée en attente. Apathy is Boring l'examine et vous envoie un courriel lorsqu'elle est approuvée ou refusée. Les dates en attente restent bloquées au calendrier jusqu'à la décision."
+      },
+      {
+        "question": "Comment fonctionnent les réservations d'équipement et de livres?",
+        "answer": "L'équipement se réserve par bloc d'une semaine à partir d'un mardi (jusqu'au mardi suivant). Les livres se réservent par bloc d'un mois à partir d'un mardi (quatre semaines plus tard). Seuls les mardis sont sélectionnables au calendrier."
+      },
+      {
+        "question": "Puis-je choisir n'importe quelles dates pour les salles?",
+        "answer": "Oui. Les réservations de salles utilisent une plage de dates inclusive flexible — cliquez une date de début et une date de fin au calendrier, selon la disponibilité."
+      },
+      {
+        "question": "Où cueillir et retourner les articles?",
+        "answer": "L'équipement et les livres se cueillent et se retournent au bureau d'Apathy is Boring à Montréal, les mardis entre 10 h et 17 h. Les détails d'accès aux salles sont confirmés par courriel après approbation."
+      },
+      {
+        "question": "Que signifient les badges de disponibilité?",
+        "answer": "Disponible signifie que l'article n'est pas réservé aujourd'hui. Indisponible signifie qu'il est actuellement réservé. Vérifier disponibilité signifie qu'il n'est pas réservé aujourd'hui mais n'a pas de fenêtre réservable dans les sept prochains jours."
+      },
+      {
+        "question": "Combien de réservations en attente puis-je avoir?",
+        "answer": "Vous pouvez avoir jusqu'à cinq demandes de réservation en attente à la fois. Soumettez-en d'autres après qu'Apathy is Boring ait approuvé ou refusé vos demandes existantes."
+      },
+      {
+        "question": "La bibliothèque est-elle seulement pour Montréal?",
+        "answer": "La bibliothèque ressources activistes sert les organisateurs partout au Canada. L'inventaire est basé à Montréal, mais les membres de partout au pays peuvent parcourir en ligne et demander des réservations."
+      }
+    ]
+  },
+  "about": {
+    "heading": "À propos de la bibliothèque ressources activistes",
+    "subtitle": "Une bibliothèque partagée pour les organisateurs, éducateurs et groupes communautaires partout au Canada.",
+    "back_to_inventory": "← Retour à l'inventaire",
+    "mission_heading": "Notre mission",
+    "mission_body": "La bibliothèque ressources activistes met de l'équipement, des livres et des espaces de réunion à la disposition des personnes qui font de l'organisation communautaire, de l'éducation civique et du travail communautaire. En partageant les ressources, nous aidons les mouvements à étirer des budgets limités et à mettre des outils entre les mains de ceux qui en ont besoin.",
+    "canada_heading": "Au service des organisateurs partout au Canada",
+    "canada_body": "Bien que la cueillette soit basée à Montréal, la bibliothèque est conçue pour une communauté pancanadienne. Les membres de partout au pays peuvent parcourir l'inventaire en ligne, créer un compte gratuit et demander des réservations. Notre objectif est de réduire les obstacles à la participation à la démocratie et au changement social d'un océan à l'autre.",
+    "partners_heading": "Partenaires",
+    "partners_intro": "La bibliothèque ressources activistes est une collaboration entre des organisations engagées envers la participation des jeunes et la vie démocratique.",
+    "partner_aib_name": "Apathy is Boring",
+    "partner_aib_body": "Apathy is Boring est un organisme de bienfaisance national non partisan qui soutient l'engagement et la participation des jeunes dans la démocratie canadienne. AisB exploite la bibliothèque, examine les demandes de réservation et accueille la cueillette à Montréal.",
+    "partner_fes_name": "Finance Engage Sustain (FES)",
+    "partner_fes_body": "FES soutient des projets qui renforcent la culture démocratique et la participation civique. FES s'est associé à Apathy is Boring pour aider à lancer et à soutenir la bibliothèque ressources activistes."
   },
   "kimchi": {
     "name": "Kimchi",
@@ -209,6 +265,33 @@
       "Ça a l'air sympa !",
       "Celui-là est vraiment cool 😸"
     ]
+  },
+  "item_detail": {
+    "breadcrumb_aria": "Fil d'Ariane",
+    "breadcrumb_home": "Accueil",
+    "not_found": "Article introuvable",
+    "reserve": "Réserver l'inventaire",
+    "back_to_category": "Retour à la catégorie"
+  },
+  "seo": {
+    "default_title": "Bibliothèque ressources activistes | Apathy is Boring",
+    "default_description": "Parcourez et réservez de l'équipement militant, des livres et des salles dans la bibliothèque partagée d'Apathy is Boring, au service des organisateurs partout au Canada.",
+    "og_type": "website",
+    "og_site_name": "Bibliothèque ressources activistes",
+    "twitter_card": "summary_large_image",
+    "home_title": "Bibliothèque ressources activistes | Parcourir et réserver",
+    "home_description": "Parcourez l'équipement, les livres et les salles de la bibliothèque ressources activistes au Canada. Réservez en ligne pour votre militantisme, vos formations et vos actions communautaires.",
+    "how_this_works_title": "Comment ça marche | Bibliothèque ressources activistes",
+    "how_this_works_description": "Découvrez comment parcourir l'inventaire, créer un compte membre, demander une réservation et cueillir vos articles à la bibliothèque ressources activistes.",
+    "about_title": "À propos de la bibliothèque ressources activistes",
+    "about_description": "Découvrez la bibliothèque ressources activistes d'Apathy is Boring — une bibliothèque partagée pour les organisateurs et les groupes communautaires partout au Canada.",
+    "category_equipment_title": "Équipement | Bibliothèque ressources activistes",
+    "category_equipment_description": "Réservez des caméras, projecteurs et équipement militant dans l'inventaire de la bibliothèque ressources activistes.",
+    "category_books_title": "Livres | Bibliothèque ressources activistes",
+    "category_books_description": "Parcourez et réservez des livres sur le militantisme, l'organisation et le changement social à la bibliothèque ressources activistes.",
+    "category_rooms_title": "Salles | Bibliothèque ressources activistes",
+    "category_rooms_description": "Réservez des salles de réunion et d'atelier à la bibliothèque ressources activistes pour vos événements et actions communautaires.",
+    "admin_title": "Admin | Bibliothèque ressources activistes"
   },
   "quotes": {
     "aria_label": "Citations inspirantes",

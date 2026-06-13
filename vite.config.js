@@ -9,6 +9,27 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('AdminPage') || id.includes('AdminPanel')) {
+            return 'admin';
+          }
+
+          if (id.includes('ItemCalendar') || id.includes('ItemDetailPage')) {
+            return 'calendar';
+          }
+
+          if (id.includes('HowThisWorksPage')) {
+            return 'how-this-works';
+          }
+
+          if (id.includes('AboutPage')) {
+            return 'about';
+          }
+        },
+      },
+    },
   },
   server: {
     proxy: {
@@ -17,6 +38,8 @@ export default defineConfig({
       '/assets/inventory': apiTarget,
       '/assets/fonts': apiTarget,
       '/assets/brand': apiTarget,
+      '/robots.txt': apiTarget,
+      '/sitemap.xml': apiTarget,
     },
   },
 });

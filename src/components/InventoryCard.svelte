@@ -3,7 +3,7 @@
   import { notify } from '../lib/notification-store.js';
 
   // Shared across all card instances: shuffle cycle + cooldown for item reactions.
-  const ITEM_HOVER_DELAY = 3000;
+  const ITEM_HOVER_DELAY = 4000;
   const ITEM_REACTION_COOLDOWN = 3000;
   let lastItemReactionTime = 0;
   let reactionShuffledIndices = [];
@@ -37,8 +37,9 @@
   import { availabilityNow } from '../lib/availability-clock.js';
   import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
   import { t } from '../lib/i18n.js';
+  import { itemToPath, navigateToItem } from '../lib/router.js';
 
-  let { item, reserveSuccessTick, onOpenReserve } = $props();
+  let { item, reserveSuccessTick = { id: null, at: 0 }, onOpenReserve } = $props();
 
   let statusMessage = $state('');
   let statusType = $state('');
@@ -82,8 +83,12 @@
   }
 
   function openReserveModal() {
-    triggerItemReaction();
     onOpenReserve?.(item);
+  }
+
+  function goToDetail(event) {
+    event.preventDefault();
+    navigateToItem(item);
   }
 
   function handleMouseEnter() {
@@ -113,7 +118,15 @@
 
 <article class="inventory-card" onmouseenter={handleMouseEnter} onmouseleave={handleMouseLeave}>
   <div class="inventory-image-frame">
-    <img class="inventory-image" src={item.image} alt={item.title} loading="lazy" />
+    <img
+      class="inventory-image"
+      src={item.image}
+      alt={$t('inventory.image_alt', { title: item.title })}
+      width="640"
+      height="360"
+      decoding="async"
+      loading="lazy"
+    />
     <span
       class="availability-badge"
       class:availability-badge--available={!unavailable && !checkAvailability}
@@ -132,7 +145,11 @@
     </span>
   </div>
   <div class="inventory-content">
-    <h3>{item.title}</h3>
+    <h3>
+      <a class="inventory-card__title-link" href={itemToPath(item)} onclick={goToDetail}>
+        {item.title}
+      </a>
+    </h3>
     <p>{item.body}</p>
 
     <button type="button" class="btn-reserve" onclick={openReserveModal}>

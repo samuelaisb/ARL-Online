@@ -1,5 +1,15 @@
 const MAX_IMAGE_DIMENSION = 1200;
 const JPEG_QUALITY = 0.8;
+const WEBP_QUALITY = 0.8;
+
+function canvasToDataUrl(canvas) {
+  const webp = canvas.toDataURL('image/webp', WEBP_QUALITY);
+  if (webp.startsWith('data:image/webp')) {
+    return webp;
+  }
+
+  return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+}
 
 export function compressImageFile(file) {
   return new Promise((resolve, reject) => {
@@ -29,7 +39,7 @@ export function compressImageFile(file) {
         }
 
         context.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+        resolve(canvasToDataUrl(canvas));
       };
 
       img.onerror = () => reject(new Error('Could not read the image.'));

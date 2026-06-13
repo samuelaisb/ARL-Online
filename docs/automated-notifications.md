@@ -61,7 +61,7 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 
 | Trigger | Component | Locale key | EN text | FR text | Duration | Conditions |
 |---------|-----------|------------|---------|---------|----------|------------|
-| Card hover **3 s** | `InventoryCard.svelte` | `kimchi.item_reactions` (random) | See [Item reactions](#kimchi-item_reactions-array) | See [Item reactions](#kimchi-item_reactions-array) | **5000 ms** (default) | Shared 3 s cooldown across all cards; shuffle/no-repeat |
+| Card hover **4 s** | `InventoryCard.svelte` | `kimchi.item_reactions` (random) | See [Item reactions](#kimchi-item_reactions-array) | See [Item reactions](#kimchi-item_reactions-array) | **5000 ms** (default) | Shared 3 s cooldown across all cards; shuffle/no-repeat |
 | **Reserve Inventory** click | `InventoryCard.svelte` | `kimchi.item_reactions` (random) | (same) | (same) | **5000 ms** (default) | Same cooldown/shuffle as hover; fires before opening calendar modal |
 
 ### Reservation flow (member)

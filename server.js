@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
@@ -14,7 +15,9 @@ import {
   createInventoryItem,
   deleteInventoryItem,
   ensureInventory,
+  fetchInventoryItems,
   findInventoryItem,
+  findInventoryItemBySlug,
   isValidInventoryImage,
   isValidTag,
   normalizeInventoryItem,
@@ -23,6 +26,8 @@ import {
   removeReservation,
 } from './src/lib/inventory-store.js';
 import { assertSupabaseAdminConfigured, getSupabaseAdmin } from './src/lib/supabase-server.js';
+import { injectSeoIntoHtml, resolveRequestLocale } from './src/lib/seo-server.js';
+import { normalizeSeoPath, PRODUCTION_SITE_ORIGIN } from './src/lib/seo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -69,6 +74,20 @@ const RESERVE_INVENTORY_EMAIL_TO =
   process.env.RESERVE_INVENTORY_EMAIL_TO || process.env.EMAIL_TO || 'samuel@apathyisboring.com';
 const SLACK_RESERVATION_WEBHOOK_URL = process.env.SLACK_RESERVATION_WEBHOOK_URL?.trim() || '';
 const SITE_URL = (process.env.SITE_URL || process.env.VITE_SITE_URL || '').replace(/\/$/, '');
+const PLAUSIBLE_DOMAIN = process.env.PLAUSIBLE_DOMAIN?.trim() || '';
+const INDEX_HTML_PATH = path.join(__dirname, 'dist', 'index.html');
+
+let indexHtmlTemplate = '';
+
+function loadIndexHtmlTemplate() {
+  try {
+    indexHtmlTemplate = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
+  } catch {
+    indexHtmlTemplate = '';
+  }
+}
+
+loadIndexHtmlTemplate();
 
 function absoluteAssetUrl(pathOrUrl) {
   if (!pathOrUrl || pathOrUrl.startsWith('data:') || /^https?:\/\//i.test(pathOrUrl)) {
@@ -433,6 +452,14 @@ const connectSrc = ["'self'"];
 if (SUPABASE_URL) {
   connectSrc.push(SUPABASE_URL);
 }
+if (PLAUSIBLE_DOMAIN) {
+  connectSrc.push('https://plausible.io');
+}
+
+const scriptSrc = ["'self'"];
+if (PLAUSIBLE_DOMAIN) {
+  scriptSrc.push('https://plausible.io');
+}
 
 app.use(
   helmet({
@@ -441,7 +468,7 @@ app.use(
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", 'data:'],
         connectSrc,
-        scriptSrc: ["'self'"],
+        scriptSrc,
         styleSrc: ["'self'", "'unsafe-inline'"],
         baseUri: ["'self'"],
         frameAncestors: ["'none'"],
@@ -461,7 +488,7 @@ app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, require
   const image = typeof req.body?.image === 'string' ? req.body.image.trim() : '';
   if (!isValidInventoryImage(image)) {
     return res.status(400).json({
-      error: 'Image must be a JPEG data URL or a path under /assets/inventory/.',
+      error: 'Image must be a JPEG or WebP data URL or a path under /assets/inventory/.',
     });
   }
 
@@ -473,9 +500,9 @@ app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, require
 
   try {
     await ensureInventory();
-    await createInventoryItem(item);
-    auditAdminAction(req, 'create_inventory_item', { itemId: item.id });
-    res.status(201).json({ item });
+    const savedItem = await createInventoryItem(item);
+    auditAdminAction(req, 'create_inventory_item', { itemId: savedItem.id });
+    res.status(201).json({ item: savedItem });
   } catch (error) {
     console.error('Failed to save inventory item:', error);
     res.status(500).json({ error: 'Could not save inventory item.' });
@@ -483,10 +510,79 @@ app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, require
 });
 
 app.use(express.json({ limit: '100kb' }));
+
+const SITEMAP_STATIC_PATHS = ['/', '/howthisworks', '/about', '/equipment', '/books', '/rooms'];
+
+function formatSitemapLastmod(timestamp) {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+app.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const origin = SITE_URL || PRODUCTION_SITE_ORIGIN;
+    await ensureInventory();
+    const items = await fetchInventoryItems();
+
+    const staticUrls = SITEMAP_STATIC_PATHS.map((routePath) => {
+      const loc = routePath === '/' ? `${origin}/` : `${origin}${routePath}`;
+      return `  <url>\n    <loc>${loc}</loc>\n  </url>`;
+    });
+
+    const itemUrls = items
+      .filter((item) => item.slug && item.tag)
+      .map((item) => {
+        const loc = `${origin}/${item.tag}/${encodeURIComponent(item.slug)}`;
+        const lastmod = formatSitemapLastmod(item.createdAt);
+        return `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>`;
+      });
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[...staticUrls, ...itemUrls].join('\n')}\n</urlset>\n`;
+
+    res.type('application/xml');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(xml);
+  } catch (error) {
+    console.error('Failed to build sitemap:', error);
+    res.status(500).type('text/plain').send('Could not generate sitemap.');
+  }
+});
+
 app.use('/assets/fonts', express.static(path.join(__dirname, 'src', 'assets', 'fonts')));
 app.use('/assets/brand', express.static(path.join(__dirname, 'src', 'assets', 'brand')));
 app.use(INVENTORY_IMAGE_BASE, express.static(INVENTORY_ASSETS_DIR));
 app.use(express.static(path.join(__dirname, 'dist')));
+
+app.get('/api/inventory/by-slug/:tag/:slug', async (req, res) => {
+  const tag = typeof req.params.tag === 'string' ? req.params.tag.trim() : '';
+  const slug = typeof req.params.slug === 'string' ? req.params.slug.trim() : '';
+
+  if (!isValidTag(tag)) {
+    return res.status(400).json({ error: 'Tag must be equipment, books, or rooms.' });
+  }
+
+  if (!slug) {
+    return res.status(400).json({ error: 'Slug is required.' });
+  }
+
+  try {
+    await ensureInventory();
+    const item = await findInventoryItemBySlug(tag, slug);
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found.' });
+    }
+
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ item: sanitizeItemForPublic(item) });
+  } catch (error) {
+    console.error('Failed to read inventory item by slug:', error);
+    res.status(500).json({ error: 'Could not load inventory item.' });
+  }
+});
 
 app.get('/api/inventory', async (_req, res) => {
   try {
@@ -757,8 +853,39 @@ app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+app.get('*', async (req, res) => {
+  const pathname = req.path || '/';
+
+  if (normalizeSeoPath(pathname) === '/admin') {
+    res.set('X-Robots-Tag', 'noindex, nofollow');
+  }
+
+  if (!indexHtmlTemplate) {
+    return res.sendFile(INDEX_HTML_PATH);
+  }
+
+  const localeCode = resolveRequestLocale(req);
+  const origin = SITE_URL || `${req.protocol}://${req.get('host')}`;
+
+  try {
+    const html = await injectSeoIntoHtml(
+      indexHtmlTemplate,
+      pathname,
+      localeCode,
+      origin,
+      escapeHtml,
+      {
+        includeJsonLd: normalizeSeoPath(pathname) !== '/admin',
+        plausibleDomain: PLAUSIBLE_DOMAIN,
+        findItemBySlug: findInventoryItemBySlug,
+      },
+    );
+
+    res.type('html').send(html);
+  } catch (error) {
+    console.error('Failed to inject SEO into HTML:', error);
+    res.type('html').send(indexHtmlTemplate);
+  }
 });
 
 const MAX_PORT_ATTEMPTS = 20;

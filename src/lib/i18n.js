@@ -6,6 +6,14 @@ const STORAGE_KEY = 'arl-locale';
 const dictionaries = { en, fr };
 
 function resolveInitialLocale() {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const queryLang = params.get('lang');
+    if (queryLang === 'en' || queryLang === 'fr') {
+      return queryLang;
+    }
+  }
+
   if (typeof localStorage !== 'undefined') {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'en' || stored === 'fr') {
@@ -91,4 +99,14 @@ export const quotes = derived(locale, ($locale) => {
   }
 
   return lookup(dictionaries.en, 'quotes.items') ?? [];
+});
+
+/** FAQ list for the current locale (reactive via `$faq`). */
+export const faq = derived(locale, ($locale) => {
+  const items = lookup(dictionaries[$locale], 'how_this_works.faq');
+  if (Array.isArray(items)) {
+    return items;
+  }
+
+  return lookup(dictionaries.en, 'how_this_works.faq') ?? [];
 });

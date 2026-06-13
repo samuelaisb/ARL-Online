@@ -20,9 +20,9 @@ If the change is trivial (typo, comment-only, dependency bump with no behavioral
 
 ARL Online is a small inventory browser with an admin flow:
 
-- **Inventory** — lists items (title, body, image, tag) loaded from the server. Filter buttons show **Equipment**, **Books**, or **Rooms** (default: equipment). Each card shows a real-time **Available**, **Check availability** (no bookable window within 7 days), or **Unavailable** badge (confirmed `reserved` only — pending requests do not mark the card unavailable). **Reserve Inventory** opens a modal with the reservation calendar when Supabase auth is configured and the user is signed in; otherwise a sign-up prompt dialog appears (Register opens the header auth modal). Confirming dates submits a **pending** reservation via `POST /api/inventory/:id/reservations` (member email derived from JWT on the server), which triggers Slack (optional) and an admin-facing Resend notification (fire-and-forget). The member sees a message that AisB will review and email confirmation. Reservation create requires a valid Supabase session (`Authorization: Bearer` JWT).
+- **Inventory** — lists items (title, body, image, tag) loaded from the server. Filter buttons show **Equipment**, **Books**, or **Rooms** (default: equipment). Each card shows a real-time **Available**, **Check availability** (no bookable window within 7 days), or **Unavailable** badge (confirmed `reserved` only — pending requests do not mark the card unavailable). Clicking a card title or **Reserve Inventory** updates the browser URL to `/{tag}/{slug}` (Reserve adds `?reserve=1`) while keeping the inventory grid mounted; `ItemDetailPage` renders the item as a modal **overlay** (`<dialog>`) on top of the grid (it is no longer a full-page route). The overlay uses a three-column layout (image | description | calendar); availability status appears inline in the breadcrumb after the item title; the calendar is always visible in the right column. Signed-out users who confirm a reservation or arrive via `?reserve=1` see a sign-up prompt dialog (Register opens the header auth modal). `?reserve=1` scrolls/highlights the calendar column for signed-in users. Closing the overlay (X, Escape, backdrop click, or browser Back) returns to the underlying inventory/category path; deep links / refreshes on `/{tag}/{slug}` render the matching category grid with the overlay open on top. Confirming dates submits a **pending** reservation via `POST /api/inventory/:id/reservations` (member email derived from JWT on the server), which triggers Slack (optional) and an admin-facing Resend notification (fire-and-forget). The member sees a message that AisB will review and email confirmation. Reservation create requires a valid Supabase session (`Authorization: Bearer` JWT). Cancelling the auth prompt removes `?reserve=1` via `history.replaceState`.
 - **Header admin** — signed-in users with an `@apathyisboring.com` email see an **Admin** link in the site header that navigates to `/admin`. The admin page shows add-item, remove-items, **Pending Reservations** (approve/refuse pending requests), and **Edit Reservations** (delete approved reservations); images are compressed client-side before upload. Approve/refuse call `POST .../approve` or `POST .../refuse` and email the member via Resend. Non-admins who visit `/admin` directly see an access-denied message.
-- **Header auth** — optional Supabase email/password login and registration (Log in / Register in the site header). Sign-up requires reading the member agreement (`content/contracts/{locale}/member-agreement.md`) via a lavender **Sign contract** button; agreeing sets a mint checkmark and stores `signed_member_agreement: true` in Supabase `user_metadata` on `signUp`. Mutating API routes validate the Supabase JWT server-side; admin routes also require an `@apathyisboring.com` email.
+- **Header auth** — optional Supabase email/password login and registration (Log in / Register in the site header). Sign-up requires reading the member agreement (`content/contracts/{locale}/member-agreement.md`) via a lavender **Sign contract** button; agreeing sets a mint checkmark and stores `signed_member_agreement: true` in Supabase `user_metadata` on `signUp`. Register also includes an optional unchecked **email updates** checkbox; the choice is stored as `email_updates_opt_in` in `user_metadata`. Mutating API routes validate the Supabase JWT server-side; admin routes also require an `@apathyisboring.com` email.
 
 Admin UI is hidden unless Supabase auth is configured and the user is signed in with an `@apathyisboring.com` email (`isApathyAdmin` in `src/lib/auth.js`).
 
@@ -50,7 +50,7 @@ Admin UI is hidden unless Supabase auth is configured and the user is signed in 
 
 | Process | Command | URL | Role |
 |---------|---------|-----|------|
-| Vite dev server | `npm run dev` (or `npm run dev:client`) | http://localhost:5173 | Svelte UI with HMR; proxies `/api`, `/assets/brand`, `/assets/fonts`, and `/assets/inventory` to Express |
+| Vite dev server | `npm run dev` (or `npm run dev:client`) | http://localhost:5173 | Svelte UI with HMR; proxies `/api`, `/assets/brand`, `/assets/fonts`, `/assets/inventory`, `/robots.txt`, and `/sitemap.xml` to Express |
 | Express API/static server | `npm run dev` (or `npm run dev:server`) | http://localhost:3000 | Serves API routes plus static fonts, brand logos, and inventory seed assets |
 
 In development, Express uses a strict port so Vite's proxy cannot silently point at the wrong server. `npm run dev` (via `scripts/dev.js`) automatically frees the API port before starting — manual intervention is rarely needed. For `npm run dev:server` alone, if port 3000 is already in use you must stop the old server or set `PORT`.
@@ -71,12 +71,15 @@ ARL-Online/
 ├── send-email.js          # Standalone Resend smoke-test script (not the web app)
 ├── scripts/
 │   ├── dev.js             # Starts Express + Vite together for npm run dev
-│   └── migrate-inventory-to-supabase.js  # Upsert data/inventory.json into Supabase
+│   ├── prerender.js       # Post-build static HTML shells for category/marketing routes (Tier 2 SEO)
+│   ├── migrate-inventory-to-supabase.js  # Upsert data/inventory.json into Supabase (with slug generation)
+│   └── backfill-slugs.js  # Populate null/empty slugs on existing inventory_items rows (idempotent)
 ├── supabase/
 │   └── migrations/
 │       └── 001_inventory.sql  # inventory_items + reservations tables (apply in Supabase SQL Editor)
 │       └── 002_reservation_approval.sql  # user_email + pending/reserved/refused statuses
 │       └── 003_lock_down_roles.sql  # REVOKE table access from anon/authenticated roles
+│       └── 004_inventory_slug.sql   # slug column + unique (tag, slug) index for item detail URLs
 ├── package.json
 ├── .env.example           # Required env template (copy to .env)
 ├── content/
@@ -86,6 +89,7 @@ ARL-Online/
 ├── dist/                  # Gitignored — Vite production build output
 ├── docs/                  # Brand / design reference (not app code)
 ├── public/
+│   ├── robots.txt         # Crawler rules + sitemap URL (copied to dist/ at build)
 │   └── assets/
 │       └── fonts/         # Symlink → src/assets/fonts (so Vite resolves @font-face at build)
 ├── src/
@@ -94,14 +98,14 @@ ARL-Online/
 │   ├── app.css            # Global styles (fonts, layout, components)
 │   ├── components/
 │   │   ├── InventoryPanel.svelte   # Tag filter, grid, reserve auth gate, shared modals, availability clock
-│   │   ├── InventoryCard.svelte    # Card: availability badge + Reserve button (opens panel modal)
+│   │   ├── InventoryCard.svelte    # Card: title links to /{tag}/{slug}; availability badge + Reserve button
+│   │   ├── ItemDetailPage.svelte   # /{tag}/{slug} item overlay (`<dialog>`): breadcrumb, 3-col grid (image | description | calendar), auth gate; rendered on top of the grid
 │   │   ├── ReserveAuthRequiredModal.svelte # Dialog when signed-out user clicks Reserve (prompts sign up)
-│   │   ├── ReserveCalendarModal.svelte # Single dialog in InventoryPanel; ItemCalendar + reservation save
 │   │   ├── ItemCalendar.svelte     # Month calendar: block reserved dates, create reservations
 │   │   ├── AdminPage.svelte        # `/admin` page shell: access gate + page header + AdminPanel
 │   │   ├── AdminPanel.svelte       # Admin UI: add/remove items + edit-reservations list
 │   │   ├── AddItemModal.svelte     # Dialog form for new items (includes tag/category selector)
-│   │   ├── AuthModal.svelte        # Login / register dialog (email + password; register requires member agreement)
+│   │   ├── AuthModal.svelte        # Login / register dialog (email + password; register requires member agreement + optional email-updates opt-in)
 │   │   ├── MemberAgreementModal.svelte # Scrollable member contract dialog on sign-up
 │   │   ├── SiteNav.svelte          # Header nav: Inventory + How it works (client-side routing)
 │   │   ├── HowThisWorksPage.svelte # `/howthisworks` guide: browse, account, reserve, approval, pickup
@@ -111,7 +115,7 @@ ARL-Online/
 │   │   ├── KimchiBubble.svelte       # Single Kimchi chat bubble (pop-in, 350ms fade-out, auto-dismiss)
 │   │   └── QuoteFooter.svelte      # Fixed bottom quote rotator (10s rotation, 600ms fade)
 │   ├── lib/
-│   │   ├── auth.js        # Supabase session store + sign-in/up/out helpers (`signed_member_agreement` on sign-up)
+│   │   ├── auth.js        # Supabase session store + sign-in/up/out helpers (`signed_member_agreement`, `email_updates_opt_in` on sign-up)
 │   │   ├── member-agreement.js # Loads `content/contracts/` markdown by locale; renders HTML via `marked`
 │   │   ├── i18n.js        # Locale store + `$t()` translate function (en/fr JSON)
 │   │   ├── inventory.js   # API client + legacy localStorage migration
@@ -120,7 +124,10 @@ ARL-Online/
 │   │   ├── availability-clock.js # Shared 60s clock for badge + calendar "today"
 │   │   ├── image.js       # Client-side image compression (canvas → JPEG)
 │   │   ├── notification-store.js # Queue store + `notify()` API for Kimchi chat-bubble notifications
-│   │   ├── router.js      # Client-side path store + `navigate()` for `/` and `/admin`
+│   │   ├── router.js      # Client-side routing: inventory, item detail /{tag}/{slug}, admin, static pages
+│   │   ├── seo.js         # Client SEO: meta/OG/Twitter/canonical/hreflang/JSON-LD + per-item Product schema
+│   │   ├── seo-server.js  # Async server HTML injection for crawlers (item lookup by slug)
+│   │   ├── slug.js        # slugifyTitle() + ensureUniqueSlug() for immutable per-tag item URLs
 │   │   ├── supabase.js    # Supabase browser client (anon key)
 │   │   └── supabase-server.js # Supabase service-role client (server only)
 │   └── assets/
@@ -131,7 +138,7 @@ ARL-Online/
 │           └── images/    # Downloaded item photos (jpg/jpeg/png)
 ```
 
-There is no other `public/` content. Font files live under `src/assets/fonts/` and are symlinked at `public/assets/fonts/` so Vite can resolve them during `vite build` (avoids “didn't resolve at build time” warnings). Express still serves the canonical copies from `src/assets/fonts` at runtime.
+There is no other `public/` content beyond `robots.txt` and the fonts symlink. Font files live under `src/assets/fonts/` and are symlinked at `public/assets/fonts/` so Vite can resolve them during `vite build` (avoids “didn't resolve at build time” warnings). Express still serves the canonical copies from `src/assets/fonts` at runtime.
 
 ---
 
@@ -141,25 +148,26 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 
 - `index.html` loads `/src/main.js`.
 - `main.js` uses Svelte 5 `mount()` when `#app` exists and imports global `app.css`.
-- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount, routes between inventory (`/`), **How it works** (`/howthisworks`), and admin (`/admin`) via `src/lib/router.js`, wires a lemon **PSA banner** (localized hyperlink above the header), the site header (logo + `SiteNav` + `LocaleSwitcher` + `HeaderAuth`), inventory / how-it-works / admin page, add-item modal, fixed bottom quote footer, fixed bottom-left FES attribution, and the `KimchiNotification` chat widget.
+- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount, routes between inventory (`/`, `/equipment`, `/books`, `/rooms`), **How it works** (`/howthisworks`), **About** (`/about`), and admin (`/admin`) via `src/lib/router.js`. On item routes (`/{tag}/{slug}` e.g. `/equipment/megaphone`) it renders the inventory grid **and** the lazy-loaded `ItemDetailPage` overlay concurrently (the grid stays mounted underneath; `InventoryPanel` filters to the item's tag), so deep links show the item overlay on top of the right category grid. It wires a skip link (`site.skip_to_content` → `#main-content`), client-side SEO tags via `src/lib/seo.js` (`$effect` on route + locale; per-item Product JSON-LD on detail routes), Plausible SPA pageviews on route change when the script is present, a lemon **PSA banner** (localized hyperlink above the header), the site header (logo + `SiteNav` + `LocaleSwitcher` + `HeaderAuth`), lazy-loaded admin / how-it-works / about / item-detail pages, add-item modal, fixed bottom quote footer, fixed bottom-left FES attribution, and the `KimchiNotification` chat widget. Homepage page header includes `site.intro` + `site.intro_extended` copy. `/` defaults to the equipment filter; category paths sync the inventory filter via `navigate(categoryToPath(tag))`.
 
 ### Components
 
 | Component | Responsibility |
 |-----------|----------------|
-| `InventoryPanel` | Tag filter buttons with per-category item counts, skeleton loading grid, filtered equal-height card grid, shared `ReserveCalendarModal` + `ReserveAuthRequiredModal` (when Supabase auth is on and user is signed out), and shared availability clock subscription |
-| `InventoryCard` | Equal-height card: clamped title/body, white image frame, availability badge (**Available**, **Check availability**, **Unavailable**), hover lift, and **Reserve Inventory** button pinned to card bottom; opens the panel-level modal via callback |
-| `ReserveAuthRequiredModal` | Native `<dialog>` shown when a signed-out user clicks Reserve (Supabase configured); error message + Register (opens header `AuthModal`) and Log in link |
-| `ReserveCalendarModal` | One instance in `InventoryPanel`; native `<dialog>` with `ItemCalendar`; on confirm, closes modal and signals success to the originating card |
-| `ItemCalendar` | Month-view calendar; tag-specific block selection (equipment/books) or flexible range (rooms); `todayKey` refreshes via shared availability clock; POST reservation via API; Kimchi `kimchi.reservation_sent` on successful pending create |
+| `InventoryPanel` | Tag filter buttons with per-category item counts (URL-synced via `categoryToPath` / `getCategoryFromPath`, and to the item's tag via `getItemRouteParams` while an item overlay is open), skeleton loading grid, filtered equal-height card grid, and shared availability clock subscription; **Reserve Inventory** on cards navigates to `/{tag}/{slug}?reserve=1` |
+| `InventoryCard` | Equal-height card: clamped title/body (title links to `/{tag}/{slug}` via `navigateToItem`, opening the item overlay), white image frame, availability badge (**Available**, **Check availability**, **Unavailable**), hover lift, and **Reserve Inventory** button pinned to card bottom; Reserve navigates to item overlay with `?reserve=1` |
+| `ItemDetailPage` | `/{tag}/{slug}` **modal overlay** (native `<dialog showModal()>`, opened on mount): breadcrumb bar with inline availability badge after item title, fetches item via API, 404 state, **three-column grid** (image | title/body | always-visible `ItemCalendar`). No overlay Reserve button — calendar is persistent. `?reserve=1` scrolls/highlights the calendar column (signed-in) or opens auth modal (signed-out). Confirm reservation gated via `ItemCalendar` `onbeforeconfirm` + `ReserveAuthRequiredModal`. Close (X / Escape / backdrop click) calls `closeItemOverlay(tag)`. Rendered concurrently with the inventory grid by `App.svelte`; the grid keeps `id="main-content"` (the overlay does not) |
+| `ReserveAuthRequiredModal` | Native `<dialog>` shown when a signed-out user arrives via `?reserve=1` or confirms a calendar reservation (Supabase configured); error message + Register (opens header `AuthModal`) and Log in link; dismiss clears `?reserve=1` |
+| `ItemCalendar` | Month-view calendar in the item overlay right column; optional `onbeforeconfirm` gate; tag-specific block selection (equipment/books) or flexible range (rooms); `todayKey` refreshes via shared availability clock; POST reservation via API; Kimchi `kimchi.reservation_sent` on successful pending create |
 | `AdminPage` | `/admin` route: back link, access gate (auth configured, signed in, `isApathyAdmin`), page header, and `AdminPanel` |
 | `AdminPanel` | Add-item, remove-item, **Pending Reservations** (approve/refuse), and edit-reservations toggle buttons; loads full inventory (including member emails) via `GET /api/admin/inventory`; remove list (confirm + `DELETE /api/inventory/:id`); pending list (approve/refuse + member email); approved reservation list (confirm + `DELETE /api/inventory/:id/reservations/:reservationId`, updates shared inventory state); Kimchi confirmations on remove, approve, and delete success |
 | `AddItemModal` | Native `<dialog>`; form validation; tag/category radio selector; image pick + compress; POST new item; Kimchi `kimchi.item_added` on success. Exposes `open()` / `close()` via `export function` |
 | `QuoteFooter` | Fixed site footer; rotates 10 activist quotes every 10s with fade in/out; resets index on locale change |
-| `SiteNav` | Centered header links: **Inventory** (`/`) and **How it works** (`/howthisworks`); active state from `path` store; uses `navigate()` for SPA transitions |
-| `HowThisWorksPage` | `/howthisworks` route: localized five-step guide (browse, account, reserve, approval, pickup) with back link to inventory |
+| `SiteNav` | Centered header links: **Inventory** (`/`), **How it works** (`/howthisworks`), and **About** (`/about`); active state from `path` store (inventory active on `/`, `/equipment`, `/books`, `/rooms`); uses `navigate()` for SPA transitions |
+| `HowThisWorksPage` | `/howthisworks` route: localized five-step guide (browse, account, reserve, approval, pickup), expandable FAQ section (`how_this_works.faq`), and back link to inventory |
+| `AboutPage` | `/about` route: mission, Canada-wide framing, and partner sections (Apathy is Boring, FES) with back link to inventory |
 | `HeaderAuth` | Header Log in / Register when signed out; email, gated **Admin** link to `/admin`, and Sign out when signed in. Admin link visible only for `@apathyisboring.com` emails via `isApathyAdmin`. Exposes `openLogin()` / `openRegister()` for reserve auth prompt. Hidden if Supabase env vars are missing |
-| `AuthModal` | Native `<dialog>` for email/password login and registration; register mode requires member agreement sign-off. Exposes `open(mode)` / `close()` |
+| `AuthModal` | Native `<dialog>` for email/password login and registration; register mode requires member agreement sign-off and offers an optional email-updates checkbox. Exposes `open(mode)` / `close()` |
 | `MemberAgreementModal` | Scrollable member contract dialog opened from register flow; **Agree to the terms** sets signed state in parent. Exposes `open()` / `close()` |
 | `LocaleSwitcher` | EN/FR language toggle; persists choice in `localStorage` key `arl-locale` |
 | `KimchiNotification` | Fixed bottom-right chat widget shell (above quote footer): Kimchi avatar (`content/kimchi-awake.jpg` / `kimchi-sleep.jpg`) + `KimchiBubble` stack; signed-out greeting split into two bubbles (`kimchi.greeting`, then `kimchi.greeting_cta` + `/howthisworks` link after 1 second), or `kimchi.logged_in` confirmation when a session exists; also confirms on login during the visit; avatar tap adds a new random `kimchi.taps` message on top of existing stack; clickable green/grey status dot toggles awake/sleep (sleep shows `kimchi.sleep` “Zzz…” then suppresses all bubbles until awake; wake shows a random `kimchi.taps` message); inventory/reservation action confirmations queued from `AddItemModal`, `AdminPanel`, and `ItemCalendar` via `notify()` |
@@ -167,16 +175,19 @@ There is no other `public/` content. Font files live under `src/assets/fonts/` a
 
 ### Shared libraries
 
-- **`src/lib/i18n.js`** — Store-based i18n (no extra dependency). Imports `locales/en.json` and `locales/fr.json`. Exports `locale` (writable store), `t` (derived translate function — use `$t('domain.key')` in templates), `translateKey()` for non-reactive scripts, and `quotes` (derived quote list). Initial locale: saved `arl-locale`, else `fr` when `navigator.language` starts with `fr`, else `en`. Updates `document.documentElement.lang` on change. Dynamic strings use `{variable}` interpolation (e.g. `$t('admin.remove_confirm', { title })`).
-- **`src/lib/image.js`** — `compressImageFile(file)` — scales to max 1200px, exports JPEG at 0.8 quality as a data URL.
-- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`, `isApathyAdmin`. `signUpWithEmail` passes `emailRedirectTo` from `getAuthRedirectUrl()` and sets `user_metadata.signed_member_agreement` when the user agrees during registration. `isApathyAdmin` returns true when the session user's email ends with `@apathyisboring.com` (case-insensitive). Subscribes to `onAuthStateChange` on first init.
+- **`src/lib/i18n.js`** — Store-based i18n (no extra dependency). Imports `locales/en.json` and `locales/fr.json`. Exports `locale` (writable store), `t` (derived translate function — use `$t('domain.key')` in templates), `translateKey()` for non-reactive scripts, and `quotes` (derived quote list). Initial locale: `?lang=en|fr` query param, else saved `arl-locale`, else `fr` when `navigator.language` starts with `fr`, else `en`. Updates `document.documentElement.lang` on change. Dynamic strings use `{variable}` interpolation (e.g. `$t('admin.remove_confirm', { title })`).
+- **`src/lib/seo.js`** — `getSiteOrigin`, `getSeoForRoute`, `getItemSeoConfig`, `getProductJsonLd`, `ROUTE_SEO_KEYS`, `applySeoTags`, `applyHreflangTags`, `setRobotsMeta` / `clearRobotsMeta`, `upsertMeta` / `upsertMetaProperty` / `upsertLink` / `upsertJsonLd`, `getOrganizationJsonLd`, `getFaqJsonLd`, `buildSeoHeadHtml`. Locale keys under `seo.*` in EN/FR JSON. `/admin` sets `noindex`; public routes inject Organization JSON-LD; `/howthisworks` also injects FAQPage JSON-LD; item detail routes use item title, truncated body description, item image, canonical `/{tag}/{slug}`, and Product JSON-LD.
+- **`src/lib/seo-server.js`** — Async `injectSeoIntoHtml(html, pathname, locale, origin, escapeHtml, options)` (looks up item by slug for `/{tag}/{slug}` via `findItemBySlug` option), `resolveRequestLocale(req)`, and `ROUTE_META` (paths mirroring `ROUTE_SEO_KEYS`) for Express HTML responses.
+- **`src/lib/image.js`** — `compressImageFile(file)` — scales to max 1200px, exports WebP at 0.8 quality with JPEG fallback as a data URL.
+- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`, `isApathyAdmin`. `signUpWithEmail` passes `emailRedirectTo` from `getAuthRedirectUrl()` and sets `user_metadata.signed_member_agreement` when the user agrees during registration plus `user_metadata.email_updates_opt_in` from the register checkbox (defaults `false`). `isApathyAdmin` returns true when the session user's email ends with `@apathyisboring.com` (case-insensitive). Subscribes to `onAuthStateChange` on first init.
 - **`src/lib/member-agreement.js`** — Imports `content/contracts/{locale}/member-agreement.md` at build time; `getMemberAgreementHtml()` returns rendered HTML for the active locale (French falls back to English until `fr/` copy exists).
-- **`src/lib/inventory.js`** — `INVENTORY_TAGS`, `DEFAULT_INVENTORY_TAG`, `fetchInventory`, `fetchAdminInventory`, `createInventoryItem`, `deleteInventoryItem`, `loadInventoryItems`, `createReservation`, `deleteReservation`, `approveReservation`, `refuseReservation`. Public `fetchInventory` returns reservations without `userEmail`; admin panel uses `fetchAdminInventory` (auth + admin). Mutating calls attach `Authorization: Bearer <access_token>` from the Supabase session. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty (per-item try/catch; localStorage always cleared after attempt).
+- **`src/lib/inventory.js`** — `INVENTORY_TAGS`, `DEFAULT_INVENTORY_TAG`, `fetchInventory`, `fetchInventoryItem(tag, slug)`, `fetchAdminInventory`, `createInventoryItem`, `deleteInventoryItem`, `loadInventoryItems`, `createReservation`, `deleteReservation`, `approveReservation`, `refuseReservation`. Public `fetchInventory` / `fetchInventoryItem` return reservations without `userEmail` and include `slug`; admin panel uses `fetchAdminInventory` (auth + admin). Mutating calls attach `Authorization: Bearer <access_token>` from the Supabase session. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty (per-item try/catch; localStorage always cleared after attempt).
 - **`src/lib/calendar.js`** — `parseDateKey`, `compareDateKeys`, `hasReservationCollision`, `isCurrentlyReserved`, `hasAvailabilityWithinDays`, `getCalendarMonthGrid`, `toDateKey`, and related date helpers. `getBlockingReservations` (`pending` + `reserved`) drives calendar collision; `getConfirmedReservations` (`reserved` only) drives the unavailable badge. Shared by `InventoryCard`, `ItemCalendar`, and `server.js`.
 - **`src/lib/availability-clock.js`** — `availabilityNow` store plus ref-counted 60s interval (`subscribeAvailabilityClock` / `unsubscribeAvailabilityClock`). `InventoryPanel` subscribes on mount; cards and calendar read `$availabilityNow` without subscribing directly.
 - **`src/lib/reservation-rules.js`** — Tag-specific reservation block rules (`getBlockEndDate`, `validateReservationDates`, `isFixedBlockTag`). Shared by `ItemCalendar.svelte` and `server.js` reservation endpoints.
+- **`src/lib/slug.js`** — `slugifyTitle()` and `ensureUniqueSlug()`; used server-side when creating/seeding/backfilling inventory slugs (unique per tag).
 - **`src/lib/notification-store.js`** — Queue-based notification API for the Kimchi widget. `notify(message, duration?, options?)` (default 5000ms) accepts a string or `{ text, link: { href, label } }` and returns an id (or `-1` when suppressed while Kimchi is asleep); `{ force: true }` bypasses the sleep gate (e.g. sleep “Zzz…” bubble). `setKimchiNotificationsEnabled(enabled)` toggles the sleep gate; `dismiss(id)`; `clearNotifications()`; read-only `notifications` store. All queued notifications stack upward in `KimchiNotification.svelte` (newest anchored above the avatar). Action keys: `kimchi.item_added`, `kimchi.item_removed`, `kimchi.reservation_approved`, `kimchi.reservation_deleted`, `kimchi.reservation_sent`.
-- **`src/lib/router.js`** — Writable `path` store synced to `window.location.pathname`; `navigate(to)` for client-side transitions; `isAdminRoute()`; `isHowThisWorksRoute()`. Listens to `popstate` for back/forward.
+- **`src/lib/router.js`** — Writable `path` store synced to `window.location.pathname`; `navigate(to)` for client-side transitions; `navigateToItem(item)` (opens the item overlay; pushes the item path with a `{ arlItemOverlay: true }` history-state marker); `closeItemOverlay(tag)` (closes the overlay keeping URL in sync — `history.back()` when the current entry carries the overlay marker and there is prior history, else `navigate(categoryToPath(tag))` for deep links / refreshes); `navigateToItemWithReserve(item)`, `hasReserveIntent()`, `setReserveIntent()`, and `clearReserveIntent()` for the `?reserve=1` deep-link flow (reserve-intent `replaceState` calls preserve the existing `history.state`); `CATEGORY_ROUTES`, `ITEM_ROUTE_RE`, `getItemRouteParams`, `isItemDetailRoute`, `getCategoryFromPath`, `isInventoryHomePath`, `categoryToPath`, `itemToPath`; `isAdminRoute()`, `isHowThisWorksRoute()`, `isAboutRoute()`. Item routes `/{tag}/{slug}` are distinct from category routes (`/equipment` only). Listens to `popstate` for back/forward.
 - **`src/lib/supabase.js`** — `createClient` wrapper; reads `SUPABASE_URL` + `SUPABASE_API` from `window.__ARL_ENV__` (served by `GET /config.js` at runtime) with fallback to Vite `import.meta.env` (`VITE_SUPABASE_*` aliases). Exports `supabaseConfigured` and `getAuthRedirectUrl()` (`SITE_URL` / `VITE_SITE_URL`, else `window.location.origin`).
 
 ### Auth (Supabase)
@@ -212,16 +223,18 @@ Single file: `server.js`. Uses `helmet` for security headers (CSP with `connect-
 ### Static assets
 
 - `GET /config.js` — runtime public client config (`window.__ARL_ENV__`: `SUPABASE_URL`, `SUPABASE_API`, `SITE_URL`); `Cache-Control: no-store`.
-- `GET /*` from `dist/` — built SPA (`index.html`, hashed JS/CSS). Unknown GET paths fall through to `index.html` for client routes such as `/admin`.
+- `GET /*` from `dist/` — built SPA (`index.html`, hashed JS/CSS). Unknown GET paths fall through to injected `index.html` for client routes such as `/admin` (meta/OG/canonical/hreflang/JSON-LD injected server-side via `seo-server.js`; `/admin` also gets `X-Robots-Tag: noindex, nofollow`).
+- `GET /robots.txt` — static file from `dist/` (copied from `public/` at build).
+- `GET /sitemap.xml` — dynamic sitemap (static routes + all items as `/{tag}/{slug}` with `lastmod` from `createdAt`); `Cache-Control: public, max-age=3600`.
 - `GET /assets/fonts/*` from `src/assets/fonts/`.
 - `GET /assets/brand/*` from `src/assets/brand/` (Apathy is Boring header logo, FES attribution logo).
 - `GET /assets/inventory/*` from `src/assets/inventory/` (seed images and `items.json`).
 
 ### Data
 
-- Inventory and reservations persist in **Supabase Postgres** via `src/lib/inventory-store.js` (service role key on the server). Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, and `003_lock_down_roles.sql` before first run (or after deploy if upgrading).
-- Tables: `inventory_items` (`id`, `title`, `body`, `image`, `tag`, `created_at`) and `reservations` (`id`, `item_id`, `start_date`, `end_date`, `status`, `user_email`). RLS is enabled with no public policies — Express uses the service role (bypasses RLS). Migration `003_lock_down_roles.sql` revokes direct `SELECT`/`INSERT`/`UPDATE`/`DELETE` on both tables from `anon` and `authenticated` roles (defense in depth).
-- **Public** API item shape (`GET /api/inventory`): `{ id, title, body, image, createdAt, tag, reservations }` where `reservations` is `{ id, startDate, endDate, status }[]` — **`userEmail` is never returned on public routes**. Admin route `GET /api/admin/inventory` returns full items including `userEmail` on reservations.
+- Inventory and reservations persist in **Supabase Postgres** via `src/lib/inventory-store.js` (service role key on the server). Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, `003_lock_down_roles.sql`, and `004_inventory_slug.sql` before first run (or after deploy if upgrading).
+- Tables: `inventory_items` (`id`, `title`, `body`, `image`, `tag`, `slug`, `created_at`) and `reservations` (`id`, `item_id`, `start_date`, `end_date`, `status`, `user_email`). Unique index on `(tag, slug)`. RLS is enabled with no public policies — Express uses the service role (bypasses RLS). Migration `003_lock_down_roles.sql` revokes direct table access from `anon`/`authenticated`. Slugs are generated server-side at create/seed time from title (`src/lib/slug.js`); immutable after create; collisions within a tag append `-2`, `-3`, etc. `ensureInventory()` runs a once-per-process slug backfill (`ensureSlugsBackfilled()`) that is **decoupled from the `inventorySeeded` flag** — it always populates missing slugs on existing rows even when the inventory is already seeded, and retries on the next request if it fails (errors are logged, not swallowed, and never break the inventory read). `npm run backfill:slugs` triggers the same backfill on demand.
+- **Public** API item shape (`GET /api/inventory`, `GET /api/inventory/by-slug/:tag/:slug`): `{ id, title, body, image, createdAt, tag, slug, reservations }` where `reservations` is `{ id, startDate, endDate, status }[]` — **`userEmail` is never returned on public routes**. Admin route `GET /api/admin/inventory` returns full items including `userEmail` on reservations.
 - `status` on reservations: `pending` (new member request), `reserved` (admin-approved), `refused` (admin declined — dates freed), or legacy `available`. New creates always use `pending` with member email from JWT.
 - `pending` and `reserved` block calendar dates; only `reserved` marks the card **Unavailable** badge.
 - **Tag-specific reservation rules** (enforced in `ItemCalendar` and `POST`/`PATCH` reservation APIs via `src/lib/reservation-rules.js`; ranges are inclusive):
@@ -229,7 +242,7 @@ Single file: `server.js`. Uses `helmet` for security headers (CSP with `connect-
   - **books** — Start must be a **Tuesday**; end is **four weeks later** (+28 days, also a Tuesday). One-month block; same pickup/drop-off message.
   - **rooms** — Flexible inclusive range on any days (existing two-click range selection).
 - Calendar UI for equipment/books: only Tuesdays are selectable; clicking a Tuesday selects the full fixed block. Equipment and books modals show localized pickup/drop-off hours (10am–5pm Tuesdays).
-- `image` is either a `data:image/jpeg;base64,...` URL from the client compressor, or a path like `/assets/inventory/images/...` for seeded MyTurn items. `POST /api/inventory` rejects other image formats/paths with 400.
+- `image` is either a `data:image/webp;base64,...` or `data:image/jpeg;base64,...` URL from the client compressor (WebP preferred, JPEG fallback), or a path like `/assets/inventory/images/...` for seeded MyTurn items. `POST /api/inventory` rejects other image formats/paths with 400.
 - Seeding runs via `ensureInventory()` in `inventory-store.js` (no-op after first successful seed via `inventorySeeded` flag). If the DB is empty: import `data/inventory.json` when present, else insert 9 seed items from `src/assets/inventory/items.json`.
 - `addReservation` and `approveReservation` use an in-process per-item lock around collision-check + write (single Cloud Run instance only; not safe across replicas).
 - Seeded item IDs use the format `myturn-{sourceId}` when `sourceId` is present in the seed file.
@@ -240,6 +253,7 @@ Single file: `server.js`. Uses `helmet` for security headers (CSP with `connect-
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | `GET` | `/api/inventory` | — | Returns `{ items: [...] }` with reservations sanitized (no `userEmail`; `Cache-Control: no-store`) |
+| `GET` | `/api/inventory/by-slug/:tag/:slug` | — | Returns `{ item }` for one public item by tag + slug (sanitized; `Cache-Control: public, max-age=300`) |
 | `GET` | `/api/admin/inventory` | Admin | Returns full `{ items: [...] }` including `userEmail` on reservations for admin UI |
 | `POST` | `/api/inventory` | Admin | Body: `{ title, body, image, tag? }`. Creates item, returns `{ item }` (10mb JSON limit on this route only) |
 | `DELETE` | `/api/inventory/:id` | Admin | Removes item by id; returns `{ success: true }` or 404 |
@@ -301,6 +315,7 @@ See `.env.example`:
 | `SUPABASE_API` | No* | Supabase anon/public key (client auth). Aliases: `SUPABASE_ANON_KEY`, `VITE_SUPABASE_ANON_KEY` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes* | Server-only service role for inventory/reservations. Never expose to Vite/build args |
 | `SITE_URL` | No | Public site origin for Supabase `emailRedirectTo` on sign-up. Aliases: `VITE_SITE_URL`. Baked at build time; omit in local dev to use browser origin |
+| `PLAUSIBLE_DOMAIN` | No | When set, Express injects deferred Plausible script into HTML and extends CSP `script-src` / `connect-src` for `https://plausible.io`; client fires SPA pageviews on route change |
 | `NODE_ENV` | No | Set to `development` by `npm run dev`; enables strict port mode |
 | `STRICT_PORT` | No | Set `true` to force strict port outside development |
 | `VITE_API_TARGET` | No | Overrides Vite proxy target (default: `http://localhost:${PORT}`) |
@@ -316,14 +331,15 @@ See `.env.example`:
 | `npm run dev` | Starts Express API/static assets and Vite dev server together |
 | `npm run dev:client` | Vite dev server only; requires an Express server at `VITE_API_TARGET` or `PORT` |
 | `npm run dev:server` | Express API/static asset server in development mode (no build step) |
-| `npm run build` | Production build to `dist/` |
+| `npm run build` | Production build to `dist/` + `scripts/prerender.js` static shells for `/howthisworks`, `/about`, `/equipment`, `/books`, `/rooms` |
 | `npm start` | `build` + Express server, so source changes are reflected after restart |
 | `npm run serve` | Express only; serves the existing `dist/` without rebuilding |
 | `npm run preview` | Alias for `npm start` |
 | `npm run send-email` | One-off Resend test via `send-email.js` |
 | `npm run docker:build` | Docker image build with `SUPABASE_URL`, `SUPABASE_API`, and `SITE_URL` from `.env` as build args (`scripts/docker-build.sh`; set `IMAGE` for Artifact Registry tag) |
 | `npm run cloud:build` | Build + push + deploy via Google Cloud Build (no local Docker required). Reads Supabase + `SITE_URL` from `.env` (default production URL `https://activistresourcelibrary.com`); deploys to `arl-online` in `us-east1`. Images push to Artifact Registry in `us-east1` (`GCP_ARTIFACT_REGION`). Sets runtime env on Cloud Run (`SITE_URL`, optional `EMAIL_*`, `SLACK_RESERVATION_WEBHOOK_URL`); mounts `SUPABASE_SERVICE_ROLE_KEY` and `RESEND_API_KEY` from Google Secret Manager via `--set-secrets` (see comment block in `scripts/cloud-build.sh`). |
-| `npm run migrate:inventory` | Upsert `data/inventory.json` into Supabase (`inventory_items` + `reservations`) |
+| `npm run migrate:inventory` | Upsert `data/inventory.json` into Supabase (`inventory_items` + `reservations`); requires `data/inventory.json` to exist |
+| `npm run backfill:slugs` | Populate slugs on existing `inventory_items` rows with a null/empty slug (idempotent; safe to re-run). Use after applying `004_inventory_slug.sql` to fix items that have `slug = null` |
 
 ---
 
@@ -373,7 +389,7 @@ docker run --rm -p 8080:8080 \
 
 **Cloud Run:** choose **Dockerfile** as the build type; pass build args for Supabase if auth is enabled (or rely on runtime `/config.js`); map runtime env for `SUPABASE_URL`, `SUPABASE_API`, email vars; mount `SUPABASE_SERVICE_ROLE_KEY` and `RESEND_API_KEY` via Secret Manager (see `scripts/cloud-build.sh`).
 
-**Persistence:** Inventory and reservations live in Supabase Postgres. Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, and `003_lock_down_roles.sql` to your project before deploying.
+**Persistence:** Inventory and reservations live in Supabase Postgres. Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, `003_lock_down_roles.sql`, and `004_inventory_slug.sql` to your project before deploying.
 
 ---
 
@@ -401,6 +417,17 @@ After any of the above, **update this file**.
 - `docs/automated-notifications.md` — Kimchi chat bubbles: every `notify()` trigger, locale keys, durations, and sleep suppression.
 - `docs/automated-emails.md` — Resend emails: triggers, recipients, subjects, env vars, and failure behavior.
 - `docs/automated-webhooks.md` — Slack reservation webhook: payload, env var, timeout, and failure behavior.
+
+---
+
+## Google Search Console setup
+
+1. **Verify ownership** — In [Google Search Console](https://search.google.com/search-console), add the property `https://activistresourcelibrary.com` (URL-prefix or domain property).
+2. **HTML tag or DNS** — Use the meta-tag verification method (temporary tag in `index.html`) or DNS TXT record via your domain host. Remove the verification meta tag after confirming if you used the HTML method.
+3. **Submit sitemap** — After deploy, submit `https://activistresourcelibrary.com/sitemap.xml` under **Sitemaps**. The dynamic sitemap lists static routes plus every inventory item at `/{tag}/{slug}` with `lastmod`.
+4. **Check robots.txt** — Confirm `https://activistresourcelibrary.com/robots.txt` allows `/`, disallows `/api/` and `/admin`, and references the sitemap URL.
+5. **Inspect URLs** — Use **URL inspection** on the homepage and `/howthisworks` to confirm canonical, hreflang (`?lang=en` / `?lang=fr`), and Organization JSON-LD on public pages. `/admin` should show `noindex` (meta + `X-Robots-Tag`).
+6. **Optional analytics** — Set `PLAUSIBLE_DOMAIN=activistresourcelibrary.com` in production env for privacy-friendly traffic data alongside Search Console.
 
 ---
 
@@ -498,3 +525,19 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-13 | Fixed mobile scroll gap under quote footer: removed `transform: translateZ(0)` from `.quote-footer`; the GPU compositing layer caused iOS Safari to lag repositioning the fixed element when the browser chrome hid/showed, creating a ~½ inch gap. |
 | 2026-06-13 | Added `docs/automated-notifications.md`, `docs/automated-emails.md`, and `docs/automated-webhooks.md` — scannable reference for Kimchi bubbles, Resend emails, and Slack webhook triggers. |
 | 2026-06-13 | Mobile header auth fix: `.header-auth` set to `flex-wrap: nowrap` at ≤640px so Log in / Register (and Connexion / Inscription in FR) stay side by side instead of stacking. |
+| 2026-06-13 | Kimchi item reactions: hover delay increased from 3s to 6s (`ITEM_HOVER_DELAY` in `InventoryCard.svelte`). |
+| 2026-06-13 | Register flow: optional email-updates checkbox (unchecked by default); choice stored in Supabase `user_metadata.email_updates_opt_in` via `signUpWithEmail`. |
+| 2026-06-13 | Phase 1 SEO: `public/robots.txt` + `public/sitemap.xml`; `src/lib/seo.js` + `seo-server.js` for client/server meta/OG/Twitter/canonical/hreflang/JSON-LD; `/admin` noindex; skip link + homepage intro copy; image alt/aspect-ratio; optional Plausible (`PLAUSIBLE_DOMAIN`); Google Search Console section in AGENTS.md. |
+| 2026-06-13 | Phase 2 SEO: category routes (`/equipment`, `/books`, `/rooms`; `/` = equipment); `/about` page; FAQ section + FAQPage JSON-LD on `/howthisworks`; dynamic `GET /sitemap.xml`; lazy-loaded admin/how-it-works/about/calendar chunks; WebP image compression with JPEG fallback. |
+| 2026-06-13 | Phase 3 SEO (SEO-20): `004_inventory_slug.sql`; `src/lib/slug.js`; per-tag slugs on items; `GET /api/inventory/by-slug/:tag/:slug`; item detail routes `/{tag}/{slug}` with `ItemDetailPage.svelte`; Product JSON-LD + per-item meta (client + server); card title links; sitemap item URLs; `item_detail.*` locales; slug backfill on seed/migrate/`ensureInventory`. |
+| 2026-06-13 | Phase 3 SEO (SEO-23): Tier 1 server-injected item meta via async `seo-server.js` + `findInventoryItemBySlug`; Tier 2 build-time prerender (`scripts/prerender.js` → `dist/{route}/index.html` for marketing/category pages); `npm run build` runs prerender after Vite. |
+| 2026-06-13 | Reserve flow URL sync: grid/detail Reserve navigates to `/{tag}/{slug}?reserve=1`; `ItemDetailPage` auto-opens calendar on `?reserve=1`; closing modals clears the query param; reserve calendar moved from `InventoryPanel` to item detail page only. |
+| 2026-06-13 | Reserve calendar integrated inline into `ItemDetailPage` overlay (`.item-detail-reserve` section with `ItemCalendar`); removed stacked `ReserveCalendarModal.svelte`; Escape closes inline calendar before overlay; auth-required modal remains a separate dialog. |
+| 2026-06-13 | Fixed broken Reserve button: removed `triggerItemReaction()` from the Reserve button click handler in `InventoryCard.svelte` (Kimchi item reactions now fire only on hover, not on Reserve click); fixed `navigateToItemWithReserve` early-return path in `router.js` to use `replaceState` to add `?reserve=1` to the URL when already on the item detail page, so `tryOpenReserveFromQuery` can detect the reserve intent. |
+| 2026-06-13 | Item detail is now a modal **overlay** instead of a full-page route: `ItemDetailPage.svelte` is a native `<dialog showModal()>` rendered by `App.svelte` concurrently with the inventory grid on `/{tag}/{slug}` routes (grid stays mounted; `InventoryPanel` filters to the item's tag via `getItemRouteParams`). URL still updates to `/{tag}/{slug}` (+`?reserve=1`). New `router.js` helpers `navigateToItem(item)` (push with `{ arlItemOverlay: true }` history-state marker) and `closeItemOverlay(tag)` (`history.back()` for in-app entries, else `navigate(categoryToPath(tag))` for deep links); reserve-intent `replaceState` calls preserve `history.state`. Close via X / Escape / backdrop / browser Back stays in sync; reserve auth + calendar modals stack on top of the overlay. SEO (URL/canonical/sitemap/server `seo-server.js`/Product JSON-LD) unchanged. `.modal--item-detail` styles in `app.css`. |
+| 2026-06-13 | Fixed Reserve flow silently no-opping when `inventory_items.slug` was `null`: (1) **Root cause** — `ensureInventory()` short-circuited on the module-level `inventorySeeded` flag before its slug backfill could run, so a long-lived server that cached the flag never repopulated null slugs (and the old running process predated slug serialization). Refactored `ensureInventory()` into `seedInventoryIfEmpty()` + `ensureSlugsBackfilled()` (separate once-per-process flag, retry-on-failure, logged errors) so the backfill always runs independent of seeding; `backfillMissingSlugs()` now returns its update count. (2) Added `scripts/backfill-slugs.js` + `npm run backfill:slugs` to trigger the backfill on demand. (3) Client defensive fallback: `itemToPath()`/new `resolveItemSlug()` in `router.js` generate a client-side slug from the title when `item.slug` is missing (never collapse to a category path); `InventoryPanel.openReserve` and `InventoryCard` title link no longer early-return on missing slug (warn + navigate). Backfilled the 9 live equipment items. |
+| 2026-06-13 | Item overlay three-column layout: image (left) | description + availability badge (middle) | always-visible `ItemCalendar` (right). Removed expandable `.item-detail-reserve` section and overlay Reserve button. `?reserve=1` scrolls/highlights calendar (signed-in) or auth modal (signed-out). `ItemCalendar` adds optional `onbeforeconfirm` auth gate. Responsive stack: image → description → calendar below 900px. Wider `.modal--item-detail` (72rem). |
+| 2026-06-13 | Kimchi item reactions: hover delay reduced from 6s to 4s (`ITEM_HOVER_DELAY` in `InventoryCard.svelte`). |
+| 2026-06-13 | Item overlay calendar column: removed redundant “Reserve: {title}” heading above `ItemCalendar`; dropped `.item-detail__calendar-heading` CSS. |
+| 2026-06-13 | Item overlay availability badge moved from the description column to the breadcrumb current-page crumb (e.g. `Transport buggy (AVAILABLE)`); reuses `availability-badge` variants; removed `.item-detail__badge` CSS. |
+| 2026-06-13 | Fixed breadcrumb availability badge not showing: `.item-detail-breadcrumb__badge` CSS rule was declared before `.availability-badge` in `app.css`, so the later rule's `position: absolute` clobbered the `position: static` override; moved breadcrumb badge rule to after the `.availability-badge` block so it wins the cascade. |
