@@ -17,6 +17,33 @@ export function isApathyAdmin(sessionValue) {
 
 let authSubscription = null;
 
+async function requestWelcomeEmail() {
+  if (!supabaseConfigured || !supabase) {
+    return;
+  }
+
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) {
+    return;
+  }
+
+  try {
+    await fetch('/api/auth/welcome-email', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (error) {
+    console.error('Welcome email request failed:', error);
+  }
+}
+
+function maybeRequestWelcomeEmail(user) {
+  if (!user?.user_metadata?.welcome_email_sent) {
+    requestWelcomeEmail();
+  }
+}
+
 export async function initAuth() {
   if (!supabaseConfigured || !supabase) {
     authReady.set(true);
@@ -29,9 +56,16 @@ export async function initAuth() {
   }
   session.set(data.session);
 
+  if (data.session?.user) {
+    maybeRequestWelcomeEmail(data.session.user);
+  }
+
   if (!authSubscription) {
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       session.set(newSession);
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        maybeRequestWelcomeEmail(newSession.user);
+      }
     });
     authSubscription = listener.subscription;
   }
@@ -71,6 +105,7 @@ export async function signUpWithEmail(
   if (error) throw error;
   if (data.session) {
     session.set(data.session);
+    maybeRequestWelcomeEmail(data.session.user);
   }
   return data;
 }

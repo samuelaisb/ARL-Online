@@ -238,7 +238,22 @@
     "partner_aib_name": "Apathy is Boring",
     "partner_aib_body": "Apathy is Boring est un organisme de bienfaisance national non partisan qui soutient l'engagement et la participation des jeunes dans la démocratie canadienne. AisB exploite la bibliothèque, examine les demandes de réservation et accueille la cueillette à Montréal.",
     "partner_fes_name": "Finance Engage Sustain (FES)",
-    "partner_fes_body": "FES soutient des projets qui renforcent la culture démocratique et la participation civique. FES s'est associé à Apathy is Boring pour aider à lancer et à soutenir la bibliothèque ressources activistes."
+    "partner_fes_body": "FES soutient des projets qui renforcent la culture démocratique et la participation civique. FES s'est associé à Apathy is Boring pour aider à lancer et à soutenir la bibliothèque ressources activistes.",
+    "contact_heading": "Nous contacter",
+    "contact_intro": "Des questions sur la bibliothèque, les partenariats ou les réservations? Écrivez-nous et nous vous répondrons.",
+    "contact_name": "Nom",
+    "contact_name_placeholder": "Votre nom",
+    "contact_email": "Courriel",
+    "contact_email_placeholder": "vous@exemple.com",
+    "contact_message": "Message",
+    "contact_message_placeholder": "Comment pouvons-nous vous aider?",
+    "contact_submit": "Envoyer le message",
+    "contact_submitting": "Envoi…",
+    "contact_success": "Merci! Votre message a été envoyé.",
+    "contact_error": "Impossible d'envoyer votre message. Veuillez réessayer plus tard.",
+    "contact_validation": "Veuillez remplir votre nom, courriel et message.",
+    "contact_invalid_email": "Veuillez entrer une adresse courriel valide.",
+    "contact_website_label": "Site web"
   },
   "kimchi": {
     "name": "Kimchi",

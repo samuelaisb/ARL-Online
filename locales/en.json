@@ -240,7 +240,22 @@
     "partner_aib_name": "Apathy is Boring",
     "partner_aib_body": "Apathy is Boring is a national non-partisan charitable organization that supports youth engagement and participation in Canada's democracy. AisB operates the library, reviews reservation requests, and hosts pickup in Montreal.",
     "partner_fes_name": "Finance Engage Sustain (FES)",
-    "partner_fes_body": "FES supports projects that strengthen democratic culture and civic participation. FES partnered with Apathy is Boring to help launch and sustain the Activist Resource Library."
+    "partner_fes_body": "FES supports projects that strengthen democratic culture and civic participation. FES partnered with Apathy is Boring to help launch and sustain the Activist Resource Library.",
+    "contact_heading": "Contact us",
+    "contact_intro": "Questions about the library, partnerships, or reservations? Send us a message and we'll get back to you.",
+    "contact_name": "Name",
+    "contact_name_placeholder": "Your name",
+    "contact_email": "Email",
+    "contact_email_placeholder": "you@example.com",
+    "contact_message": "Message",
+    "contact_message_placeholder": "How can we help?",
+    "contact_submit": "Send message",
+    "contact_submitting": "Sending…",
+    "contact_success": "Thanks! Your message was sent.",
+    "contact_error": "Could not send your message. Please try again later.",
+    "contact_validation": "Please fill in your name, email, and message.",
+    "contact_invalid_email": "Please enter a valid email address.",
+    "contact_website_label": "Website"
   },
   "kimchi": {
     "name": "Kimchi",

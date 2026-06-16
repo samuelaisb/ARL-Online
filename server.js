@@ -41,7 +41,6 @@ const STRICT_PORT = process.env.NODE_ENV === 'development' || process.env.STRICT
 const APATHY_ADMIN_DOMAIN = '@apathyisboring.com';
 const VALID_RESERVATION_STATUSES = ['pending', 'reserved', 'refused'];
 const MAX_PENDING_RESERVATIONS_PER_USER = 5;
-const INLINE_IMAGE_CID = 'inventory-image';
 const SUPABASE_URL =
   (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 
@@ -87,8 +86,6 @@ function resolveEmailFrom() {
 }
 
 const FROM = resolveEmailFrom();
-const RESERVE_INVENTORY_EMAIL_TO =
-  process.env.RESERVE_INVENTORY_EMAIL_TO || process.env.EMAIL_TO || 'samuel@apathyisboring.com';
 const SLACK_RESERVATION_WEBHOOK_URL = process.env.SLACK_RESERVATION_WEBHOOK_URL?.trim() || '';
 const SITE_URL = (process.env.SITE_URL || process.env.VITE_SITE_URL || '').replace(/\/$/, '');
 const EMAIL_SITE_ORIGIN = SITE_URL || PRODUCTION_SITE_ORIGIN;
@@ -118,18 +115,6 @@ function absoluteSiteUrl(pathOrUrl) {
 
   const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
   return `${EMAIL_SITE_ORIGIN}${path}`;
-}
-
-function absoluteAssetUrl(pathOrUrl) {
-  if (!pathOrUrl || pathOrUrl.startsWith('data:') || /^https?:\/\//i.test(pathOrUrl)) {
-    return pathOrUrl;
-  }
-
-  if (pathOrUrl.startsWith('/')) {
-    return absoluteSiteUrl(pathOrUrl);
-  }
-
-  return pathOrUrl;
 }
 
 function itemPagePath(item) {
@@ -216,6 +201,28 @@ const reservationCreateLimiter = rateLimit({
   message: { error: 'Too many reservation requests. Please try again later.' },
 });
 
+const CONTACT_TO = 'samuel@apathyisboring.com';
+const CONTACT_NAME_MAX = 120;
+const CONTACT_MESSAGE_MAX = 5000;
+
+const contactFormLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many contact form submissions. Please try again later.' },
+});
+
+const welcomeEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many welcome email requests. Please try again later.' },
+});
+
+const WELCOME_EMAIL_SIGNUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 function escapeHtml(text) {
   return text
     .replace(/&/g, '&amp;')
@@ -225,122 +232,11 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
-function buildReservationEmailPayload(item, reservation = null) {
-  const title = typeof item.title === 'string' ? item.title.trim() : '';
-  const body = typeof item.body === 'string' ? item.body.trim() : '';
-  const image = typeof item.image === 'string' ? item.image.trim() : '';
-  const isUploadedImage = image.startsWith('data:image/');
-  const id = typeof item.id === 'string' ? item.id.trim() : 'unknown';
-  const createdAt =
-    typeof item.createdAt === 'number' && Number.isFinite(item.createdAt)
-      ? new Date(item.createdAt).toLocaleString()
-      : 'unknown';
-  const startDate =
-    typeof reservation?.startDate === 'string' ? reservation.startDate.trim() : '';
-  const endDate = typeof reservation?.endDate === 'string' ? reservation.endDate.trim() : '';
-  const dateRange =
-    startDate && endDate ? `${startDate} to ${endDate}` : startDate || endDate || '';
-  const itemUrl = itemPageUrl(item);
-  const adminUrl = absoluteSiteUrl('/admin');
+const APPROVAL_PICKUP_NOTICE =
+  'Pickups and drop offs are between 10am and 5pm on Tuesdays at 5310 Saint-Laurent, Montreal QC H2T 1S1';
 
-  const subject = `Reservation request (pending reservation): ${title}`;
-  const textLines = [
-    'A member submitted a reservation request (pending AisB approval).',
-    '',
-    `Title: ${title}`,
-    `Description: ${body}`,
-    `Image: ${isUploadedImage ? '(uploaded image)' : image}`,
-    `Item ID: ${id}`,
-    `Added: ${createdAt}`,
-    `View item: ${itemUrl}`,
-    `Review in admin: ${adminUrl}`,
-  ];
-
-  if (typeof reservation?.userEmail === 'string' && reservation.userEmail.trim()) {
-    textLines.push(`Member email: ${reservation.userEmail.trim()}`);
-  }
-
-  if (dateRange) {
-    textLines.push(`Dates: ${dateRange}`);
-  }
-
-  const text = textLines.join('\n');
-
-  let imageHtml = '';
-  let attachments;
-
-  if (image) {
-    if (isUploadedImage) {
-      const parsedImage = parseDataUrlImage(image);
-      if (parsedImage) {
-        imageHtml = `<p><img src="cid:${INLINE_IMAGE_CID}" alt="${escapeHtml(title)}" style="max-width: 100%; height: auto;" /></p>`;
-        attachments = [
-          {
-            filename: parsedImage.filename,
-            content: parsedImage.content,
-            contentType: parsedImage.contentType,
-            inlineContentId: INLINE_IMAGE_CID,
-          },
-        ];
-      }
-    } else {
-      const imageUrl = absoluteAssetUrl(image);
-      imageHtml = `<p><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}" style="max-width: 100%; height: auto;" /></p>`;
-    }
-  }
-
-  const html = `
-    <h2>Reservation Request (Pending Reservation)</h2>
-    <p>A member submitted a reservation request. Please review and approve or refuse in the <a href="${escapeHtml(adminUrl)}">admin panel</a>.</p>
-    <ul>
-      <li><strong>Title:</strong> <a href="${escapeHtml(itemUrl)}">${escapeHtml(title)}</a></li>
-      <li><strong>Description:</strong> ${escapeHtml(body).replace(/\n/g, '<br>')}</li>
-      <li><strong>Image:</strong> ${
-        image
-          ? isUploadedImage
-            ? 'Uploaded image (see preview below)'
-            : `<a href="${escapeHtml(absoluteAssetUrl(image))}">${escapeHtml(absoluteAssetUrl(image))}</a>`
-          : '—'
-      }</li>
-      <li><strong>Item ID:</strong> ${escapeHtml(id)}</li>
-      <li><strong>Added:</strong> ${escapeHtml(createdAt)}</li>
-      ${
-        typeof reservation?.userEmail === 'string' && reservation.userEmail.trim()
-          ? `<li><strong>Member email:</strong> ${escapeHtml(reservation.userEmail.trim())}</li>`
-          : ''
-      }
-      ${dateRange ? `<li><strong>Dates:</strong> ${escapeHtml(dateRange)}</li>` : ''}
-      <li><strong>Item page:</strong> <a href="${escapeHtml(itemUrl)}">${escapeHtml(itemUrl)}</a></li>
-      <li><strong>Admin:</strong> <a href="${escapeHtml(adminUrl)}">${escapeHtml(adminUrl)}</a></li>
-    </ul>
-    ${imageHtml}
-  `;
-
-  const emailPayload = {
-    from: FROM,
-    to: RESERVE_INVENTORY_EMAIL_TO,
-    subject,
-    text,
-    html,
-  };
-
-  if (attachments) {
-    emailPayload.attachments = attachments;
-  }
-
-  return emailPayload;
-}
-
-async function sendReservationNotificationEmail(item, reservation = null) {
-  const emailPayload = buildReservationEmailPayload(item, reservation);
-  const { data, error } = await getResend().emails.send(emailPayload);
-
-  if (error) {
-    throw new Error(error.message || 'Failed to send reservation email.');
-  }
-
-  return data;
-}
+const WELCOME_EQUIPMENT_PICKUP_NOTICE =
+  'Equipment reservations are typically on Tuesdays at 5310 Boul. Saint-Laurent, Montréal, QC H2T 1S1.';
 
 function buildMemberDecisionEmailPayload(item, reservation, decision) {
   const title = typeof item.title === 'string' ? item.title.trim() : 'Inventory item';
@@ -381,6 +277,10 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
     textLines.push(`Dates: ${dateRange}`);
   }
 
+  if (approved) {
+    textLines.push('', APPROVAL_PICKUP_NOTICE);
+  }
+
   textLines.push(
     '',
     `View item: ${itemUrl}`,
@@ -398,6 +298,7 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
       <li><strong>Item:</strong> <a href="${escapeHtml(itemUrl)}">${escapeHtml(title)}</a></li>
       ${dateRange ? `<li><strong>Dates:</strong> ${escapeHtml(dateRange)}</li>` : ''}
     </ul>
+    ${approved ? `<p>${escapeHtml(APPROVAL_PICKUP_NOTICE)}</p>` : ''}
     <p>${escapeHtml(closing)}</p>
     <p><a href="${escapeHtml(itemUrl)}">View item</a> · <a href="${escapeHtml(libraryUrl)}">Browse the library</a></p>
     <p>— Apathy is Boring / Activist Resource Library</p>
@@ -427,6 +328,148 @@ async function sendMemberDecisionEmail(item, reservation, decision) {
   }
 
   return data;
+}
+
+function isWithinWelcomeEmailSignupWindow(user) {
+  const created = user?.created_at;
+  if (!created) {
+    return true;
+  }
+
+  const createdMs = Date.parse(created);
+  if (Number.isNaN(createdMs)) {
+    return true;
+  }
+
+  return Date.now() - createdMs < WELCOME_EMAIL_SIGNUP_WINDOW_MS;
+}
+
+function buildWelcomeEmailPayload(email) {
+  const to = typeof email === 'string' ? email.trim() : '';
+  if (!to) {
+    return null;
+  }
+
+  const howItWorksUrl = absoluteSiteUrl('/howthisworks');
+  const aboutUrl = absoluteSiteUrl('/about');
+  const libraryUrl = absoluteSiteUrl('/');
+  const subject = 'Welcome to the Activist Resource Library';
+
+  const textLines = [
+    'Welcome to the Activist Resource Library!',
+    '',
+    'Thanks for creating your member account with Apathy is Boring.',
+    '',
+    'To get started, read How it works — it walks through browsing inventory, reserving items, and pickup.',
+    `How it works: ${howItWorksUrl}`,
+    '',
+    WELCOME_EQUIPMENT_PICKUP_NOTICE,
+    '',
+    'Questions? Contact us on the About page.',
+    `About: ${aboutUrl}`,
+    '',
+    `Browse inventory: ${libraryUrl}`,
+    '',
+    '— Apathy is Boring / Activist Resource Library',
+  ];
+
+  const html = `
+    <h2>Welcome to the Activist Resource Library</h2>
+    <p>Thanks for creating your member account with Apathy is Boring.</p>
+    <p>To get started, read <a href="${escapeHtml(howItWorksUrl)}">How it works</a> — it walks through browsing inventory, reserving items, and pickup.</p>
+    <p>${escapeHtml(WELCOME_EQUIPMENT_PICKUP_NOTICE)}</p>
+    <p>Questions? <a href="${escapeHtml(aboutUrl)}">Contact us on the About page</a>.</p>
+    <p><a href="${escapeHtml(libraryUrl)}">Browse inventory</a></p>
+    <p>— Apathy is Boring / Activist Resource Library</p>
+  `;
+
+  return {
+    from: FROM,
+    to,
+    subject,
+    text: textLines.join('\n'),
+    html,
+  };
+}
+
+async function sendWelcomeEmailIfNeeded(user) {
+  if (user?.user_metadata?.welcome_email_sent) {
+    return { sent: false, reason: 'already_sent' };
+  }
+
+  if (!isWithinWelcomeEmailSignupWindow(user)) {
+    return { sent: false, reason: 'signup_window_expired' };
+  }
+
+  const email = user?.email?.trim();
+  const emailPayload = buildWelcomeEmailPayload(email);
+
+  if (!emailPayload) {
+    return { sent: false, reason: 'no_email' };
+  }
+
+  const { error } = await getResend().emails.send(emailPayload);
+
+  if (error) {
+    throw new Error(error.message || 'Failed to send welcome email.');
+  }
+
+  const existingMetadata =
+    user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+
+  const { error: updateError } = await getSupabaseAdmin().auth.admin.updateUserById(user.id, {
+    user_metadata: { ...existingMetadata, welcome_email_sent: true },
+  });
+
+  if (updateError) {
+    console.error('Welcome email sent but failed to update user metadata:', updateError);
+  }
+
+  return { sent: true };
+}
+
+function isValidEmailAddress(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function buildContactEmailPayload({ name, email, message }) {
+  const subject = `Activist Resource Library contact: ${name}`;
+  const aboutUrl = absoluteSiteUrl('/about');
+  const textLines = [
+    'New message from the About page contact form.',
+    '',
+    `Name: ${name}`,
+    `Email: ${email}`,
+    '',
+    'Message:',
+    message,
+    '',
+    `Sent via ${aboutUrl}`,
+    '',
+    '— Apathy is Boring / Activist Resource Library',
+  ];
+
+  const html = `
+    <h2>Contact form message</h2>
+    <p>New message from the About page contact form.</p>
+    <ul>
+      <li><strong>Name:</strong> ${escapeHtml(name)}</li>
+      <li><strong>Email:</strong> <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></li>
+    </ul>
+    <p><strong>Message:</strong></p>
+    <p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>
+    <p><a href="${escapeHtml(aboutUrl)}">About page</a></p>
+    <p>— Apathy is Boring / Activist Resource Library</p>
+  `;
+
+  return {
+    from: FROM,
+    to: CONTACT_TO,
+    replyTo: email,
+    subject,
+    text: textLines.join('\n'),
+    html,
+  };
 }
 
 function reservationItemPayload(item) {
@@ -470,22 +513,6 @@ async function notifySlackReservation({ item, reservation }) {
   }
 }
 
-function parseDataUrlImage(dataUrl) {
-  const match = dataUrl.match(/^data:(image\/[\w.+-]+);base64,([\s\S]+)$/);
-  if (!match) {
-    return null;
-  }
-
-  const contentType = match[1];
-  const extension = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-
-  return {
-    contentType,
-    content: match[2],
-    filename: `inventory-image.${extension}`,
-  };
-}
-
 const INVENTORY_ASSETS_DIR = path.join(__dirname, 'src', 'assets', 'inventory');
 const INVENTORY_IMAGE_BASE = '/assets/inventory';
 
@@ -515,11 +542,17 @@ if (SUPABASE_URL) {
 if (PLAUSIBLE_DOMAIN) {
   connectSrc.push('https://plausible.io');
 }
+connectSrc.push(
+  'https://www.google-analytics.com',
+  'https://analytics.google.com',
+  'https://region1.google-analytics.com',
+);
 
-const scriptSrc = ["'self'"];
+const scriptSrc = ["'self'", "'unsafe-inline'"];
 if (PLAUSIBLE_DOMAIN) {
   scriptSrc.push('https://plausible.io');
 }
+scriptSrc.push('https://www.googletagmanager.com');
 
 app.use(
   helmet({
@@ -718,9 +751,6 @@ app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAut
 
     const { item: updatedItem, reservation } = result;
     notifySlackReservation({ item: updatedItem, reservation });
-    sendReservationNotificationEmail(updatedItem, reservation).catch((emailError) => {
-      console.error('Reservation notification email failed:', emailError);
-    });
 
     res.status(201).json({
       reservation: sanitizeReservationForPublic(reservation),
@@ -918,6 +948,60 @@ app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+app.post('/api/auth/welcome-email', welcomeEmailLimiter, requireAuth, async (req, res) => {
+  try {
+    const result = await sendWelcomeEmailIfNeeded(req.user);
+    res.json({ success: true, sent: result.sent, reason: result.reason ?? null });
+  } catch (error) {
+    console.error('Welcome email failed:', error);
+    res.status(500).json({ error: 'Could not send welcome email.' });
+  }
+});
+
+app.post('/api/contact', contactFormLimiter, async (req, res) => {
+  const honeypot = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
+  if (honeypot) {
+    return res.json({ success: true });
+  }
+
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: 'Name, email, and message are required.' });
+  }
+
+  if (name.length > CONTACT_NAME_MAX) {
+    return res.status(400).json({ error: `Name must be ${CONTACT_NAME_MAX} characters or fewer.` });
+  }
+
+  if (message.length > CONTACT_MESSAGE_MAX) {
+    return res.status(400).json({
+      error: `Message must be ${CONTACT_MESSAGE_MAX} characters or fewer.`,
+    });
+  }
+
+  if (!isValidEmailAddress(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  try {
+    const { error } = await getResend().emails.send(
+      buildContactEmailPayload({ name, email, message }),
+    );
+
+    if (error) {
+      throw new Error(error.message || 'Failed to send message.');
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Contact form email failed:', error);
+    res.status(500).json({ error: 'Could not send your message. Please try again later.' });
+  }
+});
+
 app.get('*', async (req, res) => {
   const pathname = req.path || '/';
 
@@ -968,9 +1052,8 @@ function startServer(port, attempt = 1) {
       console.log(`Public site URL → ${SITE_URL}`);
     }
     if (apiKey) {
-      console.log(`Reservation notification emails → ${RESERVE_INVENTORY_EMAIL_TO}`);
-      console.log(`Email from → ${FROM}`);
-      console.log(`Email links and assets → ${EMAIL_SITE_ORIGIN}`);
+      console.log(`Member decision emails from → ${FROM}`);
+      console.log(`Email links → ${EMAIL_SITE_ORIGIN}`);
     }
     if (SLACK_RESERVATION_WEBHOOK_URL) {
       console.log('Slack reservation webhook → configured');

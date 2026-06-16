@@ -112,6 +112,14 @@
     }
   }
 
+  function trackGtagPageview() {
+    if (typeof window.gtag === 'function') {
+      window.gtag('config', 'G-5VERECD6ZJ', {
+        page_path: window.location.pathname + window.location.search,
+      });
+    }
+  }
+
   $effect(() => {
     const currentPath = $path;
     const currentLocale = $locale;
@@ -158,6 +166,7 @@
   $effect(() => {
     $path;
     trackPlausiblePageview();
+    trackGtagPageview();
   });
 
   onMount(() => {

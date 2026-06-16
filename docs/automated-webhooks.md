@@ -11,7 +11,7 @@ The ARL Online server posts to **one optional outbound webhook**: a Slack workfl
 | **Env var** | `SLACK_RESERVATION_WEBHOOK_URL` |
 | **Required** | No — omitted or empty string disables the webhook entirely |
 | **Function** | `notifySlackReservation()` in `server.js` |
-| **Trigger** | Successful `POST /api/inventory/:id/reservations` (same moment as admin Resend email) |
+| **Trigger** | Successful `POST /api/inventory/:id/reservations` |
 | **HTTP method** | `POST` |
 | **Content-Type** | `application/json` |
 | **Timeout** | **5 seconds** (`AbortSignal.timeout(5000)`) |
@@ -67,7 +67,7 @@ Configure the Slack workflow trigger URL (typically `https://hooks.slack.com/tri
 | URL not set | Silent no-op |
 | HTTP non-2xx | `console.error` with status and response body |
 | Network / timeout error | `console.error('Slack reservation webhook error:', error)` |
-| Any failure | Reservation and admin email still proceed normally |
+| Any failure | Reservation still succeeds normally |
 
 ### Startup log
 
