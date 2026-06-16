@@ -11,6 +11,7 @@ import { validateReservationDates } from './src/lib/reservation-rules.js';
 import {
   addReservation,
   approveReservation,
+  checkReservationSchema,
   countPendingReservationsByEmail,
   createInventoryItem,
   deleteInventoryItem,
@@ -18,9 +19,11 @@ import {
   fetchInventoryItems,
   findInventoryItem,
   findInventoryItemBySlug,
+  isReservationSchemaError,
   isValidInventoryImage,
   isValidTag,
   normalizeInventoryItem,
+  reservationSchemaErrorMessage,
   patchReservation,
   refuseReservation,
   removeReservation,
@@ -28,6 +31,7 @@ import {
 import { assertSupabaseAdminConfigured, getSupabaseAdmin } from './src/lib/supabase-server.js';
 import { injectSeoIntoHtml, resolveRequestLocale } from './src/lib/seo-server.js';
 import { normalizeSeoPath, PRODUCTION_SITE_ORIGIN } from './src/lib/seo.js';
+import { slugifyTitle } from './src/lib/slug.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -69,11 +73,25 @@ function getResend() {
   return resendClient;
 }
 
-const FROM = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+const LEGACY_RESEND_FROM = 'onboarding@resend.dev';
+const DEFAULT_EMAIL_FROM = 'noreply@activistresourcelibrary.com';
+
+function resolveEmailFrom() {
+  const configured = process.env.EMAIL_FROM?.trim();
+
+  if (configured && configured !== LEGACY_RESEND_FROM) {
+    return configured;
+  }
+
+  return DEFAULT_EMAIL_FROM;
+}
+
+const FROM = resolveEmailFrom();
 const RESERVE_INVENTORY_EMAIL_TO =
   process.env.RESERVE_INVENTORY_EMAIL_TO || process.env.EMAIL_TO || 'samuel@apathyisboring.com';
 const SLACK_RESERVATION_WEBHOOK_URL = process.env.SLACK_RESERVATION_WEBHOOK_URL?.trim() || '';
 const SITE_URL = (process.env.SITE_URL || process.env.VITE_SITE_URL || '').replace(/\/$/, '');
+const EMAIL_SITE_ORIGIN = SITE_URL || PRODUCTION_SITE_ORIGIN;
 const PLAUSIBLE_DOMAIN = process.env.PLAUSIBLE_DOMAIN?.trim() || '';
 const INDEX_HTML_PATH = path.join(__dirname, 'dist', 'index.html');
 
@@ -89,16 +107,41 @@ function loadIndexHtmlTemplate() {
 
 loadIndexHtmlTemplate();
 
+function absoluteSiteUrl(pathOrUrl) {
+  if (!pathOrUrl) {
+    return EMAIL_SITE_ORIGIN;
+  }
+
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return `${EMAIL_SITE_ORIGIN}${path}`;
+}
+
 function absoluteAssetUrl(pathOrUrl) {
   if (!pathOrUrl || pathOrUrl.startsWith('data:') || /^https?:\/\//i.test(pathOrUrl)) {
     return pathOrUrl;
   }
 
-  if (pathOrUrl.startsWith('/') && SITE_URL) {
-    return `${SITE_URL}${pathOrUrl}`;
+  if (pathOrUrl.startsWith('/')) {
+    return absoluteSiteUrl(pathOrUrl);
   }
 
   return pathOrUrl;
+}
+
+function itemPagePath(item) {
+  const tag = typeof item?.tag === 'string' && item.tag.trim() ? item.tag.trim() : 'equipment';
+  const slug =
+    typeof item?.slug === 'string' && item.slug.trim() ? item.slug.trim() : slugifyTitle(item?.title);
+
+  return `/${tag}/${encodeURIComponent(slug)}`;
+}
+
+function itemPageUrl(item) {
+  return absoluteSiteUrl(itemPagePath(item));
 }
 
 async function requireAuth(req, res, next) {
@@ -197,6 +240,8 @@ function buildReservationEmailPayload(item, reservation = null) {
   const endDate = typeof reservation?.endDate === 'string' ? reservation.endDate.trim() : '';
   const dateRange =
     startDate && endDate ? `${startDate} to ${endDate}` : startDate || endDate || '';
+  const itemUrl = itemPageUrl(item);
+  const adminUrl = absoluteSiteUrl('/admin');
 
   const subject = `Reservation request (pending reservation): ${title}`;
   const textLines = [
@@ -207,6 +252,8 @@ function buildReservationEmailPayload(item, reservation = null) {
     `Image: ${isUploadedImage ? '(uploaded image)' : image}`,
     `Item ID: ${id}`,
     `Added: ${createdAt}`,
+    `View item: ${itemUrl}`,
+    `Review in admin: ${adminUrl}`,
   ];
 
   if (typeof reservation?.userEmail === 'string' && reservation.userEmail.trim()) {
@@ -244,9 +291,9 @@ function buildReservationEmailPayload(item, reservation = null) {
 
   const html = `
     <h2>Reservation Request (Pending Reservation)</h2>
-    <p>A member submitted a reservation request. Please review and approve or refuse in the admin panel.</p>
+    <p>A member submitted a reservation request. Please review and approve or refuse in the <a href="${escapeHtml(adminUrl)}">admin panel</a>.</p>
     <ul>
-      <li><strong>Title:</strong> ${escapeHtml(title)}</li>
+      <li><strong>Title:</strong> <a href="${escapeHtml(itemUrl)}">${escapeHtml(title)}</a></li>
       <li><strong>Description:</strong> ${escapeHtml(body).replace(/\n/g, '<br>')}</li>
       <li><strong>Image:</strong> ${
         image
@@ -263,6 +310,8 @@ function buildReservationEmailPayload(item, reservation = null) {
           : ''
       }
       ${dateRange ? `<li><strong>Dates:</strong> ${escapeHtml(dateRange)}</li>` : ''}
+      <li><strong>Item page:</strong> <a href="${escapeHtml(itemUrl)}">${escapeHtml(itemUrl)}</a></li>
+      <li><strong>Admin:</strong> <a href="${escapeHtml(adminUrl)}">${escapeHtml(adminUrl)}</a></li>
     </ul>
     ${imageHtml}
   `;
@@ -319,6 +368,8 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
   const closing = approved
     ? 'We look forward to seeing you at pickup.'
     : 'Please choose different dates or another item from the library.';
+  const itemUrl = itemPageUrl(item);
+  const libraryUrl = absoluteSiteUrl('/');
 
   const textLines = [
     intro,
@@ -330,16 +381,25 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
     textLines.push(`Dates: ${dateRange}`);
   }
 
-  textLines.push('', closing, '', '— Apathy is Boring / Activist Resource Library');
+  textLines.push(
+    '',
+    `View item: ${itemUrl}`,
+    `Browse library: ${libraryUrl}`,
+    '',
+    closing,
+    '',
+    '— Apathy is Boring / Activist Resource Library',
+  );
 
   const html = `
     <h2>${approved ? 'Reservation Confirmed' : 'Reservation Not Available'}</h2>
     <p>${escapeHtml(intro)}</p>
     <ul>
-      <li><strong>Item:</strong> ${escapeHtml(title)}</li>
+      <li><strong>Item:</strong> <a href="${escapeHtml(itemUrl)}">${escapeHtml(title)}</a></li>
       ${dateRange ? `<li><strong>Dates:</strong> ${escapeHtml(dateRange)}</li>` : ''}
     </ul>
     <p>${escapeHtml(closing)}</p>
+    <p><a href="${escapeHtml(itemUrl)}">View item</a> · <a href="${escapeHtml(libraryUrl)}">Browse the library</a></p>
     <p>— Apathy is Boring / Activist Resource Library</p>
   `;
 
@@ -668,7 +728,12 @@ app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAut
     });
   } catch (error) {
     console.error('Failed to create reservation:', error);
-    res.status(500).json({ error: 'Could not create reservation.' });
+    const detail = error?.message || '';
+    res.status(500).json({
+      error: isReservationSchemaError(detail)
+        ? reservationSchemaErrorMessage()
+        : 'Could not create reservation.',
+    });
   }
 });
 
@@ -856,7 +921,7 @@ app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => 
 app.get('*', async (req, res) => {
   const pathname = req.path || '/';
 
-  if (normalizeSeoPath(pathname) === '/admin') {
+  if (normalizeSeoPath(pathname) === '/admin' || normalizeSeoPath(pathname) === '/account') {
     res.set('X-Robots-Tag', 'noindex, nofollow');
   }
 
@@ -875,7 +940,7 @@ app.get('*', async (req, res) => {
       origin,
       escapeHtml,
       {
-        includeJsonLd: normalizeSeoPath(pathname) !== '/admin',
+        includeJsonLd: !['/admin', '/account'].includes(normalizeSeoPath(pathname)),
         plausibleDomain: PLAUSIBLE_DOMAIN,
         findItemBySlug: findInventoryItemBySlug,
       },
@@ -904,10 +969,21 @@ function startServer(port, attempt = 1) {
     }
     if (apiKey) {
       console.log(`Reservation notification emails → ${RESERVE_INVENTORY_EMAIL_TO}`);
+      console.log(`Email from → ${FROM}`);
+      console.log(`Email links and assets → ${EMAIL_SITE_ORIGIN}`);
     }
     if (SLACK_RESERVATION_WEBHOOK_URL) {
       console.log('Slack reservation webhook → configured');
     }
+
+    checkReservationSchema().then((result) => {
+      if (!result.ok) {
+        console.error('Reservation schema check failed:', result.message);
+        if (result.detail) {
+          console.error(result.detail);
+        }
+      }
+    });
   });
 
   server.once('error', (err) => {

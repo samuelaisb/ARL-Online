@@ -11,7 +11,7 @@ if (!apiKey) {
 const resend = new Resend(apiKey);
 
 const { data, error } = await resend.emails.send({
-  from: 'onboarding@resend.dev',
+  from: 'noreply@activistresourcelibrary.com',
   to: 'samuel@apathyisboring.com',
   subject: 'Hello World',
   html: '<p>Congrats on sending your <strong>first email</strong>!</p>',

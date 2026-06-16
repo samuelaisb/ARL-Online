@@ -45,7 +45,37 @@ async function withItemLock(itemId, fn) {
 let inventorySeeded = false;
 let slugsBackfilled = false;
 
+const RESERVATION_SCHEMA_MIGRATION = 'supabase/migrations/002_reservation_approval.sql';
+
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE, JPEG_DATA_URL_RE };
+
+export function isReservationSchemaError(message) {
+  if (typeof message !== 'string') {
+    return false;
+  }
+
+  return /user_email|schema cache|reservations_status_check|check constraint.*status/i.test(message);
+}
+
+export function reservationSchemaErrorMessage() {
+  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email and pending/refused reservation statuses).`;
+}
+
+/** Warn at startup when migration 002 has not been applied. */
+export async function checkReservationSchema() {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from('reservations').select('user_email').limit(0);
+
+  if (error && isReservationSchemaError(error.message)) {
+    return { ok: false, message: reservationSchemaErrorMessage(), detail: error.message };
+  }
+
+  if (error) {
+    return { ok: false, message: error.message || 'Could not verify reservation schema.' };
+  }
+
+  return { ok: true };
+}
 
 export function normalizeTag(raw) {
   const tag = typeof raw === 'string' ? raw.trim().toLowerCase() : '';

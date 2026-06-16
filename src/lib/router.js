@@ -247,6 +247,10 @@ export function isAboutRoute(pathname) {
   return normalizePath(pathname) === '/about';
 }
 
+export function isAccountRoute(pathname) {
+  return normalizePath(pathname) === '/account';
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => {
     path.set(getPath());

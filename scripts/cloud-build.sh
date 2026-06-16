@@ -65,10 +65,12 @@ gcloud builds submit \
 
 echo ""
 echo "Deploying ${SERVICE} in ${REGION}..."
-RUNTIME_ENV="SUPABASE_URL=${SUPABASE_URL},SUPABASE_API=${SUPABASE_API},SITE_URL=${PRODUCTION_URL}"
-if [[ -n "${EMAIL_FROM:-}" ]]; then
-  RUNTIME_ENV+=",EMAIL_FROM=${EMAIL_FROM}"
+EMAIL_FROM_VALUE="${EMAIL_FROM:-noreply@activistresourcelibrary.com}"
+if [[ "${EMAIL_FROM_VALUE}" == "onboarding@resend.dev" ]]; then
+  echo "Replacing legacy EMAIL_FROM onboarding@resend.dev → noreply@activistresourcelibrary.com"
+  EMAIL_FROM_VALUE="noreply@activistresourcelibrary.com"
 fi
+RUNTIME_ENV="SUPABASE_URL=${SUPABASE_URL},SUPABASE_API=${SUPABASE_API},SITE_URL=${PRODUCTION_URL},EMAIL_FROM=${EMAIL_FROM_VALUE}"
 if [[ -n "${EMAIL_TO:-}" ]]; then
   RUNTIME_ENV+=",EMAIL_TO=${EMAIL_TO}"
 fi

@@ -72,6 +72,7 @@
     "register": "Inscription",
     "sign_out": "Déconnexion",
     "signing_out": "Déconnexion…",
+    "view_account": "Voir le compte",
     "admin": "Admin",
     "sign_out_error": "Impossible de se déconnecter.",
     "create_account": "Créer un compte",
@@ -134,6 +135,14 @@
     "sign_in_required_message": "Connectez-vous avec votre compte @apathyisboring.com pour accéder à l'admin.",
     "access_denied_title": "Accès refusé",
     "access_denied_message": "L'admin est réservé aux comptes @apathyisboring.com connectés."
+  },
+  "account": {
+    "heading": "Votre compte",
+    "back_to_inventory": "← Retour à l'inventaire",
+    "not_available_title": "Comptes indisponibles",
+    "not_available_message": "Les comptes membres nécessitent une authentification configurée.",
+    "sign_in_required_title": "Connexion requise",
+    "sign_in_required_message": "Connectez-vous ou inscrivez-vous pour voir votre compte."
   },
   "add_item": {
     "title": "Ajouter",
@@ -291,7 +300,8 @@
     "category_books_description": "Parcourez et réservez des livres sur le militantisme, l'organisation et le changement social à la bibliothèque ressources activistes.",
     "category_rooms_title": "Salles | Bibliothèque ressources activistes",
     "category_rooms_description": "Réservez des salles de réunion et d'atelier à la bibliothèque ressources activistes pour vos événements et actions communautaires.",
-    "admin_title": "Admin | Bibliothèque ressources activistes"
+    "admin_title": "Admin | Bibliothèque ressources activistes",
+    "account_title": "Compte | Bibliothèque ressources activistes"
   },
   "quotes": {
     "aria_label": "Citations inspirantes",

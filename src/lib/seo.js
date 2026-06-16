@@ -37,6 +37,11 @@ export const ROUTE_SEO_KEYS = {
     description: 'seo.default_description',
     noindex: true,
   },
+  '/account': {
+    title: 'seo.account_title',
+    description: 'seo.default_description',
+    noindex: true,
+  },
 };
 
 function lookup(dict, key) {

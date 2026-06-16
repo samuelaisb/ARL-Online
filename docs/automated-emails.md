@@ -9,12 +9,12 @@ All production emails are sent from `server.js` via the [Resend](https://resend.
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `RESEND_API_KEY` | Yes (at send time) | — | Resend API key. Server starts without it (warning logged); `getResend()` throws when sending if unset |
-| `EMAIL_FROM` | No | `onboarding@resend.dev` | Sender address on all app emails |
+| `EMAIL_FROM` | No | `noreply@activistresourcelibrary.com` | Sender address on all app emails |
 | `EMAIL_TO` | No | `samuel@apathyisboring.com` | Fallback admin recipient |
 | `RESERVE_INVENTORY_EMAIL_TO` | No | Falls back to `EMAIL_TO` | Admin recipient for new pending reservation notifications |
-| `SITE_URL` | Recommended (prod) | — | Prefixes path-based inventory images as absolute URLs in admin notification HTML (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped) |
+| `SITE_URL` | Recommended (prod) | Falls back to `https://activistresourcelibrary.com` | Base origin for all email links and path-based inventory images (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped) |
 
-**Cloud Run:** `RESEND_API_KEY` is mounted from Secret Manager (`resend-api-key`) when set in `.env` during `npm run cloud:build`. `EMAIL_*` vars are passed as plain runtime env.
+**Cloud Run:** `RESEND_API_KEY` is mounted from Secret Manager (`resend-api-key`) when set in `.env` during `npm run cloud:build`. `EMAIL_FROM` is always set on deploy (default `noreply@activistresourcelibrary.com`; legacy `onboarding@resend.dev` in `.env` is migrated automatically). Other `EMAIL_*` vars are passed when set in `.env`.
 
 **Local smoke test:** `npm run send-email` runs `send-email.js` (not part of the web app — see [Dev-only script](#dev-only-script)).
 
@@ -45,7 +45,8 @@ All production emails are sent from `server.js` via the [Resend](https://resend.
 
 - Heading: “Reservation Request (Pending Reservation)”
 - Bulleted list of the same fields
-- Image preview: inline CID attachment for uploaded `data:image/*` items; absolute `<img>` or link for path-based seed images (requires `SITE_URL` for absolute URLs)
+- Image preview: inline CID attachment for uploaded `data:image/*` items; absolute `<img>` or link for path-based seed images (uses `SITE_URL`, else production origin)
+- Links: item page (`/{tag}/{slug}`) and admin panel (`/admin`) use the same origin
 
 **Failure behavior:**
 
@@ -74,6 +75,7 @@ All production emails are sent from `server.js` via the [Resend](https://resend.
 | Body | Item title + date range |
 | Closing | We look forward to seeing you at pickup. |
 | Signature | — Apathy is Boring / Activist Resource Library |
+| Links | Item page (`/{tag}/{slug}`) and library home (`/`) using `SITE_URL` (or production fallback) |
 
 **Failure behavior:**
 
@@ -102,6 +104,7 @@ All production emails are sent from `server.js` via the [Resend](https://resend.
 | Body | Item title + date range |
 | Closing | Please choose different dates or another item from the library. |
 | Signature | — Apathy is Boring / Activist Resource Library |
+| Links | Item page and library home (same as approval email) |
 
 **Failure behavior:** Same skip/log pattern as approval (`refused` in log messages).
 
@@ -125,7 +128,7 @@ All production emails are sent from `server.js` via the [Resend](https://resend.
 
 | Field | Value |
 |-------|-------|
-| From | Hardcoded `onboarding@resend.dev` |
+| From | Hardcoded `noreply@activistresourcelibrary.com` |
 | To | Hardcoded `samuel@apathyisboring.com` |
 | Subject | `Hello World` |
 | Body | HTML congratulatory message |

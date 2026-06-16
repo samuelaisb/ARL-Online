@@ -321,23 +321,6 @@ body {
   color: var(--color-text-muted);
 }
 
-.header-auth__email {
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
-.header-auth__error {
-  width: 100%;
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--color-plum);
-  text-align: right;
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -707,12 +690,14 @@ h1 {
 
 .about-page__back,
 .how-this-works-page__back,
+.account-page__back,
 .admin-page__back {
   margin: 0 0 1.5rem;
 }
 
 .about-page__back-link,
 .how-this-works-page__back-link,
+.account-page__back-link,
 .admin-page__back-link {
   color: var(--color-mint);
   font-weight: 600;
@@ -721,6 +706,7 @@ h1 {
 
 .about-page__back-link:hover,
 .how-this-works-page__back-link:hover,
+.account-page__back-link:hover,
 .admin-page__back-link:hover {
   text-decoration: underline;
 }
@@ -917,6 +903,32 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.account-panel {
+  max-width: 28rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.account-panel__email {
+  margin: 0 0 1.25rem;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.account-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.account-panel__error {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-plum);
 }
 
 .admin-actions {
@@ -1945,10 +1957,6 @@ button:disabled {
     padding: 0.4375rem 0.75rem;
     font-size: 0.8125rem;
   }
-
-  .header-auth__email {
-    max-width: 8rem;
-  }
 }
 
 @media (min-width: 900px) {
@@ -2032,10 +2040,6 @@ button:disabled {
   .header-auth {
     flex-wrap: nowrap;
     justify-content: flex-end;
-  }
-
-  .header-auth__email {
-    display: none;
   }
 
   .site-nav__link {

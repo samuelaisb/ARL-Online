@@ -55,7 +55,7 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 |---------|-----------|------------|---------|---------|----------|------------|
 | Header **Register** click | `HeaderAuth.svelte` | `kimchi.register_click` | You want to join? Awesome! 🎉 | Tu veux nous rejoindre ? Super ! 🎉 | **5000 ms** (default) | Before opening register modal |
 | Reserve modal **Register** | `ReserveAuthRequiredModal.svelte` | `kimchi.register_click` | (same) | (same) | **5000 ms** (default) | Signed-out user clicks Register in auth-required dialog |
-| Sign out success | `HeaderAuth.svelte` | `kimchi.signed_out` | You've signed out! See you next time 👋 | Tu t'es déconnecté(e) ! À bientôt 👋 | **5000 ms** (default) | After `signOut()` succeeds |
+| Sign out success | `HeaderAuth.svelte`, `AccountPage.svelte` | `kimchi.signed_out` | You've signed out! See you next time 👋 | Tu t'es déconnecté(e) ! À bientôt 👋 | **5000 ms** (default) | After `signOut()` succeeds |
 
 ### Inventory browsing
 
@@ -151,7 +151,8 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `src/components/KimchiNotification.svelte` | Widget shell, greeting/auth/tap/sleep logic |
 | `src/components/KimchiBubble.svelte` | Single bubble render + auto-dismiss |
 | `src/components/InventoryCard.svelte` | Item reaction hover + reserve click |
-| `src/components/HeaderAuth.svelte` | Register click + sign-out |
+| `src/components/HeaderAuth.svelte` | Register click, sign-out |
+| `src/components/AccountPage.svelte` | Sign-out |
 | `src/components/ReserveAuthRequiredModal.svelte` | Register from reserve gate |
 | `src/components/ItemCalendar.svelte` | Reservation sent confirmation |
 | `src/components/AddItemModal.svelte` | Item added confirmation |

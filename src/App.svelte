@@ -4,6 +4,7 @@
   import { locale, t } from './lib/i18n.js';
   import {
     isAboutRoute,
+    isAccountRoute,
     isAdminRoute,
     isHowThisWorksRoute,
     isInventoryHomePath,
@@ -44,6 +45,7 @@
   const onAdminPage = $derived(isAdminRoute($path));
   const onHowThisWorksPage = $derived(isHowThisWorksRoute($path));
   const onAboutPage = $derived(isAboutRoute($path));
+  const onAccountPage = $derived(isAccountRoute($path));
   const onItemDetailPage = $derived(isItemDetailRoute($path));
   const onInventoryPage = $derived(isInventoryHomePath($path));
 
@@ -215,6 +217,13 @@
     {:else if onAboutPage}
       {#await import('./components/AboutPage.svelte') then { default: AboutPage }}
         <AboutPage />
+      {/await}
+    {:else if onAccountPage}
+      {#await import('./components/AccountPage.svelte') then { default: AccountPage }}
+        <AccountPage
+          onOpenLogin={openLoginFromReserve}
+          onOpenRegister={openRegisterFromReserve}
+        />
       {/await}
     {:else if onInventoryPage || onItemDetailPage}
       <main id="main-content" class="container">

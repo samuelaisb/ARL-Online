@@ -74,6 +74,7 @@
     "register": "Register",
     "sign_out": "Sign out",
     "signing_out": "Signing out...",
+    "view_account": "View account",
     "admin": "Admin",
     "sign_out_error": "Could not sign out.",
     "create_account": "Create account",
@@ -136,6 +137,14 @@
     "sign_in_required_message": "Log in with your @apathyisboring.com account to access admin.",
     "access_denied_title": "Access denied",
     "access_denied_message": "Admin is only available to signed-in @apathyisboring.com accounts."
+  },
+  "account": {
+    "heading": "Your account",
+    "back_to_inventory": "← Back to inventory",
+    "not_available_title": "Accounts unavailable",
+    "not_available_message": "Member accounts require authentication to be configured.",
+    "sign_in_required_title": "Sign in required",
+    "sign_in_required_message": "Log in or register to view your account."
   },
   "add_item": {
     "title": "Add Item",
@@ -293,7 +302,8 @@
     "category_books_description": "Browse and reserve books on activism, organizing, and social change from the Activist Resource Library.",
     "category_rooms_title": "Rooms | Activist Resource Library",
     "category_rooms_description": "Reserve meeting and workshop rooms from the Activist Resource Library for your community events and organizing.",
-    "admin_title": "Admin | Activist Resource Library"
+    "admin_title": "Admin | Activist Resource Library",
+    "account_title": "Account | Activist Resource Library"
   },
   "quotes": {
     "aria_label": "Inspirational quotes",
