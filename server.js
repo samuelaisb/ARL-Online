@@ -1770,7 +1770,6 @@ app.delete('/api/inventory/:id/reservations/:reservationId', requireAuth, requir
   }
 
   try {
-    const existing = await findReservationWithItem(reservationId);
     const result = await removeReservation(itemId, reservationId);
 
     if (result.notFound) {
@@ -1781,13 +1780,13 @@ app.delete('/api/inventory/:id/reservations/:reservationId', requireAuth, requir
       return res.status(404).json({ error: 'Reservation not found.' });
     }
 
-    const removed = existing?.reservation;
+    const { removed } = result;
     if (
-      existing?.item.tag === 'expertise' &&
-      (removed?.status === 'pending' || removed?.status === 'reserved')
+      result.item.tag === 'expertise' &&
+      (removed.status === 'pending' || removed.status === 'reserved')
     ) {
       await handleConsultationCancelled(
-        existing.item,
+        result.item,
         { ...removed, cancelledBy: 'admin' },
         removed.status,
       );
@@ -1834,6 +1833,12 @@ app.patch('/api/inventory/:id/reservations/:reservationId', requireAuth, require
 
     if (result.notFound) {
       return res.status(404).json({ error: 'Item not found.' });
+    }
+
+    if (result.isConsultation) {
+      return res.status(400).json({
+        error: 'Consultations can only be scheduled, cancelled, or refused, not edited directly.',
+      });
     }
 
     if (result.reservationNotFound) {
@@ -1955,8 +1960,8 @@ app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => 
   }
 
   try {
-    const existingItem = await findInventoryItem(id);
     const result = await deleteInventoryItem(id);
+    const existingItem = result.item;
 
     if (result.notFound) {
       return res.status(404).json({ error: 'Item not found.' });

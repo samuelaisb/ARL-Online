@@ -19,33 +19,21 @@ The Expertise category is a fourth inventory tag. Members request a consultation
 
 ## Backlog, in priority order
 
-The 2026-10-05 review found no high-severity issues. Authorization on the schedule/cancel/mentor-profile routes holds, emails are HTML-escaped, and public routes strip private fields. These are the real problems, most important first. Line numbers drift, so they're given by function.
+The 2026-10-05 review found no high-severity issues. Authorization on the schedule/cancel/mentor-profile routes holds, emails are HTML-escaped, and public routes strip private fields. These are the remaining problems, most important first. (The schedule race and the admin reservation PATCH bypass were fixed on 2026-10-05.) Line numbers drift, so they're given by function.
 
-### 1. Schedule race can leak Zoom meetings and send false "confirmed" emails (medium)
-
-- **Where:** `scheduleConsultation` in `src/lib/inventory-store.js`; `refuseReservation`, `removeReservation`, `patchReservation`, `deleteInventoryItem` in the same file.
-- **Problem:** the final update filters on `.eq('status', 'pending')` but never checks that a row changed (supabase-js returns no error on zero rows). The four functions above don't take `withItemLock`, so an admin refuse/delete during the Zoom call (up to ~30 s) makes the update a no-op. The meeting stays alive and both people get "Consultation confirmed".
-- **Fix:** add `.select('id')` to the update. If no row comes back, delete the meeting and return `{ invalidStatus: true }`. Wrap the four functions in `withItemLock(itemId, …)`.
-
-### 2. Admin reservation PATCH bypasses the consultation lifecycle (medium)
-
-- **Where:** `PATCH /api/inventory/:id/reservations/:reservationId` in `server.js` → `patchReservation`.
-- **Problem:** on expertise rows it can set `pending`/`reserved`/`refused` with no Zoom create/delete and no email. It can revive a cancelled consultation (re-scheduling then orphans the old meeting) or mark one `reserved` with no `meeting_at`.
-- **Fix:** return 400 when `item.tag === 'expertise'`. Consultations change only through schedule, cancel, or refuse.
-
-### 3. Calendar-invite (ICS) injection through mentor names (medium)
+### 1. Calendar-invite (ICS) injection through mentor names (medium)
 
 - **Where:** `icsEscape` and `icsFold` in `server.js`; `readMentorProfileInput` in `server.js`; admin `PATCH /api/inventory/:id`.
 - **Problem:** `icsEscape` only replaces `\r?\n`, so a bare `\r` gets through. Since Share Expertise, any confirmed user controls the title written into `SUMMARY:`. The title also goes into email subjects.
 - **Fix:** `.replace(/\r\n|\r|\n/g, '\\n')` and strip other control characters in `icsEscape`. Reject `/[\u0000-\u001f\u007f]/` in titles on both write paths. While there, make `icsFold` fold at 75 bytes without splitting a UTF-8 character (it currently counts 73 JS characters).
 
-### 4. Members can harvest mentor emails (medium, privacy)
+### 2. Members can harvest mentor emails (medium, privacy)
 
 - **Where:** `serializeConsultationForUser` (member view) behind `GET /api/account/consultations`.
 - **Problem:** `expertEmail` is returned while the request is still `pending`. Anyone can request, read the email, cancel to free the slot, and repeat.
 - **Fix:** only return `expertEmail` once `status === 'reserved'` (or never; the scheduled email already introduces them). Update the `AGENTS.md` sanitization table and the `.cursor/rules/expertise-consultations.mdc` "Account API" invariant to match.
 
-### 5. Lower-priority server hardening
+### 3. Lower-priority server hardening
 
 - 10mb JSON parsers run before `requireAuth` and the rate limiter on `/api/account/mentor-profile` and `POST`/`PATCH /api/inventory`. Order them as limiter → `requireAuth` → parser (`requireAuth` only reads headers).
 - `src/lib/zoom.js` keeps a rejected token cached until expiry. On a 401, clear `cachedToken` and retry once.
@@ -54,7 +42,7 @@ The 2026-10-05 review found no high-severity issues. Authorization on the schedu
 - `checkReservationSchema()` only probes migration 002. Also probe the 005–007 columns (`time_slots`, `meeting_at`, `zoom_meeting_id`, `cancelled_by`, `expert_email`, `long_body`) and log which migration is missing.
 - Optional: add a check constraint on `reservations.cancelled_by` (`member`/`expert`/`admin`) in a new `008_*.sql`.
 
-### 6. Client fixes (low)
+### 4. Client fixes (low)
 
 - `AccountConsultations.svelte`: both buttons show a progress label during either action ("Cancelling…" while scheduling). Track an `actionType` next to `actionId`.
 - `ItemDetailPage.svelte` + `ConsultationRequestForm.svelte`: the consultation success message appears twice. Let only the form show it.
@@ -63,7 +51,7 @@ The 2026-10-05 review found no high-severity issues. Authorization on the schedu
 - Links from `/account` into an expert overlay use `navigate(path)`, so closing the overlay lands on `/expertise` instead of back on `/account`. Push with the `{ arlItemOverlay: true }` history marker (add a small helper in `router.js`).
 - `AccountPage.svelte`: `aria-controls="share-expertise-panel"` points at nothing until the panel first mounts.
 
-### 7. Deploy cleanup (low)
+### 5. Deploy cleanup (low)
 
 - `scripts/cloud-build.sh` uses `--set-env-vars`, which **replaces** the whole Cloud Run env list on every deploy, so anything set in the console (notably `ORG_ADDRESS`) is wiped. Switch to gcloud's custom delimiter (`--set-env-vars "^|^K=v|K2=v"`) or `--env-vars-file`, then pass `ORG_ADDRESS` from `.env` and update the docs that say to set it by hand.
 - Warn in `cloud-build.sh` when only some of the three `ZOOM_*` credentials are set (Zoom would silently turn off). The `zoom-client-secret` secret exists in production, so checking for it before binding only matters for fresh environments.
@@ -80,6 +68,7 @@ The 2026-10-05 review found no high-severity issues. Authorization on the schedu
 
 ## Working notes
 
+- **Local dev uses the production database.** The local `.env` points at the production Supabase project and has live Zoom, Resend, and Slack credentials, so `npm run dev` reads and writes real data. Requesting, scheduling, or cancelling locally creates real Zoom meetings, sends real emails, and posts to Slack. Browse read-only, and test write paths against a mocked Supabase client (or a separate dev project) unless the user approves a live test.
 - `npm run dev` failed twice on 2026-10-05 with "Port 3000 is in use" while another `npm run dev` was already running; the auto-free in `scripts/dev.js` did not clear it. Check `lsof -i :3000 -i :5173` and reuse or stop the existing server first.
 - Supabase **Confirm email** must stay on. Admin and expert checks rely on confirmed emails, and member checks rely on it implicitly.
 - Locks are per process, so don't scale Cloud Run past one instance without moving locking into Postgres (e.g. `SELECT … FOR UPDATE` or advisory locks).

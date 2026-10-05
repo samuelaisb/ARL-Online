@@ -42,3 +42,4 @@ There is no test suite or linter. Verify with `npm run build`, `node --check`, a
 - Work lands on `main` at `github.com/samuelaisb/ARL-Online` as direct commits (no PR flow so far). Commit subject is one sentence ending in a period, then a short body.
 - Git identity isn't configured globally on this Mac. Commit as `Samuel AisB <samuelaisb@mac.home>` (e.g. `git -c user.name="Samuel AisB" -c user.email="samuelaisb@mac.home" commit ...`) unless the user says otherwise.
 - `.env` holds real secrets and is gitignored. Never commit it or print its values.
+- Local `.env` is the **production** Supabase project plus live Zoom, Resend, and Slack. Don't exercise write flows (requests, scheduling, cancelling, admin edits) in local dev without the user's go-ahead; test them against a mocked Supabase client instead.

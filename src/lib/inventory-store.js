@@ -603,18 +603,21 @@ export async function updateExpertiseItem(id, updates) {
 }
 
 export async function deleteInventoryItem(id) {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from('inventory_items').delete().eq('id', id).select('id');
+  return withItemLock(id, async () => {
+    const item = await findInventoryItem(id);
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.from('inventory_items').delete().eq('id', id).select('id');
 
-  if (error) {
-    throw new Error(error.message || 'Could not delete inventory item.');
-  }
+    if (error) {
+      throw new Error(error.message || 'Could not delete inventory item.');
+    }
 
-  if (!data || data.length === 0) {
-    return { notFound: true };
-  }
+    if (!data || data.length === 0) {
+      return { notFound: true };
+    }
 
-  return { success: true };
+    return { success: true, item };
+  });
 }
 
 export async function findInventoryItemBySlug(tag, slug) {
@@ -736,96 +739,108 @@ export async function addReservation(
 }
 
 export async function removeReservation(itemId, reservationId) {
-  const item = await findInventoryItem(itemId);
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
 
-  if (!item) {
-    return { notFound: true };
-  }
+    if (!item) {
+      return { notFound: true };
+    }
 
-  const reservations = Array.isArray(item.reservations) ? item.reservations : [];
-  const exists = reservations.some((entry) => entry.id === reservationId);
+    const reservations = Array.isArray(item.reservations) ? item.reservations : [];
+    const removed = reservations.find((entry) => entry.id === reservationId);
 
-  if (!exists) {
-    return { reservationNotFound: true };
-  }
+    if (!removed) {
+      return { reservationNotFound: true };
+    }
 
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from('reservations')
-    .delete()
-    .eq('id', reservationId)
-    .eq('item_id', itemId);
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('id', reservationId)
+      .eq('item_id', itemId);
 
-  if (error) {
-    throw new Error(error.message || 'Could not delete reservation.');
-  }
+    if (error) {
+      throw new Error(error.message || 'Could not delete reservation.');
+    }
 
-  item.reservations = reservations.filter((entry) => entry.id !== reservationId);
-  return { item };
+    item.reservations = reservations.filter((entry) => entry.id !== reservationId);
+    // `removed` is read inside the lock, so it includes a schedule that finished first.
+    return { item, removed };
+  });
 }
 
+/** Equipment / books / rooms only — expertise items return `{ isConsultation: true }`. */
 export async function patchReservation(itemId, reservationId, updates) {
-  const item = await findInventoryItem(itemId);
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
 
-  if (!item) {
-    return { notFound: true };
-  }
+    if (!item) {
+      return { notFound: true };
+    }
 
-  const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+    // Consultations change only through schedule, cancel, or refuse, which keep Zoom
+    // and the emails in step; a raw status edit would skip both.
+    if (item.tag === 'expertise') {
+      return { isConsultation: true };
+    }
 
-  if (reservationIndex === -1) {
-    return { reservationNotFound: true };
-  }
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
 
-  const existing = item.reservations[reservationIndex];
-  const updated = normalizeReservation({
-    id: existing.id,
-    startDate: updates.startDate ?? existing.startDate,
-    endDate: updates.endDate ?? existing.endDate,
-    status: updates.status ?? existing.status,
-    userEmail: updates.userEmail ?? existing.userEmail,
-    timeSlots: existing.timeSlots,
-    requestSummary: existing.requestSummary,
-    meetingAt: existing.meetingAt,
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+    const updated = normalizeReservation({
+      id: existing.id,
+      startDate: updates.startDate ?? existing.startDate,
+      endDate: updates.endDate ?? existing.endDate,
+      status: updates.status ?? existing.status,
+      userEmail: updates.userEmail ?? existing.userEmail,
+      timeSlots: existing.timeSlots,
+      requestSummary: existing.requestSummary,
+      meetingAt: existing.meetingAt,
+    });
+
+    if (!updated) {
+      return { invalidUpdate: true };
+    }
+
+    const tagValidation = validateReservationDates(item.tag, updated.startDate, updated.endDate);
+
+    if (!tagValidation.ok) {
+      return { invalidUpdate: true, validationError: tagValidation.error };
+    }
+
+    if (
+      item.tag !== 'expertise' &&
+      (updated.status === 'reserved' || updated.status === 'pending') &&
+      hasReservationCollision(item.reservations, updated.startDate, updated.endDate, reservationId)
+    ) {
+      return { collision: true };
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .update({
+        start_date: updated.startDate,
+        end_date: updated.endDate,
+        status: updated.status,
+        user_email: updated.userEmail ?? null,
+      })
+      .eq('id', reservationId)
+      .eq('item_id', itemId);
+
+    if (error) {
+      throw new Error(error.message || 'Could not update reservation.');
+    }
+
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated };
   });
-
-  if (!updated) {
-    return { invalidUpdate: true };
-  }
-
-  const tagValidation = validateReservationDates(item.tag, updated.startDate, updated.endDate);
-
-  if (!tagValidation.ok) {
-    return { invalidUpdate: true, validationError: tagValidation.error };
-  }
-
-  if (
-    item.tag !== 'expertise' &&
-    (updated.status === 'reserved' || updated.status === 'pending') &&
-    hasReservationCollision(item.reservations, updated.startDate, updated.endDate, reservationId)
-  ) {
-    return { collision: true };
-  }
-
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from('reservations')
-    .update({
-      start_date: updated.startDate,
-      end_date: updated.endDate,
-      status: updated.status,
-      user_email: updated.userEmail ?? null,
-    })
-    .eq('id', reservationId)
-    .eq('item_id', itemId);
-
-  if (error) {
-    throw new Error(error.message || 'Could not update reservation.');
-  }
-
-  item.reservations = [...item.reservations];
-  item.reservations[reservationIndex] = updated;
-  return { item, reservation: updated };
 }
 
 /** Equipment / books / rooms only — expertise items go through scheduleConsultation. */
@@ -1118,18 +1133,26 @@ export async function scheduleConsultation(
     }
 
     const supabase = getSupabaseAdmin();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('reservations')
       .update(updateRow)
       .eq('id', reservationId)
       .eq('item_id', itemId)
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .select('id');
 
-    if (error) {
+    // Zero rows means the request was refused, cancelled, or deleted while Zoom was
+    // being called (supabase-js reports no error for that), so undo the meeting.
+    const unchanged = !error && (!data || data.length === 0);
+
+    if (error || unchanged) {
       if (meeting && deleteMeeting) {
         await deleteMeeting(meeting.id).catch((cleanupError) =>
           console.error('Could not remove Zoom meeting after failed schedule:', cleanupError),
         );
+      }
+      if (unchanged) {
+        return { invalidStatus: true };
       }
       throw new Error(error.message || 'Could not schedule consultation.');
     }
@@ -1258,40 +1281,42 @@ export async function listConsultationsForUser(email, { includeExpert = false } 
 }
 
 export async function refuseReservation(itemId, reservationId) {
-  const item = await findInventoryItem(itemId);
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
 
-  if (!item) {
-    return { notFound: true };
-  }
+    if (!item) {
+      return { notFound: true };
+    }
 
-  const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
 
-  if (reservationIndex === -1) {
-    return { reservationNotFound: true };
-  }
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
 
-  const existing = item.reservations[reservationIndex];
+    const existing = item.reservations[reservationIndex];
 
-  if (existing.status !== 'pending') {
-    return { invalidStatus: true };
-  }
+    if (existing.status !== 'pending') {
+      return { invalidStatus: true };
+    }
 
-  const updated = { ...existing, status: 'refused' };
+    const updated = { ...existing, status: 'refused' };
 
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from('reservations')
-    .update({ status: 'refused' })
-    .eq('id', reservationId)
-    .eq('item_id', itemId);
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'refused' })
+      .eq('id', reservationId)
+      .eq('item_id', itemId);
 
-  if (error) {
-    throw new Error(error.message || 'Could not refuse reservation.');
-  }
+    if (error) {
+      throw new Error(error.message || 'Could not refuse reservation.');
+    }
 
-  item.reservations = [...item.reservations];
-  item.reservations[reservationIndex] = updated;
-  return { item, reservation: updated };
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated };
+  });
 }
 
 /** Upsert all items from a legacy JSON array (manual migration script). */
