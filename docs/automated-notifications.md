@@ -61,8 +61,7 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 
 | Trigger | Component | Locale key | EN text | FR text | Duration | Conditions |
 |---------|-----------|------------|---------|---------|----------|------------|
-| Card hover **4 s** | `InventoryCard.svelte` | `kimchi.item_reactions` (random) | See [Item reactions](#kimchi-item_reactions-array) | See [Item reactions](#kimchi-item_reactions-array) | **5000 ms** (default) | Shared 3 s cooldown across all cards; shuffle/no-repeat |
-| **Reserve Inventory** click | `InventoryCard.svelte` | `kimchi.item_reactions` (random) | (same) | (same) | **5000 ms** (default) | Same cooldown/shuffle as hover; fires before opening calendar modal |
+| Card hover **4 s** | `InventoryCard.svelte` | `kimchi.item_reactions` (random) | See [Item reactions](#kimchi-item_reactions-array) | See [Item reactions](#kimchi-item_reactions-array) | **5000 ms** (default) | Shared 3 s cooldown across all cards; shuffle/no-repeat. Hover only — **Reserve Inventory** / **Request Consultation** clicks do not fire a reaction |
 
 ### Reservation flow (member)
 
@@ -157,7 +156,7 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `src/lib/notification-store.js` | `notify()`, `dismiss()`, sleep gate |
 | `src/components/KimchiNotification.svelte` | Widget shell, greeting/auth/tap/sleep logic |
 | `src/components/KimchiBubble.svelte` | Single bubble render + auto-dismiss |
-| `src/components/InventoryCard.svelte` | Item reaction hover + reserve click |
+| `src/components/InventoryCard.svelte` | Item reaction on hover |
 | `src/components/HeaderAuth.svelte` | Register click, sign-out |
 | `src/components/AccountPage.svelte` | Sign-out |
 | `src/components/ReserveAuthRequiredModal.svelte` | Register from reserve gate |

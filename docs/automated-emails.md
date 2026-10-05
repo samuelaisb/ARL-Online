@@ -14,7 +14,7 @@ New pending reservation requests on equipment, books, and rooms do **not** send 
 |----------|----------|---------|---------|
 | `RESEND_API_KEY` | Yes (at send time) | — | Resend API key. Server starts without it (warning logged); `getResend()` throws when sending if unset |
 | `EMAIL_FROM` | No | `noreply@activistresourcelibrary.com` | Sender address on all app emails |
-| `SITE_URL` | Recommended (prod) | Falls back to `https://activistresourcelibrary.com` | Base origin for email links and the header logo (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped) |
+| `SITE_URL` | Recommended (prod) | Falls back to `https://activistresourcelibrary.com` | Base origin for email links (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped). The header logo is an inline attachment (`cid:aisb-logo`) and does not depend on it |
 | `ORG_ADDRESS` | No | `5310 Boulevard Saint-Laurent, Montréal QC H2T 1S1` | Footer street address (`orgContact` in `src/lib/email-brand.js`). `cloud:build` does not pass it — the comma breaks gcloud's env list |
 | `ORG_PHONE` | No | `514.844.2472` | Footer phone. Passed by `cloud:build` when set in `.env` |
 | `EMAIL_FUNDER_LOGO_URL` | No | unset | Absolute URL of a funder logo strip. When set, the member "consultation confirmed" email shows it above the footer |

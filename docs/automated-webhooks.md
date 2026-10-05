@@ -19,7 +19,7 @@ The ARL Online server posts to **one optional outbound webhook**: a Slack workfl
 
 ### When it runs
 
-1. Member submits valid reservation dates (authenticated JWT).
+1. Member submits valid reservation dates, or time slots + summary for an expertise consultation (authenticated JWT).
 2. Reservation is persisted with `status: pending`.
 3. `notifySlackReservation({ item, reservation })` is called without `await`.
 4. If URL is unset, function returns immediately (no network call).
