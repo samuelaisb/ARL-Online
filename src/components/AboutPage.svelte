@@ -16,6 +16,11 @@
     navigate('/');
   }
 
+  function goToPrivacy(event) {
+    event.preventDefault();
+    navigate('/privacy');
+  }
+
   function clearFormStatus() {
     formStatus = '';
     formStatusType = '';
@@ -122,6 +127,16 @@
         <p class="about-partner__body">{$t('about.partner_fes_body')}</p>
       </li>
     </ul>
+  </section>
+
+  <section class="about-section" aria-labelledby="about-privacy-heading">
+    <h2 id="about-privacy-heading" class="about-section__title">{$t('about.privacy_heading')}</h2>
+    <p class="about-section__body">
+      {$t('about.privacy_body')}
+      <a href="/privacy" class="about-section__link" onclick={goToPrivacy}>
+        {$t('about.privacy_link')}
+      </a>
+    </p>
   </section>
 
   <section class="about-section" aria-labelledby="about-contact-heading">

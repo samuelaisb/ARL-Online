@@ -63,7 +63,14 @@ The 2026-10-05 review found no high-severity issues. Authorization on the schedu
 - Set `EMAIL_FUNDER_LOGO_URL` if the funder strip should appear on consultation emails.
 - Zoom: either grant the app `user:read:settings:admin` + `user:update:settings:admin`, or set **Who can share = All Participants** for the host in the Zoom web portal. `npm run zoom:check` reports which.
 - Confirm the Slack workflow trigger accepts `time_slots`, `request_summary`, `expert_email`, `admin_url`.
-- French member agreement: a draft exists at `content/contracts/fr/member-agreementfr.md` but `src/lib/member-agreement.js` maps `fr` to English. Rename it to `member-agreement.md` and import it once the copy is approved.
+- French member agreement: `content/contracts/fr/member-agreementfr.md` is an empty file and `src/lib/member-agreement.js` maps `fr` to English. Translate the current English agreement (now 12 sections, including Expertise and privacy), save it as `fr/member-agreement.md`, and import it once the copy is approved.
+- Privacy policy (`/privacy`, added 2026-10-05) needs a human review before launch:
+  - **Google Analytics runs by default.** Law 25 (s. 8.1) expects tracking technology to be off until the person turns it on, so GA in `index.html` likely needs a consent banner or Consent Mode default-denied. The policy text describes GA but does not by itself make it compliant.
+  - The policy names the **person in charge of the protection of personal information** by title only, with the office address, phone, and the `/about` contact form. Under Law 25 this defaults to AisB's highest authority unless delegated in writing. Add a dedicated email if one exists.
+  - It says AisB assesses protection before sending data outside Québec (Supabase, Google Cloud `us-east1`, Resend, Zoom, Slack, GA). Those privacy impact assessments need to actually exist.
+  - Retention is "while the account is active and as needed". There is no self-serve account deletion; requests are handled by hand.
+  - Keep `content/policies/en` and `fr` in sync and bump *Last updated* on every change.
+- **Sign in with Google / Discord** is live (providers enabled in Supabase 2026-10-05; setup steps in `AGENTS.md` → Auth (Supabase)). Keep `https://activistresourcelibrary.com/**` in Supabase Redirect URLs so sign-in returns to the starting page. The privacy policy names both as optional sign-in providers; they also belong in the outside-Québec assessment below.
 - Not built yet: reminders, rescheduling, expert-side "decline" (experts cancel instead), French emails.
 
 ## Working notes

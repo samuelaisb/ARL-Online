@@ -1534,6 +1534,7 @@ const SITEMAP_STATIC_PATHS = [
   '/',
   '/howthisworks',
   '/about',
+  '/privacy',
   '/equipment',
   '/books',
   '/rooms',

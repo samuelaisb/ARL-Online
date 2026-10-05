@@ -96,6 +96,7 @@
     "password": "Password",
     "email_placeholder": "you@example.com",
     "close_aria": "Close",
+    "close": "Close",
     "cancel": "Cancel",
     "creating": "Creating...",
     "logging_in": "Logging in...",
@@ -112,7 +113,18 @@
     "agree_to_terms": "Agree to the terms",
     "contract_signed": "Member agreement signed",
     "contract_required": "Please read and agree to the member agreement before creating your account.",
-    "email_updates_opt_in": "I agree to receive email updates from the Activist Resource Library"
+    "email_updates_opt_in": "I agree to receive email updates from the Activist Resource Library",
+    "log_in_with": "Log in with {provider}",
+    "sign_up_with": "Sign up with {provider}",
+    "or_use_email": "or use your email",
+    "oauth_redirecting": "Redirecting...",
+    "oauth_failed": "Sign-in didn't go through. Please try again.",
+    "oauth_no_email": "That account has no verified email address. Add one with the provider, or sign up with your email instead.",
+    "complete_signup_title": "Finish creating your account",
+    "complete_signup_message": "One more step: read and sign the member agreement to finish creating your account.",
+    "complete_signup_contract_required": "Please read and agree to the member agreement to finish creating your account.",
+    "complete_signup_submit": "Finish sign-up",
+    "saving": "Saving..."
   },
   "admin": {
     "heading": "Hello lovely AisBer! Welcome to the Admin Page",
@@ -384,7 +396,14 @@
     "contact_error": "Could not send your message. Please try again later.",
     "contact_validation": "Please fill in your name, email, and message.",
     "contact_invalid_email": "Please enter a valid email address.",
-    "contact_website_label": "Website"
+    "contact_website_label": "Website",
+    "privacy_heading": "Your privacy",
+    "privacy_body": "We only collect what we need to run the library, and you can ask to see, correct, or delete your information at any time.",
+    "privacy_link": "Read our privacy policy"
+  },
+  "privacy": {
+    "heading": "Privacy policy",
+    "back_to_inventory": "← Back to inventory"
   },
   "kimchi": {
     "name": "Kimchi",
@@ -455,7 +474,9 @@
     "category_expertise_title": "Expertise | Activist Resource Library",
     "category_expertise_description": "Request free consultations with experts in organizing, communications, and more from the Activist Resource Library.",
     "admin_title": "Admin | Activist Resource Library",
-    "account_title": "Account | Activist Resource Library"
+    "account_title": "Account | Activist Resource Library",
+    "privacy_title": "Privacy Policy | Activist Resource Library",
+    "privacy_description": "How Apathy is Boring collects, uses, and protects personal information on the Activist Resource Library, and how to exercise your rights under Québec law."
   },
   "quotes": {
     "aria_label": "Inspirational quotes",

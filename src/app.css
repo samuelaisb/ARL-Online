@@ -691,6 +691,7 @@ h1 {
 }
 
 .about-page__back,
+.privacy-page__back,
 .how-this-works-page__back,
 .account-page__back,
 .admin-page__back {
@@ -698,6 +699,7 @@ h1 {
 }
 
 .about-page__back-link,
+.privacy-page__back-link,
 .how-this-works-page__back-link,
 .account-page__back-link,
 .admin-page__back-link {
@@ -707,6 +709,7 @@ h1 {
 }
 
 .about-page__back-link:hover,
+.privacy-page__back-link:hover,
 .how-this-works-page__back-link:hover,
 .account-page__back-link:hover,
 .admin-page__back-link:hover {
@@ -727,6 +730,51 @@ h1 {
   color: var(--color-text-muted);
   font-size: 0.9375rem;
   line-height: 1.6;
+}
+
+.about-section__link {
+  color: var(--color-mint);
+  font-weight: 600;
+}
+
+.about-section__link:hover {
+  color: var(--color-dark);
+}
+
+.privacy-content {
+  max-width: 46rem;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.privacy-content h2 {
+  margin: 2rem 0 0.5rem;
+  color: var(--color-text);
+  font-size: 1.25rem;
+}
+
+.privacy-content p,
+.privacy-content ul {
+  margin: 0 0 0.875rem;
+}
+
+.privacy-content li {
+  margin-bottom: 0.35rem;
+}
+
+.privacy-content strong {
+  color: var(--color-text);
+}
+
+.privacy-content a {
+  color: var(--color-mint);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.privacy-content a:hover {
+  color: var(--color-dark);
 }
 
 .about-partners {
@@ -2445,6 +2493,11 @@ button:disabled {
   margin-bottom: 0.35rem;
 }
 
+.member-agreement-content ol ol {
+  margin: 0.35rem 0 0.75rem;
+  list-style-type: lower-alpha;
+}
+
 .member-agreement-content a {
   color: var(--color-mint);
   font-weight: 600;
@@ -2465,6 +2518,77 @@ button:disabled {
 .auth-contract {
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+/* "Log in with Google / Discord" buttons above the email form (AuthModal). */
+.auth-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.btn-oauth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid transparent;
+}
+
+.btn-oauth__icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+}
+
+/* Google sign-in branding: white button, grey outline, dark label. */
+.btn-oauth--google {
+  background: #ffffff;
+  color: #1f1f1f;
+  border-color: #747775;
+}
+
+.btn-oauth--google:hover:not(:disabled) {
+  background: #f2f2f2;
+}
+
+/* Discord branding: blurple button, white logo and label. */
+.btn-oauth--discord {
+  background: #5865f2;
+  color: #ffffff;
+}
+
+.btn-oauth--discord:hover:not(:disabled) {
+  background: #4752c4;
+}
+
+.btn-oauth:focus-visible {
+  outline: 2px solid var(--color-dark);
+  outline-offset: 2px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.1rem 0 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.auth-complete-intro {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
 }
 
 .auth-opt-in {

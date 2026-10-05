@@ -6,6 +6,7 @@
   import { notify } from '../lib/notification-store.js';
   import AccountConsultations from './AccountConsultations.svelte';
   import AccountShareExpertise from './AccountShareExpertise.svelte';
+  import MemberAgreementModal from './MemberAgreementModal.svelte';
 
   let { onOpenLogin, onOpenRegister, onProfileSaved } = $props();
 
@@ -13,6 +14,7 @@
   let signOutError = $state('');
   let showShareExpertise = $state(false);
   let shareExpertiseMounted = $state(false);
+  let agreementModal = $state();
 
   function toggleShareExpertise() {
     showShareExpertise = !showShareExpertise;
@@ -92,6 +94,14 @@
         >
           {$t('share_expertise.heading')}
         </button>
+        <button
+          type="button"
+          class="btn-header btn-header--secondary"
+          aria-haspopup="dialog"
+          onclick={() => agreementModal?.open()}
+        >
+          {$t('auth.member_agreement_title')}
+        </button>
         {#if isApathyAdmin($session)}
           <a href="/admin" class="btn-header btn-header--secondary" onclick={openAdmin}>
             {$t('auth.admin')}
@@ -119,5 +129,7 @@
     {/if}
 
     <AccountConsultations />
+
+    <MemberAgreementModal bind:this={agreementModal} readOnly />
   {/if}
 </main>

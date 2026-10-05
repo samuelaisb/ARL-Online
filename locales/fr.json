@@ -96,6 +96,7 @@
     "password": "Mot de passe",
     "email_placeholder": "vous@exemple.com",
     "close_aria": "Fermer",
+    "close": "Fermer",
     "cancel": "Annuler",
     "creating": "Création…",
     "logging_in": "Connexion…",
@@ -112,7 +113,18 @@
     "agree_to_terms": "Accepter les conditions",
     "contract_signed": "Entente de membre signée",
     "contract_required": "Veuillez lire et accepter l'entente de membre avant de créer votre compte.",
-    "email_updates_opt_in": "J'accepte de recevoir des mises à jour par courriel de la Bibliothèque de ressources militantes"
+    "email_updates_opt_in": "J'accepte de recevoir des mises à jour par courriel de la Bibliothèque de ressources militantes",
+    "log_in_with": "Connexion avec {provider}",
+    "sign_up_with": "Inscription avec {provider}",
+    "or_use_email": "ou utilisez votre courriel",
+    "oauth_redirecting": "Redirection…",
+    "oauth_failed": "La connexion n'a pas abouti. Veuillez réessayer.",
+    "oauth_no_email": "Ce compte n'a pas d'adresse courriel vérifiée. Ajoutez-en une chez le fournisseur, ou inscrivez-vous plutôt avec votre courriel.",
+    "complete_signup_title": "Terminez la création de votre compte",
+    "complete_signup_message": "Dernière étape : lisez et signez l'entente de membre pour terminer la création de votre compte.",
+    "complete_signup_contract_required": "Veuillez lire et accepter l'entente de membre pour terminer la création de votre compte.",
+    "complete_signup_submit": "Terminer l'inscription",
+    "saving": "Enregistrement…"
   },
   "admin": {
     "heading": "Bonjour lovely AisBer! Bienvenue sur la page Admin",
@@ -384,7 +396,14 @@
     "contact_error": "Impossible d'envoyer votre message. Veuillez réessayer plus tard.",
     "contact_validation": "Veuillez remplir votre nom, courriel et message.",
     "contact_invalid_email": "Veuillez entrer une adresse courriel valide.",
-    "contact_website_label": "Site web"
+    "contact_website_label": "Site web",
+    "privacy_heading": "Votre vie privée",
+    "privacy_body": "Nous recueillons seulement ce dont nous avons besoin pour faire fonctionner la bibliothèque, et vous pouvez demander à consulter, corriger ou supprimer vos renseignements en tout temps.",
+    "privacy_link": "Lire notre politique de confidentialité"
+  },
+  "privacy": {
+    "heading": "Politique de confidentialité",
+    "back_to_inventory": "← Retour à l'inventaire"
   },
   "kimchi": {
     "name": "Kimchi",
@@ -455,7 +474,9 @@
     "category_expertise_title": "Expertise | Bibliothèque ressources activistes",
     "category_expertise_description": "Demandez des consultations gratuites avec des experts en organisation, communications et plus encore à la bibliothèque ressources activistes.",
     "admin_title": "Admin | Bibliothèque ressources activistes",
-    "account_title": "Compte | Bibliothèque ressources activistes"
+    "account_title": "Compte | Bibliothèque ressources activistes",
+    "privacy_title": "Politique de confidentialité | Bibliothèque ressources activistes",
+    "privacy_description": "Comment Apathy is Boring recueille, utilise et protège les renseignements personnels sur la bibliothèque ressources activistes, et comment exercer vos droits selon la loi québécoise."
   },
   "quotes": {
     "aria_label": "Citations inspirantes",

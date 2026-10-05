@@ -9,6 +9,7 @@
     isHowThisWorksRoute,
     isInventoryHomePath,
     isItemDetailRoute,
+    isPrivacyRoute,
     path,
   } from './lib/router.js';
   import {
@@ -46,6 +47,7 @@
   const onHowThisWorksPage = $derived(isHowThisWorksRoute($path));
   const onAboutPage = $derived(isAboutRoute($path));
   const onAccountPage = $derived(isAccountRoute($path));
+  const onPrivacyPage = $derived(isPrivacyRoute($path));
   const onItemDetailPage = $derived(isItemDetailRoute($path));
   const onInventoryPage = $derived(isInventoryHomePath($path));
 
@@ -249,6 +251,10 @@
     {:else if onAboutPage}
       {#await import('./components/AboutPage.svelte') then { default: AboutPage }}
         <AboutPage />
+      {/await}
+    {:else if onPrivacyPage}
+      {#await import('./components/PrivacyPage.svelte') then { default: PrivacyPage }}
+        <PrivacyPage />
       {/await}
     {:else if onAccountPage}
       {#await import('./components/AccountPage.svelte') then { default: AccountPage }}

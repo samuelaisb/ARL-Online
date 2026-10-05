@@ -252,6 +252,10 @@ export function isAboutRoute(pathname) {
   return normalizePath(pathname) === '/about';
 }
 
+export function isPrivacyRoute(pathname) {
+  return normalizePath(pathname) === '/privacy';
+}
+
 export function isAccountRoute(pathname) {
   return normalizePath(pathname) === '/account';
 }

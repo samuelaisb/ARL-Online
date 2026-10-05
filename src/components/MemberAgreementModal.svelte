@@ -2,7 +2,8 @@
   import { getMemberAgreementHtml } from '../lib/member-agreement.js';
   import { locale, t } from '../lib/i18n.js';
 
-  let { onagreed } = $props();
+  // `readOnly` shows the agreement for reference (Account page) with a Close button instead of Agree.
+  let { onagreed, readOnly = false } = $props();
 
   let dialog = $state();
 
@@ -41,9 +42,15 @@
     </div>
 
     <div class="modal-actions modal-actions--agreement">
-      <button type="button" class="btn-primary" onclick={handleAgree}>
-        {$t('auth.agree_to_terms')}
-      </button>
+      {#if readOnly}
+        <button type="button" class="btn-primary" onclick={close}>
+          {$t('auth.close')}
+        </button>
+      {:else}
+        <button type="button" class="btn-primary" onclick={handleAgree}>
+          {$t('auth.agree_to_terms')}
+        </button>
+      {/if}
     </div>
   </div>
 </dialog>

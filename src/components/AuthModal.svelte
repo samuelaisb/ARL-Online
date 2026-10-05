@@ -1,7 +1,14 @@
 <script>
-  import { signInWithEmail, signUpWithEmail } from '../lib/auth.js';
+  import {
+    OAUTH_PROVIDER_NAMES,
+    oauthProviders,
+    signInWithEmail,
+    signInWithOAuthProvider,
+    signUpWithEmail,
+  } from '../lib/auth.js';
   import { t } from '../lib/i18n.js';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
+  import OAuthProviderIcon from './OAuthProviderIcon.svelte';
 
   let dialog = $state();
   let agreementModal = $state();
@@ -11,6 +18,7 @@
   let contractSigned = $state(false);
   let emailUpdatesOptIn = $state(false);
   let submitting = $state(false);
+  let oauthProvider = $state('');
   let formStatus = $state('');
   let formStatusType = $state('');
 
@@ -19,12 +27,14 @@
     emailUpdatesOptIn = false;
   }
 
-  export function open(nextMode = 'login') {
+  /** `errorMessage` shows a failed OAuth / email-link redirect when the modal opens. */
+  export function open(nextMode = 'login', errorMessage = '') {
     activeMode = nextMode;
     email = '';
     password = '';
-    formStatus = '';
-    formStatusType = '';
+    formStatus = errorMessage;
+    formStatusType = errorMessage ? 'error' : '';
+    oauthProvider = '';
     resetRegisterState();
     dialog?.showModal();
   }
@@ -55,6 +65,22 @@
   function handleAgreementSigned() {
     contractSigned = true;
     clearFormStatus();
+  }
+
+  async function handleOAuth(provider) {
+    clearFormStatus();
+    oauthProvider = provider;
+
+    try {
+      // A register-form signature carries over; otherwise the agreement is asked after sign-in.
+      await signInWithOAuthProvider(provider, {
+        signedMemberAgreement: activeMode === 'register' && contractSigned,
+        emailUpdatesOptIn: activeMode === 'register' && emailUpdatesOptIn,
+      });
+    } catch (error) {
+      showFormStatus(error.message || $t('auth.auth_failed'), 'error');
+      oauthProvider = '';
+    }
   }
 
   async function handleSubmit(event) {
@@ -124,6 +150,32 @@
       </button>
     </header>
 
+    {#if $oauthProviders.length}
+      <div class="auth-oauth">
+        {#each $oauthProviders as provider (provider)}
+          <button
+            type="button"
+            class="btn-oauth btn-oauth--{provider}"
+            disabled={submitting || Boolean(oauthProvider)}
+            onclick={() => handleOAuth(provider)}
+          >
+            <OAuthProviderIcon {provider} />
+            <span>
+              {#if oauthProvider === provider}
+                {$t('auth.oauth_redirecting')}
+              {:else}
+                {$t(activeMode === 'register' ? 'auth.sign_up_with' : 'auth.log_in_with', {
+                  provider: OAUTH_PROVIDER_NAMES[provider],
+                })}
+              {/if}
+            </span>
+          </button>
+        {/each}
+      </div>
+
+      <p class="auth-divider"><span>{$t('auth.or_use_email')}</span></p>
+    {/if}
+
     <label for="auth-email">{$t('auth.email')}</label>
     <input
       id="auth-email"
@@ -178,7 +230,7 @@
 
     <div class="modal-actions">
       <button type="button" class="btn-secondary" onclick={close}>{$t('auth.cancel')}</button>
-      <button type="submit" class="btn-primary" disabled={submitting}>
+      <button type="submit" class="btn-primary" disabled={submitting || Boolean(oauthProvider)}>
         {#if submitting}
           {activeMode === 'register' ? $t('auth.creating') : $t('auth.logging_in')}
         {:else}

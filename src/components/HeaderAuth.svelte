@@ -1,18 +1,30 @@
 <script>
   import { onMount } from 'svelte';
   import { supabaseConfigured } from '../lib/supabase.js';
-  import { authReady, initAuth, session, signOut } from '../lib/auth.js';
+  import { authReady, authRedirectError, initAuth, session, signOut } from '../lib/auth.js';
   import { navigate } from '../lib/router.js';
   import { t, translateKey } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
   import AuthModal from './AuthModal.svelte';
+  import CompleteSignupModal from './CompleteSignupModal.svelte';
 
   let authModal = $state();
   let signingOut = $state(false);
 
   onMount(() => {
     initAuth();
+    if (authRedirectError) {
+      authModal?.open('login', formatRedirectError(authRedirectError));
+    }
   });
+
+  /** Supabase redirect errors are English and technical; lead with a localized message. */
+  function formatRedirectError(message) {
+    if (/email/i.test(message) && /provider/i.test(message)) {
+      return $t('auth.oauth_no_email');
+    }
+    return `${$t('auth.oauth_failed')} (${message})`;
+  }
 
   export function openLogin() {
     authModal?.open('login');
@@ -71,5 +83,6 @@
     {/if}
 
     <AuthModal bind:this={authModal} />
+    <CompleteSignupModal />
   </div>
 {/if}

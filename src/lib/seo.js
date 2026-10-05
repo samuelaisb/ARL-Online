@@ -37,6 +37,10 @@ export const ROUTE_SEO_KEYS = {
     title: 'seo.about_title',
     description: 'seo.about_description',
   },
+  '/privacy': {
+    title: 'seo.privacy_title',
+    description: 'seo.privacy_description',
+  },
   '/admin': {
     title: 'seo.admin_title',
     description: 'seo.default_description',
