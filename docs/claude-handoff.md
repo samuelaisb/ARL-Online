@@ -7,10 +7,11 @@ Claude Code is taking the lead on ARL Online from here. This is the state of the
 - **GitHub:** everything is committed and pushed to `main` (`github.com/samuelaisb/ARL-Online`). The big feature commit is `355cc29` (Expertise consultations, Zoom scheduling, Share Expertise, branded emails). The docs-alignment + handoff commit follows it.
 - **Build:** `npm run build` passes with no Svelte or accessibility warnings. `node --check` passes on `server.js` and all new server libs. Every locale key used in `src/` exists in both `en.json` and `fr.json`.
 - **No secrets** in the repo. `.env` is gitignored. `.DS_Store` files are now untracked and ignored.
-- **Not verified — check before the next deploy:**
-  - Whether this work is already live on Cloud Run (`arl-online`, `us-east1`). `cloud:build` uploads the local folder, so production may have been deployed from uncommitted code during development.
-  - Whether migrations `005_expertise.sql`, `006_consultation_scheduling.sql`, `007_expertise_copy.sql` have been applied to the production Supabase project. The app does not apply them, and the startup schema check only probes migration 002, so a missing migration fails on the first expertise request rather than at boot.
-  - Whether the `zoom-client-secret` secret exists in Google Secret Manager. `cloud:build` binds it whenever `ZOOM_CLIENT_SECRET` is in `.env`, and the deploy fails if the secret is missing.
+- **Production (confirmed by the user, 2026-10-05):**
+  - This work is live on Cloud Run (`arl-online`, `us-east1`).
+  - Migrations `005_expertise.sql`, `006_consultation_scheduling.sql`, and `007_expertise_copy.sql` are applied to the production Supabase project.
+  - Zoom works in production: consultations create and delete Zoom meetings, so `zoom-client-secret` is in Secret Manager and bound.
+  - Future migrations are still applied by hand in the Supabase SQL editor, and the startup schema check only probes migration 002, so a missing migration shows up on the first request that needs it, not at boot.
 
 ## What shipped in `355cc29` (summary)
 
@@ -65,7 +66,7 @@ The 2026-10-05 review found no high-severity issues. Authorization on the schedu
 ### 7. Deploy cleanup (low)
 
 - `scripts/cloud-build.sh` uses `--set-env-vars`, which **replaces** the whole Cloud Run env list on every deploy, so anything set in the console (notably `ORG_ADDRESS`) is wiped. Switch to gcloud's custom delimiter (`--set-env-vars "^|^K=v|K2=v"`) or `--env-vars-file`, then pass `ORG_ADDRESS` from `.env` and update the docs that say to set it by hand.
-- Warn in `cloud-build.sh` when only some of the three `ZOOM_*` credentials are set (Zoom is silently off today), and check that `zoom-client-secret` exists before binding it.
+- Warn in `cloud-build.sh` when only some of the three `ZOOM_*` credentials are set (Zoom would silently turn off). The `zoom-client-secret` secret exists in production, so checking for it before binding only matters for fresh environments.
 - `Dockerfile`: drop `COPY scripts ./scripts` (only the removed prerender needed it) and fix the comment claiming the Vite envPrefix includes `SUPABASE_` (it's `['VITE_', 'SITE_']`).
 
 ## Before public launch (product decisions, need the user)
