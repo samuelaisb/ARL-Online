@@ -18,9 +18,10 @@ export const CATEGORY_ROUTES = {
   '/equipment': 'equipment',
   '/books': 'books',
   '/rooms': 'rooms',
+  '/expertise': 'expertise',
 };
 
-export const ITEM_ROUTE_RE = /^\/(equipment|books|rooms)\/([^/]+)$/;
+export const ITEM_ROUTE_RE = /^\/(equipment|books|rooms|expertise)\/([^/]+)$/;
 
 export function getItemRouteParams(pathname) {
   const normalized = normalizePath(pathname);
@@ -93,6 +94,10 @@ export function categoryToPath(tag) {
 
   if (tag === 'rooms') {
     return '/rooms';
+  }
+
+  if (tag === 'expertise') {
+    return '/expertise';
   }
 
   return '/';

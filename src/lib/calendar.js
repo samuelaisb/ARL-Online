@@ -49,7 +49,7 @@ export function compareDateKeys(a, b) {
   return 0;
 }
 
-const RESERVATION_STATUSES = ['pending', 'reserved', 'refused', 'available'];
+const RESERVATION_STATUSES = ['pending', 'reserved', 'refused', 'cancelled', 'available'];
 
 export function normalizeReservationStatus(rawStatus) {
   const status = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : '';

@@ -16,6 +16,8 @@ export function isApathyAdmin(sessionValue) {
 }
 
 let authSubscription = null;
+/** Prevents duplicate POSTs when sign-up, SIGNED_IN, and initAuth fire together. */
+let welcomeEmailRequestedForUserId = null;
 
 async function requestWelcomeEmail() {
   if (!supabaseConfigured || !supabase) {
@@ -39,9 +41,15 @@ async function requestWelcomeEmail() {
 }
 
 function maybeRequestWelcomeEmail(user) {
-  if (!user?.user_metadata?.welcome_email_sent) {
-    requestWelcomeEmail();
+  const userId = user?.id;
+  if (!userId || user?.user_metadata?.welcome_email_sent) {
+    return;
   }
+  if (welcomeEmailRequestedForUserId === userId) {
+    return;
+  }
+  welcomeEmailRequestedForUserId = userId;
+  requestWelcomeEmail();
 }
 
 export async function initAuth() {
@@ -105,7 +113,6 @@ export async function signUpWithEmail(
   if (error) throw error;
   if (data.session) {
     session.set(data.session);
-    maybeRequestWelcomeEmail(data.session.user);
   }
   return data;
 }

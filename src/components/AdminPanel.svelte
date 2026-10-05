@@ -10,6 +10,8 @@
   import { parseDateKey } from '../lib/calendar.js';
   import { locale, t, translateKey } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
+  import MeetingTimePicker from './MeetingTimePicker.svelte';
+  import MentorBrowser from './MentorBrowser.svelte';
 
   let { items = [], onAddItem, onItemRemoved, onItemUpdated } = $props();
 
@@ -21,12 +23,15 @@
   let removingId = $state('');
   let removeError = $state('');
   let showRemoveList = $state(false);
+  let showMentorList = $state(false);
   let showPendingList = $state(false);
   let showReservationList = $state(false);
   let deletingReservationId = $state('');
   let pendingActionId = $state('');
   let reservationError = $state('');
   let pendingError = $state('');
+  // Per-entry datetime-local values for approving expertise consultations.
+  let meetingTimes = $state({});
 
   async function refreshAdminItems() {
     loading = true;
@@ -43,8 +48,11 @@
   }
 
   function sanitizeItemForPublicSync(item) {
+    const publicItem = { ...item };
+    delete publicItem.expertEmail;
+
     return {
-      ...item,
+      ...publicItem,
       reservations: (item.reservations ?? []).map(({ id, startDate, endDate, status }) => ({
         id,
         startDate,
@@ -52,6 +60,11 @@
         status,
       })),
     };
+  }
+
+  function handleMentorUpdated(item) {
+    adminItems = adminItems.map((candidate) => (candidate.id === item.id ? item : candidate));
+    onItemUpdated?.(sanitizeItemForPublicSync(item));
   }
 
   onMount(() => {
@@ -65,6 +78,8 @@
     }
   });
 
+  const mentorItems = $derived(adminItems.filter((item) => item.tag === 'expertise'));
+
   const pendingEntries = $derived(
     adminItems.flatMap((item) =>
       (item.reservations ?? [])
@@ -73,6 +88,7 @@
           ...reservation,
           itemId: item.id,
           itemTitle: item.title,
+          itemTag: item.tag ?? 'equipment',
         })),
     ),
   );
@@ -85,6 +101,7 @@
           ...reservation,
           itemId: item.id,
           itemTitle: item.title,
+          itemTag: item.tag ?? 'equipment',
         })),
     ),
   );
@@ -97,6 +114,19 @@
 
     const localeCode = $locale === 'fr' ? 'fr-CA' : 'en-CA';
     return new Intl.DateTimeFormat(localeCode, { dateStyle: 'medium' }).format(date);
+  }
+
+  function formatMeetingTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value ?? '';
+    }
+
+    const localeCode = $locale === 'fr' ? 'fr-CA' : 'en-CA';
+    return new Intl.DateTimeFormat(localeCode, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
   }
 
   function applyItemUpdate(entry, result) {
@@ -174,15 +204,35 @@
       return;
     }
 
-    const start = formatDateKey(entry.startDate);
-    const end = formatDateKey(entry.endDate);
+    const isExpertise = entry.itemTag === 'expertise';
+    let meetingAt = null;
+
+    if (isExpertise) {
+      const rawMeetingTime = meetingTimes[entry.id]?.trim() ?? '';
+      const parsed = rawMeetingTime ? new Date(rawMeetingTime) : null;
+
+      if (!parsed || Number.isNaN(parsed.getTime())) {
+        pendingError = $t('admin.meeting_time_required');
+        return;
+      }
+
+      meetingAt = parsed.toISOString();
+    }
+
+    const email = entry.userEmail || $t('admin.no_member_email');
     const confirmed = window.confirm(
-      $t('admin.approve_reservation_confirm', {
-        title: entry.itemTitle,
-        start,
-        end,
-        email: entry.userEmail || $t('admin.no_member_email'),
-      }),
+      isExpertise
+        ? $t('admin.approve_consultation_confirm', {
+            title: entry.itemTitle,
+            time: formatMeetingTime(meetingAt),
+            email,
+          })
+        : $t('admin.approve_reservation_confirm', {
+            title: entry.itemTitle,
+            start: formatDateKey(entry.startDate),
+            end: formatDateKey(entry.endDate),
+            email,
+          }),
     );
 
     if (!confirmed) {
@@ -193,7 +243,11 @@
     pendingError = '';
 
     try {
-      const result = await approveReservation(entry.itemId, entry.id);
+      const result = await approveReservation(
+        entry.itemId,
+        entry.id,
+        meetingAt ? { meetingAt } : {},
+      );
       applyItemUpdate(entry, result);
       notify(translateKey('kimchi.reservation_approved'), DEFAULT_NOTIFICATION_DURATION);
     } catch (error) {
@@ -208,15 +262,20 @@
       return;
     }
 
-    const start = formatDateKey(entry.startDate);
-    const end = formatDateKey(entry.endDate);
+    const isExpertise = entry.itemTag === 'expertise';
+    const email = entry.userEmail || $t('admin.no_member_email');
     const confirmed = window.confirm(
-      $t('admin.refuse_reservation_confirm', {
-        title: entry.itemTitle,
-        start,
-        end,
-        email: entry.userEmail || $t('admin.no_member_email'),
-      }),
+      isExpertise
+        ? $t('admin.refuse_consultation_confirm', {
+            title: entry.itemTitle,
+            email,
+          })
+        : $t('admin.refuse_reservation_confirm', {
+            title: entry.itemTitle,
+            start: formatDateKey(entry.startDate),
+            end: formatDateKey(entry.endDate),
+            email,
+          }),
     );
 
     if (!confirmed) {
@@ -243,6 +302,18 @@
   <div class="admin-actions">
     <button type="button" class="btn-primary" onclick={onAddItem}>
       {$t('admin.add_item')}
+    </button>
+    <button
+      type="button"
+      class="btn-primary"
+      aria-expanded={showMentorList}
+      aria-controls="admin-mentor-list"
+      onclick={() => (showMentorList = !showMentorList)}
+    >
+      {$t('admin.mentors')}
+      {#if mentorItems.length > 0}
+        <span class="admin-pending-count">({mentorItems.length})</span>
+      {/if}
     </button>
     <button
       type="button"
@@ -275,6 +346,15 @@
       {$t('admin.edit_reservations')}
     </button>
   </div>
+
+  {#if showMentorList}
+    <MentorBrowser
+      mentors={mentorItems}
+      {loading}
+      {loadError}
+      onupdated={handleMentorUpdated}
+    />
+  {/if}
 
   {#if showRemoveList}
     <div id="admin-remove-list">
@@ -323,21 +403,50 @@
       {:else}
         <ul class="admin-item-list">
           {#each pendingEntries as entry (entry.id)}
+            {@const isExpertiseEntry = entry.itemTag === 'expertise'}
             <li class="admin-item-row admin-item-row--pending">
               <div class="admin-reservation-details">
                 <span class="admin-item-title">{entry.itemTitle}</span>
-                <span class="admin-reservation-dates">
-                  {$t('admin.reservation_dates', {
-                    start: formatDateKey(entry.startDate),
-                    end: formatDateKey(entry.endDate),
-                  })}
-                </span>
+                {#if isExpertiseEntry}
+                  <span class="admin-reservation-dates">
+                    {$t('admin.consultation_requested_on', {
+                      date: formatDateKey(entry.startDate),
+                    })}
+                  </span>
+                  {#if entry.timeSlots}
+                    <span class="consultation-field">
+                      <span class="consultation-field__label">{$t('admin.consultation_slots_label')}</span>
+                      <span class="consultation-field__value">{entry.timeSlots}</span>
+                    </span>
+                  {/if}
+                  {#if entry.requestSummary}
+                    <span class="consultation-field">
+                      <span class="consultation-field__label">{$t('admin.consultation_summary_label')}</span>
+                      <span class="consultation-field__value">{entry.requestSummary}</span>
+                    </span>
+                  {/if}
+                {:else}
+                  <span class="admin-reservation-dates">
+                    {$t('admin.reservation_dates', {
+                      start: formatDateKey(entry.startDate),
+                      end: formatDateKey(entry.endDate),
+                    })}
+                  </span>
+                {/if}
                 {#if entry.userEmail}
                   <span class="admin-reservation-email">{entry.userEmail}</span>
                 {:else}
                   <span class="admin-reservation-email admin-reservation-email--missing">
                     {$t('admin.no_member_email')}
                   </span>
+                {/if}
+                {#if isExpertiseEntry}
+                  <MeetingTimePicker
+                    bind:value={meetingTimes[entry.id]}
+                    selectLabel={$t('admin.select_meeting_time')}
+                    changeLabel={$t('admin.change_meeting_time')}
+                    displayValue={formatMeetingTime(meetingTimes[entry.id])}
+                  />
                 {/if}
               </div>
               <div class="admin-pending-actions">
@@ -391,12 +500,30 @@
             <li class="admin-item-row">
               <div class="admin-reservation-details">
                 <span class="admin-item-title">{entry.itemTitle}</span>
-                <span class="admin-reservation-dates">
-                  {$t('admin.reservation_dates', {
-                    start: formatDateKey(entry.startDate),
-                    end: formatDateKey(entry.endDate),
-                  })}
-                </span>
+                {#if entry.itemTag === 'expertise' && entry.meetingAt}
+                  <span class="admin-reservation-dates">
+                    {$t('admin.consultation_meeting', {
+                      time: formatMeetingTime(entry.meetingAt),
+                    })}
+                  </span>
+                  {#if entry.zoomJoinUrl}
+                    <a
+                      class="admin-consultation-detail"
+                      href={entry.zoomJoinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {$t('admin.consultation_zoom_link')}
+                    </a>
+                  {/if}
+                {:else}
+                  <span class="admin-reservation-dates">
+                    {$t('admin.reservation_dates', {
+                      start: formatDateKey(entry.startDate),
+                      end: formatDateKey(entry.endDate),
+                    })}
+                  </span>
+                {/if}
               </div>
               <button
                 type="button"

@@ -5,7 +5,11 @@
  * Equipment: start Tuesday → end the following Tuesday (+7 days).
  * Books: start Tuesday → end four weeks later (+28 days, also a Tuesday).
  * Rooms: any inclusive date range (no weekday or duration rules).
+ * Expertise: no calendar — consultation requests store the submission date
+ *   as both start and end, so any valid single date/range passes.
  */
+
+const FLEXIBLE_TAGS = ['rooms', 'expertise'];
 
 import { compareDateKeys, parseDateKey, toDateKey } from './calendar.js';
 
@@ -42,7 +46,8 @@ export function getBlockEndDate(tag, startDate) {
 }
 
 export function validateReservationDates(tag, startDate, endDate) {
-  const normalizedTag = tag === 'books' || tag === 'rooms' ? tag : 'equipment';
+  const normalizedTag =
+    tag === 'books' || FLEXIBLE_TAGS.includes(tag) ? tag : 'equipment';
 
   if (!parseDateKey(startDate) || !parseDateKey(endDate)) {
     return { ok: false, error: 'Dates must be valid YYYY-MM-DD values.' };
@@ -52,7 +57,7 @@ export function validateReservationDates(tag, startDate, endDate) {
     return { ok: false, error: 'startDate must be on or before endDate.' };
   }
 
-  if (normalizedTag === 'rooms') {
+  if (FLEXIBLE_TAGS.includes(normalizedTag)) {
     return { ok: true };
   }
 

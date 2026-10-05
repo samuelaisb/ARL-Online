@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "send-email": "node send-email.js",
-    "build": "vite build && node scripts/prerender.js",
+    "build": "vite build",
     "start": "npm run build && node server.js",
     "serve": "node server.js",
     "dev": "node scripts/dev.js",
@@ -14,7 +14,8 @@
     "docker:build": "bash scripts/docker-build.sh",
     "cloud:build": "bash scripts/cloud-build.sh",
     "migrate:inventory": "node scripts/migrate-inventory-to-supabase.js",
-    "backfill:slugs": "node scripts/backfill-slugs.js"
+    "backfill:slugs": "node scripts/backfill-slugs.js",
+    "zoom:check": "node scripts/zoom-check.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
@@ -24,6 +25,9 @@
     "helmet": "^8.2.0",
     "marked": "^18.0.5",
     "resend": "^4.0.0"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

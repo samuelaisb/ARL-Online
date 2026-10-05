@@ -1,5 +1,6 @@
 import en from '../../locales/en.json' with { type: 'json' };
 import fr from '../../locales/fr.json' with { type: 'json' };
+import { splitExpertiseCopy } from './expertise-fields.js';
 
 const dictionaries = { en, fr };
 const META_MARKER = 'data-arl-seo';
@@ -23,6 +24,10 @@ export const ROUTE_SEO_KEYS = {
   '/rooms': {
     title: 'seo.category_rooms_title',
     description: 'seo.category_rooms_description',
+  },
+  '/expertise': {
+    title: 'seo.category_expertise_title',
+    description: 'seo.category_expertise_description',
   },
   '/howthisworks': {
     title: 'seo.how_this_works_title',
@@ -136,10 +141,18 @@ export function getItemDetailPath(item) {
   return `/${tag}/${slug}`;
 }
 
+function itemSeoDescription(item) {
+  if (item?.tag === 'expertise') {
+    return splitExpertiseCopy(item).longText;
+  }
+
+  return typeof item?.body === 'string' ? item.body : '';
+}
+
 export function getItemSeoConfig(item, localeCode = 'en', origin = getSiteOrigin()) {
   const path = getItemDetailPath(item);
   const title = `${item.title} | ${translateLocale(localeCode, 'seo.og_site_name')}`;
-  const description = truncateSeoDescription(item.body);
+  const description = truncateSeoDescription(itemSeoDescription(item));
   let ogImageUrl = `${origin}${DEFAULT_OG_IMAGE_PATH}`;
 
   if (typeof item.image === 'string' && item.image.trim()) {
@@ -186,7 +199,7 @@ export function getProductJsonLd(item, origin = getSiteOrigin()) {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: item.title,
-    description: truncateSeoDescription(item.body, 500),
+    description: truncateSeoDescription(itemSeoDescription(item), 500),
     image,
     url: buildCanonicalUrl(path, origin),
   };
@@ -396,6 +409,21 @@ export function applySeoTags(seo) {
   upsertMeta('twitter:image', seo.ogImageUrl);
 }
 
+/**
+ * Serialize JSON for inline `<script>` blocks. `JSON.stringify` leaves `<`
+ * intact, so item text containing `</script>` would otherwise break out of the
+ * JSON-LD block and execute. Escapes `<`, `>`, `&` and the JS line
+ * terminators U+2028 / U+2029 as JSON unicode escapes (still valid JSON).
+ */
+export function serializeJsonForScript(data) {
+  return JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 export function buildSeoHeadHtml(seo, pathname, localeCode, origin, escapeHtml, options = {}) {
   const {
     includeJsonLd = true,
@@ -444,20 +472,20 @@ export function buildSeoHeadHtml(seo, pathname, localeCode, origin, escapeHtml, 
   if (includeJsonLd && !seo.noindex) {
     if (productJsonLd) {
       tags.push(
-        `<script type="application/ld+json">${JSON.stringify(productJsonLd)}</script>`,
+        `<script type="application/ld+json">${serializeJsonForScript(productJsonLd)}</script>`,
       );
     }
 
     const jsonLd = getOrganizationJsonLd(origin);
     tags.push(
-      `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+      `<script type="application/ld+json">${serializeJsonForScript(jsonLd)}</script>`,
     );
 
     if (path === '/howthisworks') {
       const faqJsonLd = getFaqJsonLd(localeCode);
       if (faqJsonLd) {
         tags.push(
-          `<script type="application/ld+json">${JSON.stringify(faqJsonLd)}</script>`,
+          `<script type="application/ld+json">${serializeJsonForScript(faqJsonLd)}</script>`,
         );
       }
     }

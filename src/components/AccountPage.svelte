@@ -4,11 +4,22 @@
   import { navigate } from '../lib/router.js';
   import { t, translateKey } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
+  import AccountConsultations from './AccountConsultations.svelte';
+  import AccountShareExpertise from './AccountShareExpertise.svelte';
 
-  let { onOpenLogin, onOpenRegister } = $props();
+  let { onOpenLogin, onOpenRegister, onProfileSaved } = $props();
 
   let signingOut = $state(false);
   let signOutError = $state('');
+  let showShareExpertise = $state(false);
+  let shareExpertiseMounted = $state(false);
+
+  function toggleShareExpertise() {
+    showShareExpertise = !showShareExpertise;
+    if (showShareExpertise) {
+      shareExpertiseMounted = true;
+    }
+  }
 
   function goHome(event) {
     event.preventDefault();
@@ -72,6 +83,15 @@
       <p class="account-panel__email">{$session.user.email}</p>
 
       <div class="account-panel__actions">
+        <button
+          type="button"
+          class="btn-header btn-header--secondary"
+          aria-expanded={showShareExpertise}
+          aria-controls="share-expertise-panel"
+          onclick={toggleShareExpertise}
+        >
+          {$t('share_expertise.heading')}
+        </button>
         {#if isApathyAdmin($session)}
           <a href="/admin" class="btn-header btn-header--secondary" onclick={openAdmin}>
             {$t('auth.admin')}
@@ -91,5 +111,13 @@
         <p class="account-panel__error" role="alert">{signOutError}</p>
       {/if}
     </section>
+
+    {#if shareExpertiseMounted}
+      <div class="account-share-expertise-slot" hidden={!showShareExpertise}>
+        <AccountShareExpertise {onProfileSaved} />
+      </div>
+    {/if}
+
+    <AccountConsultations />
   {/if}
 </main>

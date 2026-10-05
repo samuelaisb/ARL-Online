@@ -69,6 +69,11 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 | Trigger | Component | Locale key | EN text | FR text | Duration | Conditions |
 |---------|-----------|------------|---------|---------|----------|------------|
 | Pending reservation saved | `ItemCalendar.svelte` | `kimchi.reservation_sent` | Meow! Your reservation request is sent, AisB will review it. | Miaou ! Ta demande de réservation est envoyée, AisB va l'examiner. | **5000 ms** | After successful `POST /api/inventory/:id/reservations` when `status === 'pending'` |
+| Consultation request sent | `ConsultationRequestForm.svelte` | `kimchi.consultation_sent` | Meow! Your consultation request is sent to the expert. | Miaou ! Ta demande de consultation est envoyée à l'expert. | **5000 ms** | After successful consultation submit on an expertise item |
+| Consultation scheduled | `AccountConsultations.svelte` | `kimchi.consultation_scheduled` | Meow! Meeting scheduled, Zoom invitations are on their way. | Miaou ! Rencontre planifiée, les invitations Zoom sont en route. | **5000 ms** | Expert schedules from `/account` |
+| Consultation cancelled | `AccountConsultations.svelte` | `kimchi.consultation_cancelled` | Meow! Consultation cancelled, everyone has been notified. | Miaou ! Consultation annulée, tout le monde a été avisé. | **5000 ms** | Member or expert cancels from `/account` |
+| Mentor profile published | `AccountShareExpertise.svelte` | `kimchi.mentor_profile_published` | Meow! Your mentor profile is on the Expertise list. | Miaou ! Ton profil de mentor est dans la liste Expertise. | **5000 ms** | After successful `POST /api/account/mentor-profile` |
+| Mentor profile updated | `AccountShareExpertise.svelte` | `kimchi.mentor_profile_updated` | Meow! Your mentor profile is updated. | Miaou ! Ton profil de mentor est à jour. | **5000 ms** | After successful `PATCH /api/account/mentor-profile` |
 
 ### Admin actions
 
@@ -76,6 +81,7 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 |---------|-----------|------------|---------|---------|----------|------------|
 | Item added | `AddItemModal.svelte` | `kimchi.item_added` | Meow! New item added to the library. | Miaou ! Nouvel article ajouté à la bibliothèque. | **5000 ms** | After successful `POST /api/inventory` |
 | Item removed | `AdminPanel.svelte` | `kimchi.item_removed` | Meow! Item removed from the library. | Miaou ! Article retiré de la bibliothèque. | **5000 ms** | After successful `DELETE /api/inventory/:id` |
+| Mentor updated | `MentorBrowser.svelte` | `kimchi.mentor_updated` | Meow! Mentor details saved. | Miaou ! Les détails du mentor sont enregistrés. | **5000 ms** | After successful `PATCH /api/inventory/:id` from the admin Mentors list |
 | Reservation approved | `AdminPanel.svelte` | `kimchi.reservation_approved` | Meow! Reservation approved, the member will get an email. | Miaou ! Réservation approuvée, le membre recevra un courriel. | **5000 ms** | After successful approve API call |
 | Reservation deleted | `AdminPanel.svelte` | `kimchi.reservation_deleted` | Meow! Reservation deleted. | Miaou ! Réservation supprimée. | **5000 ms** | After successful delete reservation API call |
 
@@ -129,6 +135,7 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 |----------|---------------|------|
 | `InventoryCard.svelte` | `inventory.reservation_pending` / `inventory.reservation_complete` | Card status line after reserve success (5 s fade) |
 | `ItemCalendar.svelte` | `calendar.reservation_pending` / `calendar.reservation_saved` | Inline calendar status after confirm |
+| `ConsultationRequestForm.svelte` | `consultation.request_pending` / `consultation.create_error` | Inline form status after consultation submit |
 | `AuthModal.svelte` | Various `auth.*` keys | Login/register errors and “check your email” (Supabase-driven) |
 
 ---
@@ -155,5 +162,8 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `src/components/AccountPage.svelte` | Sign-out |
 | `src/components/ReserveAuthRequiredModal.svelte` | Register from reserve gate |
 | `src/components/ItemCalendar.svelte` | Reservation sent confirmation |
+| `src/components/ConsultationRequestForm.svelte` | Consultation request sent confirmation |
+| `src/components/AccountConsultations.svelte` | Consultation scheduled / cancelled confirmations |
+| `src/components/AccountShareExpertise.svelte` | Mentor profile published / updated confirmations |
 | `src/components/AddItemModal.svelte` | Item added confirmation |
 | `src/components/AdminPanel.svelte` | Admin action confirmations |

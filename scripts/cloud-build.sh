@@ -35,6 +35,15 @@ IMAGE="${IMAGE:-${REGISTRY}:${TAG}}"
 #     --project="${PROJECT}" \
 #     --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
 #     --role="roles/secretmanager.secretAccessor"
+#
+# Zoom consultation meetings (only when ZOOM_CLIENT_SECRET is set in .env):
+#
+#   gcloud secrets create zoom-client-secret --replication-policy=automatic --project="${PROJECT}"
+#   printf '%s' "${ZOOM_CLIENT_SECRET}" | gcloud secrets versions add zoom-client-secret --data-file=- --project="${PROJECT}"
+#   gcloud secrets add-iam-policy-binding zoom-client-secret \
+#     --project="${PROJECT}" \
+#     --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+#     --role="roles/secretmanager.secretAccessor"
 
 if [[ -f .env ]]; then
   set -a
@@ -74,10 +83,28 @@ RUNTIME_ENV="SUPABASE_URL=${SUPABASE_URL},SUPABASE_API=${SUPABASE_API},SITE_URL=
 if [[ -n "${SLACK_RESERVATION_WEBHOOK_URL:-}" ]]; then
   RUNTIME_ENV+=",SLACK_RESERVATION_WEBHOOK_URL=${SLACK_RESERVATION_WEBHOOK_URL}"
 fi
+if [[ -n "${ZOOM_ACCOUNT_ID:-}" && -n "${ZOOM_CLIENT_ID:-}" ]]; then
+  RUNTIME_ENV+=",ZOOM_ACCOUNT_ID=${ZOOM_ACCOUNT_ID},ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}"
+fi
+if [[ -n "${ZOOM_HOST_USER:-}" ]]; then
+  RUNTIME_ENV+=",ZOOM_HOST_USER=${ZOOM_HOST_USER}"
+fi
+if [[ -n "${ORG_PHONE:-}" ]]; then
+  RUNTIME_ENV+=",ORG_PHONE=${ORG_PHONE}"
+fi
+if [[ -n "${EMAIL_FUNDER_LOGO_URL:-}" ]]; then
+  RUNTIME_ENV+=",EMAIL_FUNDER_LOGO_URL=${EMAIL_FUNDER_LOGO_URL}"
+fi
+# ORG_ADDRESS contains a comma, which breaks gcloud's comma-separated --set-env-vars.
+# The office line defaults in src/lib/email-brand.js. Set ORG_ADDRESS on the Cloud Run
+# service directly if the office moves.
 
 SECRET_BINDINGS="SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest"
 if [[ -n "${RESEND_API_KEY:-}" ]]; then
   SECRET_BINDINGS+=",RESEND_API_KEY=resend-api-key:latest"
+fi
+if [[ -n "${ZOOM_CLIENT_SECRET:-}" ]]; then
+  SECRET_BINDINGS+=",ZOOM_CLIENT_SECRET=zoom-client-secret:latest"
 fi
 
 gcloud run deploy "${SERVICE}" \

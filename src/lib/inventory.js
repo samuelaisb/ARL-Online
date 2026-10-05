@@ -3,7 +3,7 @@ import { supabase, supabaseConfigured } from './supabase.js';
 
 const LEGACY_STORAGE_KEY = 'arl-inventory-items';
 
-export const INVENTORY_TAGS = ['equipment', 'books', 'rooms'];
+export const INVENTORY_TAGS = ['equipment', 'books', 'rooms', 'expertise'];
 export const DEFAULT_INVENTORY_TAG = 'equipment';
 
 function loadLegacyLocalItems() {
@@ -49,6 +49,7 @@ async function authHeaders(includeJson = false) {
 export async function fetchInventoryItem(tag, slug) {
   const response = await fetch(
     `/api/inventory/by-slug/${encodeURIComponent(tag)}/${encodeURIComponent(slug)}`,
+    { cache: 'no-store' },
   );
   const result = await response.json().catch(() => ({}));
 
@@ -103,6 +104,75 @@ export async function createInventoryItem(item) {
   return result.item;
 }
 
+export async function fetchMentorProfile() {
+  const response = await fetch('/api/account/mentor-profile', {
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('share_expertise.load_error'));
+  }
+
+  return {
+    profile: result.profile ?? null,
+    emailConfirmed: result.emailConfirmed !== false,
+  };
+}
+
+function mentorProfileError(response, result) {
+  const error = new Error(result.error || translateKey('share_expertise.save_error'));
+  error.status = response.status;
+  error.profile = result.profile ?? null;
+  return error;
+}
+
+export async function createMentorProfile(payload) {
+  const response = await fetch('/api/account/mentor-profile', {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw mentorProfileError(response, result);
+  }
+
+  return result.profile;
+}
+
+export async function updateMentorProfile(payload) {
+  const response = await fetch('/api/account/mentor-profile', {
+    method: 'PATCH',
+    headers: await authHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw mentorProfileError(response, result);
+  }
+
+  return result.profile;
+}
+
+export async function updateExpertiseItem(id, item) {
+  const response = await fetch(`/api/inventory/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: await authHeaders(true),
+    body: JSON.stringify(item),
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('admin.mentors_save_error'));
+  }
+
+  return result.item;
+}
+
 export async function deleteInventoryItem(id) {
   const response = await fetch(`/api/inventory/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -149,11 +219,16 @@ export async function loadInventoryItems() {
   return items;
 }
 
-export async function createReservation(itemId, { startDate, endDate }) {
+/**
+ * Create a reservation request. Payload is either calendar dates
+ * ({ startDate, endDate }) or a consultation request ({ timeSlots, summary })
+ * for expertise items.
+ */
+export async function createReservation(itemId, payload) {
   const response = await fetch(`/api/inventory/${encodeURIComponent(itemId)}/reservations`, {
     method: 'POST',
     headers: await authHeaders(true),
-    body: JSON.stringify({ startDate, endDate }),
+    body: JSON.stringify(payload),
   });
 
   const result = await response.json().catch(() => ({}));
@@ -180,10 +255,16 @@ export async function deleteReservation(itemId, reservationId) {
   return result;
 }
 
-export async function approveReservation(itemId, reservationId) {
+export async function approveReservation(itemId, reservationId, { meetingAt = null } = {}) {
   const response = await fetch(
     `/api/inventory/${encodeURIComponent(itemId)}/reservations/${encodeURIComponent(reservationId)}/approve`,
-    { method: 'POST', headers: await authHeaders() },
+    meetingAt
+      ? {
+          method: 'POST',
+          headers: await authHeaders(true),
+          body: JSON.stringify({ meetingAt }),
+        }
+      : { method: 'POST', headers: await authHeaders() },
   );
 
   const result = await response.json().catch(() => ({}));
@@ -193,6 +274,54 @@ export async function approveReservation(itemId, reservationId) {
   }
 
   return result;
+}
+
+/** Consultations for the signed-in user: `{ asMember, asExpert }`. */
+export async function fetchAccountConsultations() {
+  const response = await fetch('/api/account/consultations', {
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('account_consultations.load_error'));
+  }
+
+  return {
+    asMember: Array.isArray(result.asMember) ? result.asMember : [],
+    asExpert: Array.isArray(result.asExpert) ? result.asExpert : [],
+  };
+}
+
+/** Expert picks the meeting time; the server creates the Zoom meeting and emails both. */
+export async function scheduleConsultation(reservationId, meetingAt) {
+  const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/schedule`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ meetingAt }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('account_consultations.schedule_error'));
+  }
+
+  return result.consultation;
+}
+
+/** Member or expert cancels; the server deletes the Zoom meeting and emails both. */
+export async function cancelConsultation(reservationId) {
+  const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/cancel`, {
+    method: 'POST',
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('account_consultations.cancel_error'));
+  }
+
+  return result.consultation;
 }
 
 export async function refuseReservation(itemId, reservationId) {

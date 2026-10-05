@@ -12,6 +12,7 @@ When you finish editing the ARL Online website (frontend, API, scripts, env, or 
 1. Read `AGENTS.md` at the project root before making structural changes.
 2. After changes that affect behavior, layout, APIs, scripts, env vars, or directory structure, update `AGENTS.md` (and any other affected docs).
 3. Add a row to the **Changelog** table in `AGENTS.md` for meaningful changes.
+4. If you change Expertise / consultation behavior, update the **Expertise consultations** section in `AGENTS.md` (and `.cursor/rules/expertise-consultations.mdc` if invariants change). Also update `docs/automated-emails.md`, `docs/automated-webhooks.md`, or `docs/automated-notifications.md` when those triggers change.
 
 ## Skip doc updates only when
 

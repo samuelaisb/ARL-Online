@@ -32,13 +32,17 @@ All values are plain strings suitable for Slack workflow trigger variables:
 |-------|--------|-----------------|
 | `item_id` | `item.id` | Inventory item UUID or seed id |
 | `item_title` | `item.title` | Display title |
-| `item_body` | `item.body` | Description text |
-| `item_tag` | `item.tag` | `equipment`, `books`, or `rooms` |
+| `item_body` | `item.body` | Description text. For expertise, this is the short list blurb (the long bio is not sent) |
+| `item_tag` | `item.tag` | `equipment`, `books`, `rooms`, or `expertise` |
 | `reservation_id` | `reservation.id` | New reservation UUID |
-| `start_date` | `reservation.startDate` | `YYYY-MM-DD` |
-| `end_date` | `reservation.endDate` | `YYYY-MM-DD` |
+| `start_date` | `reservation.startDate` | `YYYY-MM-DD` (submission date for expertise requests) |
+| `end_date` | `reservation.endDate` | `YYYY-MM-DD` (same as start for expertise requests) |
 | `status` | `reservation.status` | `pending` on create |
 | `user_email` | `reservation.userEmail` | Member email from JWT; empty string if missing |
+| `time_slots` | `reservation.timeSlots` | Member's free-text availability (expertise only; empty string otherwise) |
+| `request_summary` | `reservation.requestSummary` | Member's consultation topic summary (expertise only; empty string otherwise) |
+| `expert_email` | `item.expertEmail` | Expert contact from the item (expertise only; empty string otherwise) |
+| `admin_url` | `absoluteSiteUrl('/admin')` | Link to the admin page for reviewing the request |
 
 **Example payload:**
 
@@ -52,7 +56,11 @@ All values are plain strings suitable for Slack workflow trigger variables:
   "start_date": "2026-06-17",
   "end_date": "2026-06-24",
   "status": "pending",
-  "user_email": "member@example.com"
+  "user_email": "member@example.com",
+  "time_slots": "",
+  "request_summary": "",
+  "expert_email": "",
+  "admin_url": "https://activistresourcelibrary.com/admin"
 }
 ```
 

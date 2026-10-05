@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { compareDateKeys, hasReservationCollision, normalizeReservationStatus, parseDateKey } from './calendar.js';
 import { validateReservationDates } from './reservation-rules.js';
+import { EXPERT_LONG_TEXT_MAX, EXPERT_NAME_MAX, EXPERT_SHORT_TEXT_MAX } from './expertise-fields.js';
 import { ensureUniqueSlug, slugifyTitle } from './slug.js';
 import { getSupabaseAdmin } from './supabase-server.js';
 
@@ -12,7 +13,7 @@ const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const LEGACY_INVENTORY_FILE = path.join(PROJECT_ROOT, 'data', 'inventory.json');
 const SEED_INVENTORY_FILE = path.join(PROJECT_ROOT, 'src', 'assets', 'inventory', 'items.json');
 const INVENTORY_IMAGE_BASE = '/assets/inventory';
-const INVENTORY_TAGS = ['equipment', 'books', 'rooms'];
+const INVENTORY_TAGS = ['equipment', 'books', 'rooms', 'expertise'];
 const DEFAULT_INVENTORY_TAG = 'equipment';
 
 const IMAGE_DATA_URL_RE = /^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -20,6 +21,8 @@ const JPEG_DATA_URL_RE = IMAGE_DATA_URL_RE;
 
 /** In-process per-item lock — safe for single-instance Cloud Run only, not across replicas. */
 const itemLocks = new Map();
+/** One in-flight mentor-profile write per account email (same single-instance limit). */
+const mentorProfileLocks = new Map();
 
 async function withItemLock(itemId, fn) {
   let release;
@@ -46,6 +49,9 @@ let inventorySeeded = false;
 let slugsBackfilled = false;
 
 const RESERVATION_SCHEMA_MIGRATION = 'supabase/migrations/002_reservation_approval.sql';
+const EXPERTISE_SCHEMA_MIGRATION = 'supabase/migrations/005_expertise.sql';
+const SCHEDULING_SCHEMA_MIGRATION = 'supabase/migrations/006_consultation_scheduling.sql';
+const EXPERTISE_COPY_SCHEMA_MIGRATION = 'supabase/migrations/007_expertise_copy.sql';
 
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE, JPEG_DATA_URL_RE };
 
@@ -54,11 +60,13 @@ export function isReservationSchemaError(message) {
     return false;
   }
 
-  return /user_email|schema cache|reservations_status_check|check constraint.*status/i.test(message);
+  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|zoom_|cancelled_|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
+    message,
+  );
 }
 
 export function reservationSchemaErrorMessage() {
-  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email and pending/refused reservation statuses).`;
+  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, and ${EXPERTISE_COPY_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, and expertise long text).`;
 }
 
 /** Warn at startup when migration 002 has not been applied. */
@@ -96,6 +104,10 @@ export function isValidInventoryImage(image) {
   return IMAGE_DATA_URL_RE.test(trimmed) || trimmed.startsWith(`${INVENTORY_IMAGE_BASE}/`);
 }
 
+function normalizeOptionalText(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 export function normalizeReservation(raw) {
   if (!raw || typeof raw !== 'object') {
     return null;
@@ -104,8 +116,10 @@ export function normalizeReservation(raw) {
   const startDate = typeof raw.startDate === 'string' ? raw.startDate.trim() : '';
   const endDate = typeof raw.endDate === 'string' ? raw.endDate.trim() : '';
   const status = normalizeReservationStatus(raw.status);
-  const userEmail =
-    typeof raw.userEmail === 'string' && raw.userEmail.trim() ? raw.userEmail.trim() : null;
+  const userEmail = normalizeOptionalText(raw.userEmail);
+  const timeSlots = normalizeOptionalText(raw.timeSlots);
+  const requestSummary = normalizeOptionalText(raw.requestSummary);
+  const meetingAt = normalizeOptionalText(raw.meetingAt);
 
   if (!parseDateKey(startDate) || !parseDateKey(endDate)) {
     return null;
@@ -117,7 +131,7 @@ export function normalizeReservation(raw) {
 
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID();
 
-  return { id, startDate, endDate, status, userEmail };
+  return { id, startDate, endDate, status, userEmail, timeSlots, requestSummary, meetingAt };
 }
 
 export function normalizeReservations(rawReservations) {
@@ -136,8 +150,23 @@ export function normalizeInventoryItem(raw, { requireAll = true } = {}) {
   const title = typeof raw.title === 'string' ? raw.title.trim() : '';
   const body = typeof raw.body === 'string' ? raw.body.trim() : '';
   const image = typeof raw.image === 'string' ? raw.image.trim() : '';
+  const tag = normalizeTag(raw.tag);
+  const longBody =
+    tag === 'expertise' ? normalizeOptionalText(raw.longBody ?? raw.long_body) : null;
 
   if (requireAll && (!title || !body || !image)) {
+    return null;
+  }
+
+  if (requireAll && tag === 'expertise' && !longBody) {
+    return null;
+  }
+
+  if (requireAll && tag === 'expertise' && body.length > EXPERT_SHORT_TEXT_MAX) {
+    return null;
+  }
+
+  if (requireAll && longBody && longBody.length > EXPERT_LONG_TEXT_MAX) {
     return null;
   }
 
@@ -151,11 +180,11 @@ export function normalizeInventoryItem(raw, { requireAll = true } = {}) {
       ? raw.createdAt
       : Date.now();
   const reservations = normalizeReservations(raw.reservations);
-  const tag = normalizeTag(raw.tag);
   const slug =
     typeof raw.slug === 'string' && raw.slug.trim() ? raw.slug.trim() : null;
+  const expertEmail = tag === 'expertise' ? normalizeOptionalText(raw.expertEmail) : null;
 
-  return { id, title, body, image, createdAt, reservations, tag, slug };
+  return { id, title, body, image, createdAt, reservations, tag, slug, expertEmail, longBody };
 }
 
 function reservationRowToApi(row) {
@@ -165,6 +194,14 @@ function reservationRowToApi(row) {
     endDate: row.end_date,
     status: row.status,
     userEmail: row.user_email ?? null,
+    timeSlots: row.time_slots ?? null,
+    requestSummary: row.request_summary ?? null,
+    meetingAt: row.meeting_at ?? null,
+    zoomMeetingId: row.zoom_meeting_id ?? null,
+    zoomJoinUrl: row.zoom_join_url ?? null,
+    zoomPassword: row.zoom_password ?? null,
+    cancelledAt: row.cancelled_at ?? null,
+    cancelledBy: row.cancelled_by ?? null,
   };
 }
 
@@ -177,12 +214,14 @@ function itemRowToApi(itemRow, reservationRows = []) {
     tag: itemRow.tag,
     slug: itemRow.slug ?? null,
     createdAt: Number(itemRow.created_at),
+    expertEmail: itemRow.expert_email ?? null,
+    longBody: itemRow.tag === 'expertise' ? itemRow.long_body ?? null : null,
     reservations: reservationRows.map(reservationRowToApi),
   };
 }
 
 function itemToRow(item) {
-  return {
+  const row = {
     id: item.id,
     title: item.title,
     body: item.body,
@@ -191,6 +230,18 @@ function itemToRow(item) {
     slug: item.slug ?? null,
     created_at: item.createdAt,
   };
+
+  // Only send expertise columns when set, so databases that have not applied
+  // 005/007 keep working for equipment, books, and rooms.
+  if (item.expertEmail) {
+    row.expert_email = item.expertEmail;
+  }
+
+  if (item.longBody) {
+    row.long_body = item.longBody;
+  }
+
+  return row;
 }
 
 function assignSlugsToItems(items) {
@@ -273,7 +324,7 @@ async function backfillMissingSlugs() {
 }
 
 function reservationToRow(itemId, reservation) {
-  return {
+  const row = {
     id: reservation.id,
     item_id: itemId,
     start_date: reservation.startDate,
@@ -281,6 +332,20 @@ function reservationToRow(itemId, reservation) {
     status: reservation.status,
     user_email: reservation.userEmail ?? null,
   };
+
+  // Consultation fields only exist after 005_expertise.sql; omit when unset so
+  // pre-migration databases keep working for regular reservations.
+  if (reservation.timeSlots) {
+    row.time_slots = reservation.timeSlots;
+  }
+  if (reservation.requestSummary) {
+    row.request_summary = reservation.requestSummary;
+  }
+  if (reservation.meetingAt) {
+    row.meeting_at = reservation.meetingAt;
+  }
+
+  return row;
 }
 
 function resolveSeedImagePath(image) {
@@ -479,6 +544,64 @@ export async function createInventoryItem(item) {
   return itemWithSlug;
 }
 
+/**
+ * Update an expertise mentor's public copy and contact email.
+ * The slug stays as created so existing /expertise/{slug} links keep working.
+ * `image` is omitted to keep the current photo. `expertEmail` null clears it.
+ */
+export async function updateExpertiseItem(id, updates) {
+  const itemId = typeof id === 'string' ? id.trim() : '';
+
+  if (!itemId) {
+    return { notFound: true };
+  }
+
+  return withItemLock(itemId, async () => {
+    const existing = await findInventoryItem(itemId);
+
+    if (!existing) {
+      return { notFound: true };
+    }
+
+    if (existing.tag !== 'expertise') {
+      return { notExpertise: true };
+    }
+
+    const row = {
+      title: updates.title,
+      body: updates.body,
+      long_body: updates.longBody,
+      expert_email: updates.expertEmail,
+    };
+
+    if (typeof updates.image === 'string' && updates.image) {
+      row.image = updates.image;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .update(row)
+      .eq('id', itemId)
+      .select('id');
+
+    if (error) {
+      throw new Error(error.message || 'Could not update mentor.');
+    }
+
+    if (!data || data.length === 0) {
+      return { notFound: true };
+    }
+
+    const item = await findInventoryItem(itemId);
+    if (!item) {
+      return { notFound: true };
+    }
+
+    return { item };
+  });
+}
+
 export async function deleteInventoryItem(id) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.from('inventory_items').delete().eq('id', id).select('id');
@@ -570,7 +693,10 @@ export async function countPendingReservationsByEmail(userEmail) {
   return count ?? 0;
 }
 
-export async function addReservation(itemId, { startDate, endDate, userEmail = null }) {
+export async function addReservation(
+  itemId,
+  { startDate, endDate, userEmail = null, timeSlots = null, requestSummary = null },
+) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
 
@@ -580,7 +706,9 @@ export async function addReservation(itemId, { startDate, endDate, userEmail = n
 
     const reservations = Array.isArray(item.reservations) ? item.reservations : [];
 
-    if (hasReservationCollision(reservations, startDate, endDate)) {
+    // Expertise consultations have no calendar semantics — multiple members can
+    // request the same expert at the same time, so date collisions do not apply.
+    if (item.tag !== 'expertise' && hasReservationCollision(reservations, startDate, endDate)) {
       return { collision: true };
     }
 
@@ -590,6 +718,9 @@ export async function addReservation(itemId, { startDate, endDate, userEmail = n
       endDate,
       status: userEmail ? 'pending' : 'reserved',
       userEmail: typeof userEmail === 'string' && userEmail.trim() ? userEmail.trim() : null,
+      timeSlots: typeof timeSlots === 'string' && timeSlots.trim() ? timeSlots.trim() : null,
+      requestSummary:
+        typeof requestSummary === 'string' && requestSummary.trim() ? requestSummary.trim() : null,
     };
 
     const supabase = getSupabaseAdmin();
@@ -653,6 +784,9 @@ export async function patchReservation(itemId, reservationId, updates) {
     endDate: updates.endDate ?? existing.endDate,
     status: updates.status ?? existing.status,
     userEmail: updates.userEmail ?? existing.userEmail,
+    timeSlots: existing.timeSlots,
+    requestSummary: existing.requestSummary,
+    meetingAt: existing.meetingAt,
   });
 
   if (!updated) {
@@ -666,6 +800,7 @@ export async function patchReservation(itemId, reservationId, updates) {
   }
 
   if (
+    item.tag !== 'expertise' &&
     (updated.status === 'reserved' || updated.status === 'pending') &&
     hasReservationCollision(item.reservations, updated.startDate, updated.endDate, reservationId)
   ) {
@@ -693,12 +828,17 @@ export async function patchReservation(itemId, reservationId, updates) {
   return { item, reservation: updated };
 }
 
+/** Equipment / books / rooms only — expertise items go through scheduleConsultation. */
 export async function approveReservation(itemId, reservationId) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
 
     if (!item) {
       return { notFound: true };
+    }
+
+    if (item.tag === 'expertise') {
+      return { isConsultation: true };
     }
 
     const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
@@ -734,6 +874,387 @@ export async function approveReservation(itemId, reservationId) {
     item.reservations[reservationIndex] = updated;
     return { item, reservation: updated };
   });
+}
+
+function emailsMatch(a, b) {
+  return (
+    typeof a === 'string' &&
+    typeof b === 'string' &&
+    a.trim() !== '' &&
+    a.trim().toLowerCase() === b.trim().toLowerCase()
+  );
+}
+
+async function withMentorProfileLock(emailKey, fn) {
+  let release;
+  const waitFor = mentorProfileLocks.get(emailKey) ?? Promise.resolve();
+  const next = waitFor.then(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  mentorProfileLocks.set(emailKey, next);
+  await waitFor;
+
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (mentorProfileLocks.get(emailKey) === next) {
+      mentorProfileLocks.delete(emailKey);
+    }
+  }
+}
+
+/**
+ * The expertise item whose expert email matches this account.
+ * When several match, the earliest one is the member's single mentor profile.
+ */
+export async function findMentorProfileByEmail(email) {
+  const ownerEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!ownerEmail) {
+    return null;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('id, expert_email, created_at')
+    .eq('tag', 'expertise');
+
+  if (error) {
+    throw new Error(error.message || 'Could not load mentor profile.');
+  }
+
+  const matches = (data ?? []).filter((row) => emailsMatch(row.expert_email, ownerEmail));
+  matches.sort((a, b) => {
+    const byTime = Number(a.created_at) - Number(b.created_at);
+    if (byTime !== 0) {
+      return byTime;
+    }
+
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  const match = matches[0];
+
+  if (!match) {
+    return null;
+  }
+
+  const item = await findInventoryItem(match.id);
+
+  if (!item || item.tag !== 'expertise' || !emailsMatch(item.expertEmail, ownerEmail)) {
+    return null;
+  }
+
+  return item;
+}
+
+function mentorProfileFieldsAreValid(fields) {
+  const title = typeof fields?.title === 'string' ? fields.title.trim() : '';
+  const body = typeof fields?.body === 'string' ? fields.body.trim() : '';
+  const longBody = typeof fields?.longBody === 'string' ? fields.longBody.trim() : '';
+
+  if (!title || !body || !longBody) {
+    return false;
+  }
+
+  if (title.length > EXPERT_NAME_MAX || body.length > EXPERT_SHORT_TEXT_MAX || longBody.length > EXPERT_LONG_TEXT_MAX) {
+    return false;
+  }
+
+  return true;
+}
+
+/** Creates the one expertise item owned by this account email. */
+export async function createMentorProfileForEmail(email, fields) {
+  const ownerEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!ownerEmail || !mentorProfileFieldsAreValid(fields)) {
+    return { invalid: true };
+  }
+
+  const image = typeof fields.image === 'string' ? fields.image.trim() : '';
+
+  if (!isValidInventoryImage(image)) {
+    return { invalid: true };
+  }
+
+  return withMentorProfileLock(ownerEmail.toLowerCase(), async () => {
+    const existing = await findMentorProfileByEmail(ownerEmail);
+
+    if (existing) {
+      return { alreadyExists: true, item: existing };
+    }
+
+    const item = normalizeInventoryItem({
+      title: fields.title,
+      body: fields.body,
+      longBody: fields.longBody,
+      image,
+      tag: 'expertise',
+      expertEmail: ownerEmail,
+    });
+
+    if (!item || !emailsMatch(item.expertEmail, ownerEmail)) {
+      return { invalid: true };
+    }
+
+    const saved = await createInventoryItem(item);
+    return { item: saved };
+  });
+}
+
+/** Updates that profile. The mentor email stays the account email. */
+export async function updateMentorProfileForEmail(email, fields) {
+  const ownerEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!ownerEmail || !mentorProfileFieldsAreValid(fields)) {
+    return { invalid: true };
+  }
+
+  const nextImage = typeof fields.image === 'string' ? fields.image.trim() : '';
+
+  if (nextImage && !isValidInventoryImage(nextImage)) {
+    return { invalid: true };
+  }
+
+  return withMentorProfileLock(ownerEmail.toLowerCase(), async () => {
+    const existing = await findMentorProfileByEmail(ownerEmail);
+
+    if (!existing) {
+      return { notFound: true };
+    }
+
+    const image = nextImage || existing.image;
+    const item = normalizeInventoryItem({
+      ...existing,
+      title: fields.title,
+      body: fields.body,
+      longBody: fields.longBody,
+      image,
+      tag: 'expertise',
+      expertEmail: existing.expertEmail,
+    });
+
+    if (!item || !emailsMatch(item.expertEmail, ownerEmail)) {
+      return { invalid: true };
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('inventory_items')
+      .update({
+        title: item.title,
+        body: item.body,
+        long_body: item.longBody,
+        image: item.image,
+      })
+      .eq('id', existing.id)
+      .eq('tag', 'expertise');
+
+    if (error) {
+      throw new Error(error.message || 'Could not update mentor profile.');
+    }
+
+    const updated = await findInventoryItem(existing.id);
+
+    if (!updated || !emailsMatch(updated.expertEmail, ownerEmail)) {
+      return { notFound: true };
+    }
+
+    return { item: updated };
+  });
+}
+
+/**
+ * Pending → reserved for an expertise consultation. `createMeeting(item, reservation)`
+ * runs inside the item lock (so a double-submit cannot create two Zoom meetings) and
+ * may return `{ id, joinUrl, password }` or null; `deleteMeeting(id)` undoes it if the
+ * database write fails.
+ */
+export async function scheduleConsultation(
+  itemId,
+  reservationId,
+  { meetingAt, createMeeting = null, deleteMeeting = null },
+) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item || item.tag !== 'expertise') {
+      return { notFound: true };
+    }
+
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+
+    if (existing.status !== 'pending') {
+      return { invalidStatus: true };
+    }
+
+    const normalizedMeetingAt =
+      typeof meetingAt === 'string' && meetingAt.trim() ? meetingAt.trim() : null;
+
+    if (!normalizedMeetingAt || Number.isNaN(Date.parse(normalizedMeetingAt))) {
+      return { meetingTimeRequired: true };
+    }
+
+    const meetingIso = new Date(normalizedMeetingAt).toISOString();
+    const meeting = createMeeting ? await createMeeting(item, { ...existing, meetingAt: meetingIso }) : null;
+
+    const updateRow = { status: 'reserved', meeting_at: meetingIso };
+    if (meeting) {
+      updateRow.zoom_meeting_id = meeting.id;
+      updateRow.zoom_join_url = meeting.joinUrl;
+      updateRow.zoom_password = meeting.password || null;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .update(updateRow)
+      .eq('id', reservationId)
+      .eq('item_id', itemId)
+      .eq('status', 'pending');
+
+    if (error) {
+      if (meeting && deleteMeeting) {
+        await deleteMeeting(meeting.id).catch((cleanupError) =>
+          console.error('Could not remove Zoom meeting after failed schedule:', cleanupError),
+        );
+      }
+      throw new Error(error.message || 'Could not schedule consultation.');
+    }
+
+    const updated = {
+      ...existing,
+      status: 'reserved',
+      meetingAt: meetingIso,
+      zoomMeetingId: meeting?.id ?? null,
+      zoomJoinUrl: meeting?.joinUrl ?? null,
+      zoomPassword: meeting?.password || null,
+    };
+
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated };
+  });
+}
+
+/** Pending or reserved → cancelled. `cancelledBy` is 'member', 'expert', or 'admin'. */
+export async function cancelConsultation(itemId, reservationId, { cancelledBy }) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item || item.tag !== 'expertise') {
+      return { notFound: true };
+    }
+
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+
+    if (existing.status !== 'pending' && existing.status !== 'reserved') {
+      return { invalidStatus: true };
+    }
+
+    const cancelledAt = new Date().toISOString();
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled', cancelled_at: cancelledAt, cancelled_by: cancelledBy })
+      .eq('id', reservationId)
+      .eq('item_id', itemId);
+
+    if (error) {
+      throw new Error(error.message || 'Could not cancel consultation.');
+    }
+
+    const updated = { ...existing, status: 'cancelled', cancelledAt, cancelledBy };
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated, previousStatus: existing.status };
+  });
+}
+
+/** Locates a reservation by id and returns its parent item (with all reservations). */
+export async function findReservationWithItem(reservationId) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('item_id')
+    .eq('id', reservationId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Could not load reservation.');
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const item = await findInventoryItem(data.item_id);
+  const reservation = item?.reservations.find((entry) => entry.id === reservationId);
+  return item && reservation ? { item, reservation } : null;
+}
+
+export function isConsultationExpert(item, email) {
+  return item?.tag === 'expertise' && emailsMatch(item.expertEmail, email);
+}
+
+export function isConsultationMember(reservation, email) {
+  return emailsMatch(reservation?.userEmail, email);
+}
+
+/**
+ * Consultations visible on /account: requests the user made (`asMember`) and
+ * requests addressed to them as the item's expert (`asExpert`, confirmed email only).
+ */
+export async function listConsultationsForUser(email, { includeExpert = false } = {}) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('*, reservations(*)')
+    .eq('tag', 'expertise');
+
+  if (error) {
+    throw new Error(error.message || 'Could not load consultations.');
+  }
+
+  const asMember = [];
+  const asExpert = [];
+
+  for (const row of data ?? []) {
+    const item = itemRowToApi(row, Array.isArray(row.reservations) ? row.reservations : []);
+    const isExpert = includeExpert && isConsultationExpert(item, email);
+
+    for (const reservation of item.reservations) {
+      if (reservation.status === 'available') {
+        continue;
+      }
+      if (isConsultationMember(reservation, email)) {
+        asMember.push({ item, reservation });
+      }
+      if (isExpert) {
+        asExpert.push({ item, reservation });
+      }
+    }
+  }
+
+  return { asMember, asExpert };
 }
 
 export async function refuseReservation(itemId, reservationId) {

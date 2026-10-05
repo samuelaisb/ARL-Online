@@ -33,6 +33,26 @@ export function shouldInjectSeo(pathname) {
   return path !== '/api' && !path.startsWith('/api/');
 }
 
+/**
+ * Remove the static fallback SEO tags shipped in `index.html` (title,
+ * description, og:*, twitter:*) so the injected, route-specific set is the only
+ * one in the document. Duplicate <title>/description tags make crawlers pick
+ * unpredictably. The static tags stay in `index.html` for the Vite dev server,
+ * which serves the file without this injection.
+ */
+export function stripDefaultSeoTags(html) {
+  if (!html || typeof html !== 'string') {
+    return html;
+  }
+
+  return html
+    .replace(/<title>[\s\S]*?<\/title>\s*/i, '')
+    .replace(
+      /<meta\s[^>]*?(?:name|property)=["'](?:description|og:[^"']+|twitter:[^"']+)["'][^>]*>\s*/gi,
+      '',
+    );
+}
+
 export async function injectSeoIntoHtml(
   html,
   pathname,
@@ -72,5 +92,9 @@ export async function injectSeoIntoHtml(
     return html;
   }
 
-  return html.replace('</head>', `    ${headInjection}\n  </head>`);
+  const lang = SUPPORTED_LOCALES.includes(localeCode) ? localeCode : 'en';
+
+  return stripDefaultSeoTags(html)
+    .replace(/<html\b([^>]*?)\slang=["'][^"']*["']/i, `<html$1 lang="${lang}"`)
+    .replace('</head>', `    ${headInjection}\n  </head>`);
 }

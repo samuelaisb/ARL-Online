@@ -199,7 +199,9 @@ body {
 .site-header {
   display: grid;
   grid-template-areas: 'brand nav actions';
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* Side columns can grow so the nav stays centered, but they cannot shrink
+     below the logo or the account buttons — otherwise French labels overlap the nav. */
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   gap: 1rem;
   width: 100%;
@@ -957,10 +959,117 @@ h1 {
   gap: 0.75rem;
 }
 
+.account-panel__actions .btn-header[aria-expanded='true'] {
+  background: var(--color-lemon);
+  border-color: transparent;
+  color: var(--color-dark);
+}
+
 .account-panel__error {
   margin: 0.75rem 0 0;
   font-size: 0.875rem;
   color: var(--color-plum);
+}
+
+.account-share-expertise {
+  max-width: 48rem;
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.account-share-expertise h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+}
+
+.account-share-expertise__intro,
+.account-share-expertise__notice {
+  margin: 0 0 1.25rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.account-share-expertise__email {
+  margin-bottom: 0.35rem;
+}
+
+.account-share-expertise__photo.image-preview {
+  width: 6.5rem;
+  height: 6.5rem;
+  max-height: none;
+  object-fit: cover;
+}
+
+.account-share-expertise__success {
+  color: var(--color-text);
+}
+
+.account-share-expertise__view {
+  margin: 0.9rem 0 0;
+  text-align: center;
+}
+
+.account-share-expertise__view a {
+  font-weight: 600;
+}
+
+.account-consultations {
+  max-width: 48rem;
+  margin-top: 1rem;
+}
+
+.consultation-row__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.consultation-row__title {
+  font-weight: 600;
+  color: var(--color-text);
+  overflow-wrap: break-word;
+}
+
+.consultation-row__zoom {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.consultation-row--inactive {
+  opacity: 0.7;
+}
+
+.consultation-history__toggle {
+  margin-top: 0.75rem;
+  white-space: normal;
+}
+
+.consultation-history__list {
+  margin-top: 0.75rem;
+}
+
+.consultation-status {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--color-lavender);
+  color: var(--color-dark);
+}
+
+.consultation-status--reserved {
+  background: var(--color-mint);
+  color: var(--color-light);
+}
+
+.consultation-status--cancelled,
+.consultation-status--refused,
+.consultation-status--completed {
+  background: var(--color-border);
 }
 
 .admin-actions {
@@ -1000,6 +1109,138 @@ h1 {
   font-style: italic;
 }
 
+.admin-consultation-detail {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  overflow-wrap: break-word;
+}
+
+.admin-consultation-detail strong {
+  color: var(--color-text);
+}
+
+.consultation-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.consultation-field__label {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.consultation-field__value {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.65rem;
+  background: var(--color-lemon);
+  color: var(--color-dark);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+
+.meeting-time-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 0.35rem;
+}
+
+.meeting-time-picker__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.meeting-time-picker__value {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.meeting-time-picker__trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.5rem;
+  background: var(--color-bg);
+  color: var(--color-dark);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.meeting-time-picker__trigger:hover {
+  background: var(--color-surface);
+}
+
+.meeting-time-picker__trigger--change {
+  flex-shrink: 0;
+  padding: 0.15rem 0.1rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-grape);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.meeting-time-picker__trigger--change:hover {
+  background: transparent;
+  color: var(--color-plum);
+}
+
+.meeting-time-picker__trigger:focus-visible {
+  outline: 2px solid var(--color-grape);
+  outline-offset: 2px;
+}
+
+.meeting-time-picker__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.meeting-time-picker__hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.meeting-time-picker__input:focus {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 .admin-pending-count {
   margin-left: 0.25rem;
 }
@@ -1015,17 +1256,27 @@ h1 {
   gap: 0.5rem;
 }
 
+.consultation-row__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+
 .btn-approve {
   flex-shrink: 0;
   padding: 0.5rem 0.85rem;
   background: var(--color-mint);
-  color: var(--color-dark);
+  color: var(--color-light);
   border: 1px solid var(--color-mint);
 }
 
 .btn-approve:hover:not(:disabled) {
-  background: #8fd4b8;
-  border-color: #8fd4b8;
+  background: #01352d;
+  border-color: #01352d;
+  color: var(--color-light);
 }
 
 .btn-approve:disabled {
@@ -1041,6 +1292,12 @@ h1 {
 
 .admin-status-error {
   color: var(--color-plum);
+}
+
+.consultation-row__error {
+  margin: 0;
+  max-width: 16rem;
+  text-align: right;
 }
 
 .admin-item-list {
@@ -1072,6 +1329,96 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-mentor-list {
+  margin-top: 1rem;
+}
+
+.admin-item-row--mentor {
+  align-items: flex-start;
+}
+
+.admin-item-row--mentor-editing {
+  display: block;
+}
+
+.admin-mentor-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-mentor-photo,
+.admin-mentor-editor__photo {
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: var(--color-surface);
+}
+
+.admin-mentor-editor__photo {
+  width: 5.5rem;
+  height: 5.5rem;
+  margin-bottom: 1rem;
+}
+
+.admin-mentor-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.admin-mentor-email,
+.admin-mentor-blurb {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  overflow-wrap: break-word;
+}
+
+.admin-mentor-email--missing {
+  font-style: italic;
+}
+
+.admin-mentor-blurb {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.admin-mentor-edit {
+  flex-shrink: 0;
+  padding: 0.5rem 0.85rem;
+}
+
+.admin-mentor-editor {
+  width: 100%;
+}
+
+.admin-mentor-note {
+  margin: -0.5rem 0 1.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.admin-mentor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.admin-mentor-actions .btn-secondary,
+.admin-mentor-actions .btn-primary {
+  width: auto;
+  padding: 0.55rem 0.9rem;
 }
 
 .btn-remove {
@@ -1284,6 +1631,124 @@ h1 {
   font-size: 0.9rem;
   line-height: 1.5;
   overflow-wrap: break-word;
+}
+
+.expert-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+
+.inventory-card--expert {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+  height: 100%;
+  padding: 0.75rem;
+}
+
+.expert-card__link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0.45rem;
+}
+
+.expert-card__link:hover h3 {
+  color: var(--color-mint);
+}
+
+.expert-card__link:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.inventory-card--expert .inventory-image-frame {
+  width: 3.25rem;
+  height: 3.25rem;
+  min-height: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 0.45rem;
+}
+
+.inventory-card--expert .inventory-image {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.expert-card__copy {
+  min-width: 0;
+}
+
+.expert-card__copy h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.expert-card__copy p {
+  margin: 0.15rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.inventory-card--expert .btn-reserve {
+  width: 100%;
+  max-width: none;
+  margin-top: auto;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+}
+
+.inventory-card--expert .card-status {
+  grid-column: 1 / -1;
+}
+
+.expert-skeleton {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.expert-skeleton__avatar,
+.expert-skeleton__copy .inventory-skeleton-card__line {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 0%,
+    #f0eeea 45%,
+    var(--color-surface) 90%
+  );
+  background-size: 200% 100%;
+  animation: inventory-shimmer 1.4s ease-in-out infinite;
+}
+
+.expert-skeleton__avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.45rem;
+}
+
+.expert-skeleton__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .item-calendar {
@@ -1605,6 +2070,10 @@ textarea {
   min-height: 6rem;
 }
 
+.add-item-short-text {
+  min-height: 4.5rem;
+}
+
 .image-upload {
   margin-bottom: 1.25rem;
 }
@@ -1618,6 +2087,20 @@ textarea {
   color: var(--color-text-muted);
   font-size: 0.85rem;
   word-break: break-all;
+}
+
+.field-hint {
+  margin: -0.9rem 0 1.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.account-share-expertise__email-hint {
+  margin: 0.35rem 0 1.25rem;
+}
+
+.account-share-expertise__photo-hint {
+  margin: 0.75rem 0 0;
 }
 
 .image-preview {
@@ -1673,6 +2156,8 @@ button:disabled {
 
 .modal {
   width: min(100%, 28rem);
+  max-height: min(92vh, 48rem);
+  overflow-y: auto;
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: 0.75rem;
@@ -1690,6 +2175,10 @@ button:disabled {
   width: min(100%, 72rem);
   max-height: min(92vh, 56rem);
   overflow-y: auto;
+}
+
+.modal--item-detail.modal--expertise {
+  width: min(100%, 34rem);
 }
 
 .item-detail-overlay {
@@ -1716,9 +2205,111 @@ button:disabled {
   max-width: none;
 }
 
+.item-detail-overlay--expertise {
+  padding: 0.85rem 1rem 1rem;
+}
+
+.item-detail-overlay--expertise .item-detail-overlay__bar {
+  margin-bottom: 0.7rem;
+  gap: 0.5rem;
+}
+
+.item-detail.item-detail--expertise {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.expert-detail__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.expert-detail__heading h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+.expert-detail__avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  object-fit: cover;
+}
+
+.expert-detail__bio {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.item-detail--expertise .item-detail__status {
+  margin-top: 0;
+}
+
+.item-detail--expertise .consultation-form {
+  margin-bottom: 0;
+  padding: 0.7rem 0.75rem;
+}
+
+.item-detail--expertise .consultation-form__title {
+  margin-bottom: 0.3rem;
+  font-size: 0.95rem;
+}
+
+.item-detail--expertise .consultation-form__intro {
+  margin-bottom: 0.65rem;
+  font-size: 0.8rem;
+}
+
+.item-detail--expertise .consultation-form__textarea {
+  min-height: 3.4rem;
+  margin-bottom: 0.65rem;
+}
+
+@media (min-width: 900px) {
+  .item-detail.item-detail--expertise {
+    display: flex;
+    grid-template-columns: none;
+  }
+}
+
 @media (max-width: 640px) {
   .item-detail-overlay {
     padding: 1rem 1.1rem 1.5rem;
+  }
+
+  .item-detail-overlay--expertise {
+    padding: 0.75rem 0.85rem 0.95rem;
+  }
+
+  .inventory-card--expert .inventory-image-frame,
+  .expert-detail__avatar,
+  .expert-skeleton__avatar {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .expert-card__copy p,
+  .expert-detail__bio {
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+
+  .inventory-card--expert .btn-reserve {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .item-detail--expertise .consultation-form__textarea {
+    min-height: 4.25rem;
   }
 }
 
@@ -1764,6 +2355,49 @@ button:disabled {
 .item-detail__calendar .item-calendar__legend {
   font-size: 0.68rem;
   gap: 0.35rem 0.5rem;
+}
+
+/* Consultation request form (expertise items — replaces the calendar column) */
+.consultation-form {
+  margin-bottom: 1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+}
+
+.consultation-form__title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.consultation-form__intro {
+  margin: 0 0 0.9rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.consultation-form__label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.consultation-form__textarea {
+  margin-bottom: 1rem;
+  min-height: 4.5rem;
+  font-size: 0.9rem;
+}
+
+.consultation-form__actions {
+  display: flex;
+}
+
+.consultation-form__status {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
 }
 
 .item-detail__calendar .item-calendar__selection {
@@ -1997,7 +2631,8 @@ button:disabled {
   }
 
   .inventory-grid,
-  .inventory-skeleton-grid {
+  .inventory-skeleton-grid,
+  .expert-list {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -2032,60 +2667,13 @@ button:disabled {
     padding: 1.25rem;
   }
 
-  .site-header {
-    grid-template-areas:
-      'brand actions'
-      'nav actions';
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    row-gap: 0.375rem;
-    column-gap: 0.75rem;
-    min-height: unset;
-    padding: 0.625rem 1rem;
-  }
-
-  .site-header__logo {
-    height: 3rem;
-  }
-
-  .site-nav {
-    justify-self: start;
-    align-self: center;
-    justify-content: flex-start;
-  }
-
-  .site-header__actions {
-    align-self: stretch;
-    justify-self: end;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-end;
-    flex-wrap: nowrap;
-    gap: 0;
-  }
-
-  /* Reset order: -1 from base — DOM order (auth first, locale second) gives auth on top */
-  .site-header__actions .locale-switcher {
-    order: 0;
-  }
-
-  .header-auth {
-    flex-wrap: nowrap;
-    justify-content: flex-end;
-  }
-
-  .site-nav__link {
-    font-size: 0.8125rem;
-    padding: 0.4375rem 0.75rem;
-  }
-
-  .btn-header {
-    padding: 0.4375rem 0.75rem;
-    font-size: 0.8125rem;
+  .account-share-expertise {
+    padding: 1rem;
   }
 
   .inventory-grid,
-  .inventory-skeleton-grid {
+  .inventory-skeleton-grid,
+  .expert-list {
     grid-template-columns: 1fr;
   }
 
@@ -2103,6 +2691,32 @@ button:disabled {
   .inventory-filter__btn:nth-child(3) {
     grid-column: 1 / -1;
   }
+
+  /* Expert/member consultation cards: stack text above actions so a
+     non-shrinking button row cannot crush the copy into a thin column. */
+  .consultation-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .consultation-row .admin-reservation-details,
+  .consultation-row .consultation-row__actions,
+  .consultation-row .admin-pending-actions,
+  .consultation-row .meeting-time-picker {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .consultation-row__actions {
+    align-items: flex-start;
+  }
+
+  .consultation-row__error {
+    max-width: 100%;
+    text-align: left;
+  }
 }
 
 @media (max-width: 360px) {
@@ -2112,5 +2726,83 @@ button:disabled {
 
   .inventory-filter__btn:nth-child(3) {
     grid-column: auto;
+  }
+}
+
+/* Phones and small tablets: French account labels do not fit on one row with the logo and nav. */
+@media (max-width: 900px) {
+  .site-header {
+    grid-template-areas:
+      'brand locale'
+      'nav nav'
+      'auth auth';
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    row-gap: 0.5rem;
+    column-gap: 0.75rem;
+    align-items: center;
+    min-height: unset;
+    min-width: 0;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .site-header__brand {
+    min-width: 0;
+  }
+
+  .site-header__logo {
+    height: auto;
+    max-height: 2.75rem;
+    max-width: 100%;
+  }
+
+  .site-nav {
+    justify-self: stretch;
+    align-self: center;
+    justify-content: flex-start;
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    min-width: 0;
+    width: 100%;
+    row-gap: 0.25rem;
+  }
+
+  /* Children become header grid items (locale on row 1, auth on row 3).
+     The auth dialog stays inside .header-auth so it is not promoted into the grid. */
+  .site-header__actions {
+    display: contents;
+  }
+
+  .site-header__actions .locale-switcher {
+    grid-area: locale;
+    order: 0;
+    justify-self: end;
+    align-self: center;
+    flex-shrink: 0;
+  }
+
+  .header-auth {
+    grid-area: auth;
+    flex-wrap: wrap;
+    justify-content: stretch;
+    min-width: 0;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .header-auth .btn-header {
+    flex: 1 1 8rem;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .site-nav__link {
+    font-size: 0.8125rem;
+    padding: 0.4375rem 0.625rem;
+  }
+
+  .btn-header {
+    padding: 0.4375rem 0.75rem;
+    font-size: 0.8125rem;
   }
 }

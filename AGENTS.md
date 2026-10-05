@@ -20,11 +20,133 @@ If the change is trivial (typo, comment-only, dependency bump with no behavioral
 
 ARL Online is a small inventory browser with an admin flow:
 
-- **Inventory** — lists items (title, body, image, tag) loaded from the server. Filter buttons show **Equipment**, **Books**, or **Rooms** (default: equipment). Each card shows a real-time **Available**, **Check availability** (no bookable window within 7 days), or **Unavailable** badge (confirmed `reserved` only — pending requests do not mark the card unavailable). Clicking a card title or **Reserve Inventory** updates the browser URL to `/{tag}/{slug}` (Reserve adds `?reserve=1`) while keeping the inventory grid mounted; `ItemDetailPage` renders the item as a modal **overlay** (`<dialog>`) on top of the grid (it is no longer a full-page route). The overlay uses a three-column layout (image | description | calendar); availability status appears inline in the breadcrumb after the item title; the calendar is always visible in the right column. Signed-out users who confirm a reservation or arrive via `?reserve=1` see a sign-up prompt dialog (Register opens the header auth modal). `?reserve=1` scrolls/highlights the calendar column for signed-in users. Closing the overlay (X, Escape, backdrop click, or browser Back) returns to the underlying inventory/category path; deep links / refreshes on `/{tag}/{slug}` render the matching category grid with the overlay open on top. Confirming dates submits a **pending** reservation via `POST /api/inventory/:id/reservations` (member email derived from JWT on the server), which triggers the optional Slack webhook (fire-and-forget). The member sees a message that AisB will review and email confirmation. Reservation create requires a valid Supabase session (`Authorization: Bearer` JWT). Cancelling the auth prompt removes `?reserve=1` via `history.replaceState`.
-- **Header admin** — signed-in `@apathyisboring.com` admins reach `/admin` via the **Admin** link on the `/account` page (not the site header). The admin page shows add-item, remove-items, **Pending Reservations** (approve/refuse pending requests), and **Edit Reservations** (delete approved reservations); images are compressed client-side before upload. Approve/refuse call `POST .../approve` or `POST .../refuse` and email the member via Resend. Non-admins who visit `/admin` directly see an access-denied message.
+- **Inventory** — lists items (title, body, image, tag) loaded from the server. Filter buttons show **Equipment**, **Books**, **Rooms**, or **Expertise** (default: equipment). Category paths: `/`, `/equipment`, `/books`, `/rooms`, `/expertise`. Non-expertise cards show a real-time **Available**, **Check availability** (no bookable window within 7 days), or **Unavailable** badge (confirmed `reserved` only — pending requests do not mark the card unavailable); **expertise cards hide the badge**. Clicking a card title or **Reserve Inventory** / **Request Consultation** updates the browser URL to `/{tag}/{slug}` (Reserve/Request adds `?reserve=1`) while keeping the inventory grid mounted; `ItemDetailPage` renders the item as a modal **overlay** (`<dialog>`) on top of the grid (it is no longer a full-page route). Equipment, books, and rooms use a three-column overlay (image | description | calendar). Expertise uses a compact overlay (small photo, long bio, consultation form). Availability status appears inline in the breadcrumb after the item title (hidden for expertise). The Expertise list shows each expert's short text; the long text appears when that expert is opened. Signed-out users who confirm a reservation/consultation or arrive via `?reserve=1` see a sign-up prompt dialog (Register opens the header auth modal). `?reserve=1` scrolls/highlights the right column for signed-in users. Closing the overlay (X, Escape, backdrop click, or browser Back) returns to the underlying inventory/category path; deep links / refreshes on `/{tag}/{slug}` render the matching category grid with the overlay open on top. Confirming dates (equipment/books/rooms) submits a **pending** reservation via `POST /api/inventory/:id/reservations` (member email derived from JWT on the server), which triggers the optional Slack webhook (fire-and-forget). The member sees a message that AisB will review and email confirmation. Reservation create requires a valid Supabase session (`Authorization: Bearer` JWT). Cancelling the auth prompt removes `?reserve=1` via `history.replaceState`. See **Expertise consultations** below for the consultation flow.
+- **Header admin** — signed-in `@apathyisboring.com` admins reach `/admin` via the **Admin** link on the `/account` page (not the site header). The admin page shows add-item (including Expertise + optional expert email), **Mentors** (browse expertise items and edit name, expert email, short text, long text, and photo; the public slug stays the same), remove-items, **Pending Reservations** (approve/refuse; expertise rows require a meeting date+time and approving schedules the Zoom consultation), and **Edit Reservations** (delete approved reservations; expertise rows show booked meeting time + Zoom link, and deleting one cancels the Zoom meeting and emails both people); images are compressed client-side before upload. Approve/refuse call `POST .../approve` or `POST .../refuse` and email the member via Resend. Non-admins who visit `/admin` directly see an access-denied message.
 - **Header auth** — optional Supabase email/password login and registration (Log in / Register in the site header when signed out; **View account** + **Sign out** when signed in — Sign out triggers Kimchi `kimchi.signed_out`). **View account** navigates to `/account`. Sign-up requires reading the member agreement (`content/contracts/{locale}/member-agreement.md`) via a lavender **Sign contract** button; agreeing sets a mint checkmark and stores `signed_member_agreement: true` in Supabase `user_metadata` on `signUp`. Register also includes an optional unchecked **email updates** checkbox; the choice is stored as `email_updates_opt_in` in `user_metadata`. Mutating API routes validate the Supabase JWT server-side; admin routes also require an `@apathyisboring.com` email.
 
 Admin UI is hidden unless Supabase auth is configured and the user is signed in with an `@apathyisboring.com` email (`isApathyAdmin` in `src/lib/auth.js`).
+
+---
+
+## Expertise consultations
+
+Use this section when changing the Expertise category, consultation request form, expert scheduling, cancellation, Zoom meetings, related emails/Slack payloads, or migrations `005_expertise.sql` / `006_consultation_scheduling.sql` / `007_expertise_copy.sql`. Consultations **reuse** the reservations table and `POST /api/inventory/:id/reservations` — they are not a separate booking system.
+
+**Lifecycle:** `pending` (member submitted) → `reserved` (expert or admin set the meeting time; Zoom meeting created) → `cancelled` (member, expert, or admin). Admins can also `refuse` a pending request.
+
+**Who is the expert:** the signed-in user whose **confirmed** Supabase email matches the item's `expert_email` (case-insensitive, compared in JS). Experts use the normal `/account` page — no separate role or table. Items without `expert_email` can only be scheduled by admins.
+
+### Member flow
+
+1. Filter **Expertise** (`/expertise`). The list uses the same grid as the other categories (3 cards per row from 900px, one column on small screens). Each card shows a photo, name, and **short text**. **Request Consultation** opens `/{tag}/{slug}?reserve=1`.
+2. Opening an expert shows the **long text** plus `ConsultationRequestForm.svelte` in a narrow overlay (no availability badge, no three-column calendar layout).
+3. Member submits free-text **time slots** + **summary** (auth-gated like Reserve). Client posts `{ timeSlots, summary }`.
+4. Server stores a `pending` reservation with `start_date`/`end_date` = submission date (`toDateKey(new Date())`), plus `time_slots` / `request_summary`. **No date collision check** (multiple members may request the same expert).
+5. Slack webhook fires. Member gets “request received” email; **expert gets “new consultation request” email** linking to `/account`. Kimchi shows `kimchi.consultation_sent`.
+6. `/account` → **Your consultation requests** (`AccountConsultations.svelte`) lists active requests only: status, slots, summary, expert email, and — once scheduled — meeting time, **Join Zoom** link, and passcode. **Cancel** on pending or upcoming scheduled requests. Cancelled, declined, and finished meetings (60 minutes after the start) stay behind a **Past consultations** button on that list.
+
+### Share Expertise
+
+Every signed-in account can open **Share Expertise** from a button on the account panel (`AccountShareExpertise.svelte`). The form stays closed until that button is clicked, then appears above the consultation lists. Closing it keeps any unsaved edits.
+
+1. A **confirmed** email is required. Unconfirmed accounts see a prompt to confirm before the form is shown (`GET /api/account/mentor-profile` returns `{ profile: null, emailConfirmed: false }`).
+2. The member publishes **one** mentor profile: name (max 120), photo, short text, and long text. `POST /api/account/mentor-profile` creates an expertise item and sets `expert_email` to the JWT email. The client cannot choose a different address. A second create returns **409** with the existing profile.
+3. The profile is a normal expertise item, so it appears on the Expertise list immediately. The slug is generated once and stays fixed when the profile is edited.
+4. **Edit** is available when that item's `expert_email` matches the account email (case-insensitive). `PATCH /api/account/mentor-profile` updates name, short text, long text, and an optional new photo. It does not change `expert_email` or the slug. If several expertise items share the email, the earliest one is the profile they edit, and create stays blocked. An admin-created mentor with that email opens in the same editor.
+5. Photo uploads use a **10mb** JSON limit. Creates and updates are rate-limited (10 per 15 minutes) and serialized with an in-process per-email lock (single Cloud Run instance). Kimchi: `kimchi.mentor_profile_published` / `kimchi.mentor_profile_updated`. Publishing does not send email or Slack.
+
+### Expert flow
+
+1. Logs in (or registers) with the `expert_email` address and opens `/account` → **Consultation requests for you** (only shown when they have any). The list shows pending and upcoming meetings. Cancelled, declined, and finished meetings open from **Past consultations** on that section.
+2. Each pending row shows member email, time slots, summary, and a **Select a meeting time** button that opens the device datetime picker (stored as ISO). After a time is chosen it shows as a Lemon chip in plain text with a small **(change date/time)** control, then **Schedule meeting**. Scheduling with no time shows **Please select a meeting time before approving.** on that row.
+3. Schedule → `POST /api/consultations/:reservationId/schedule { meetingAt }` → Zoom meeting created → `reserved` with `meeting_at` + `zoom_*` → both get “scheduled” emails with Zoom link and `.ics` invite. Kimchi `kimchi.consultation_scheduled`.
+4. **Cancel** (pending or scheduled) → `POST /api/consultations/:reservationId/cancel` → `cancelled` + `cancelled_by: 'expert'` → Zoom meeting deleted → both emailed. Kimchi `kimchi.consultation_cancelled`.
+
+### Admin flow
+
+1. Add expertise items via Add Item → **Expertise**; optional **Expert email** (`expertEmail` → `inventory_items.expert_email`; admin-only, stripped from public API), required **Short text** (`body`, max 180, shown on the list) and **Long text** (`longBody` → `inventory_items.long_body`, max 4000, shown when the expert is opened). Apply `007_expertise_copy.sql` before saving long text. Items saved before separate fields exist keep working: the first paragraph of `body` is the list text, and the rest (after a blank line) is the overlay text, until `longBody` is set.
+2. **Mentors** lists expertise items (photo, name, expert email, short text). **Edit** saves name, expert email (blank clears it), short text, long text, and an optional new photo via `PATCH /api/inventory/:id`. The slug is not regenerated. Older bios without `longBody` open with the blank-line split already filled in.
+3. Pending list shows requested date, time slots, summary, and the same **Select a meeting time** control (required `meetingAt` once chosen). **Approve = schedule** (same `runScheduleConsultation` as the expert path: Zoom + both emails). Refuse sends the member the consultation decline email.
+4. Edit Reservations shows the meeting time and Zoom link. **Delete** of an active consultation (or deleting the expertise item) deletes the Zoom meeting and emails both as an admin cancellation.
+
+### Zoom (`src/lib/zoom.js`)
+
+| Concern | Behavior |
+|---------|----------|
+| Auth | Server-to-Server OAuth (`ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`); token cached until ~1 min before expiry |
+| Host | `ZOOM_HOST_USER` (default `me` = the app owner's licensed Zoom user). Members/experts don't need Zoom accounts |
+| Meeting | Scheduled (type 2), 60 min, `America/Toronto`, `join_before_host: true`, `jbh_time: 0`, `waiting_room: false`, passcode auto-generated by Zoom. Topic `ARL consultation: {title}` (summary is **not** sent to Zoom) |
+| Screen share for all | Host-user setting, not per-meeting. Attempted once per process via `PATCH /users/{host}/settings` — requires `user:update:settings:admin` scope; otherwise set **Who can share = All Participants** in the Zoom web portal |
+| Create failure | Inside the item lock, before the DB write → 502, reservation stays `pending`. DB failure after create → meeting deleted |
+| Delete | On cancel / admin delete; 404 treated as success; other errors logged (cancellation still succeeds) |
+| Not configured | Schedules without a meeting; emails say a link will follow |
+| Invitations | Zoom's API does not email anyone — invitations are our Resend emails + `.ics` (`METHOD:REQUEST`, cancel sends `METHOD:CANCEL` with the same UID) |
+| Diagnostics | `npm run zoom:check` (token, scopes, host user, share settings) |
+
+### Schema
+
+| Migration | Table | Column | Purpose |
+|-----------|-------|--------|---------|
+| 005 | `inventory_items` | `tag` allows `expertise` | Category / filter / routes |
+| 005 | `inventory_items` | `expert_email` | Expert contact + identity for `/account` scheduling (never public) |
+| 005 | `reservations` | `time_slots` | Member availability free-text (max 500) |
+| 005 | `reservations` | `request_summary` | Topic summary (max 2000; API body key `summary`) |
+| 005 | `reservations` | `meeting_at` | Meeting timestamp set on schedule |
+| 006 | `reservations` | `status` allows `cancelled` | Cancelled by member/expert/admin |
+| 006 | `reservations` | `zoom_meeting_id`, `zoom_join_url`, `zoom_password` | Zoom meeting created on schedule |
+| 006 | `reservations` | `cancelled_at`, `cancelled_by` | `member` / `expert` / `admin` |
+| 007 | `inventory_items` | `long_body` | Expertise long bio (`longBody`). Short list text stays in `body` |
+
+Apply in order after `004_inventory_slug.sql`. Schema-error hints in `inventory-store.js` reference these migrations. `cancelled` is also in `RESERVATION_STATUSES` in `calendar.js` — unknown statuses normalize to `reserved`, so keep that list in sync.
+
+### API / sanitization notes
+
+| Concern | Behavior |
+|---------|----------|
+| Create body | Expertise: `{ timeSlots, summary }`. Other tags: `{ startDate, endDate }` |
+| `GET /api/account/consultations` | `{ asMember, asExpert }`; `asExpert` only for confirmed emails. Members see `expertEmail`; experts see `memberEmail`; Zoom link/passcode only while `reserved` |
+| Mentor profile | `GET/POST/PATCH /api/account/mentor-profile`. One expertise item per confirmed account email. Response includes `expertEmail` because it is that account's address. Public inventory routes still omit it |
+| Schedule | `POST /api/consultations/:id/schedule { meetingAt }` — expert or admin; meeting must not be >5 min in the past; 403 for the member; 404 for unrelated users |
+| Cancel | `POST /api/consultations/:id/cancel` — member, expert, or admin; only `pending`/`reserved` |
+| Admin approve | Expertise requires `{ meetingAt }`; routes into the same schedule logic |
+| Public responses | Whitelisted reservation fields only (`id`, `startDate`, `endDate`, `status`); no `expertEmail`. Expertise items include public `longBody` (null on other tags) |
+| Collision | Skipped for `tag === 'expertise'` in `addReservation` / `patchReservation` |
+| Pending cap | Still max 5 pending reservations per user (all tags); cancelled requests free a slot |
+| Concurrency | Schedule/cancel run in the per-item in-process lock. Mentor profile create/update uses a per-email lock (single Cloud Run instance assumption) |
+
+### Emails & Slack
+
+| Trigger | What fires |
+|---------|------------|
+| Consultation create | Member “request received” + expert “new consultation request” (`sendConsultationRequestEmails`) + Slack |
+| Schedule (expert or admin) | Member “Consultation confirmed” + expert “Consultation scheduled”, both with Zoom link + `.ics` (`buildConsultationScheduledEmailPayloads`) |
+| Cancel / admin delete | Both get “Consultation cancelled” naming who cancelled (`buildConsultationCancelledEmailPayloads`); `.ics` CANCEL if it was scheduled |
+| Admin refuse | Member decline email (`buildConsultationDecisionEmailPayload`) |
+| Placeholder | `CONSULTATION_DATA_FORM_URL` in `server.js` — replace before launch |
+
+Details: `docs/automated-emails.md`, `docs/automated-webhooks.md`, `docs/automated-notifications.md`.
+
+### Files to touch (checklist)
+
+| Layer | Files |
+|-------|--------|
+| Migration | `supabase/migrations/005_expertise.sql`, `006_consultation_scheduling.sql`, `007_expertise_copy.sql` |
+| Store / rules | `src/lib/inventory-store.js` (`scheduleConsultation`, `cancelConsultation`, `findReservationWithItem`, `listConsultationsForUser`, `findMentorProfileByEmail`, `createMentorProfileForEmail`, `updateMentorProfileForEmail`), `src/lib/calendar.js` (`RESERVATION_STATUSES`), `src/lib/reservation-rules.js` |
+| Zoom | `src/lib/zoom.js`, `scripts/zoom-check.js` |
+| API / email / Slack | `server.js`, `src/lib/email-brand.js` (branded HTML layout) |
+| Client API | `src/lib/inventory.js` (`createReservation`, `approveReservation`, `fetchAccountConsultations`, `scheduleConsultation`, `cancelConsultation`, `fetchMentorProfile`, `createMentorProfile`, `updateMentorProfile`) |
+| Routes / SEO | `src/lib/router.js`, `src/lib/item-routes.js`, `src/lib/seo.js`, `src/lib/seo-server.js`, sitemap static paths in `server.js` |
+| UI | `InventoryPanel.svelte`, `InventoryCard.svelte`, `ItemDetailPage.svelte`, `ConsultationRequestForm.svelte`, `AccountPage.svelte`, `AccountShareExpertise.svelte`, `AccountConsultations.svelte`, `MeetingTimePicker.svelte`, `AddItemModal.svelte`, `AdminPanel.svelte`, `MentorBrowser.svelte` |
+| Copy / styles | `locales/en.json` + `fr.json` (`consultation.*`, `account_consultations.*`, `share_expertise.*`, `admin.consultation_*` / `meeting_*`, `add_item.expert_*` / `short_text_*` / `long_text_*`, `kimchi.consultation_*`, `kimchi.mentor_profile_*`, `how_this_works.*`), `src/app.css` (`.expert-list`, `.inventory-card--expert`, `.expert-detail*`, `.consultation-form*`, `.consultation-row*`, `.consultation-field*`, `.consultation-status*`, `.meeting-time-picker*`, `.admin-consultation-*`, `.account-share-expertise*`) |
+| Deploy | `scripts/cloud-build.sh` (Zoom env + `zoom-client-secret`), `.env.example` |
+
+### Deferred / known gaps
+
+- Real YES Employment participant data form URL (`CONSULTATION_DATA_FORM_URL`).
+- Zoom app lacks `user:read:settings:admin` / `user:update:settings:admin`, so "everyone can share screen" must be set in the Zoom web portal (or add the scopes).
+- No reminders, rescheduling, or expert-side "decline" (expert cancels instead).
+- Server emails are English-only, so they use the English light wordmark. The French wordmark is not hosted yet.
+- Slack workflow must accept the extra payload keys (`time_slots`, `request_summary`, `expert_email`, `admin_url`); Slack does not fire on schedule/cancel.
 
 ---
 
@@ -71,15 +193,18 @@ ARL-Online/
 ├── send-email.js          # Standalone Resend smoke-test script (not the web app)
 ├── scripts/
 │   ├── dev.js             # Starts Express + Vite together for npm run dev
-│   ├── prerender.js       # Post-build static HTML shells for category/marketing routes (Tier 2 SEO)
 │   ├── migrate-inventory-to-supabase.js  # Upsert data/inventory.json into Supabase (with slug generation)
-│   └── backfill-slugs.js  # Populate null/empty slugs on existing inventory_items rows (idempotent)
+│   ├── backfill-slugs.js  # Populate null/empty slugs on existing inventory_items rows (idempotent)
+│   └── zoom-check.js      # Verify Zoom S2S credentials, scopes, host user (npm run zoom:check)
 ├── supabase/
 │   └── migrations/
 │       └── 001_inventory.sql  # inventory_items + reservations tables (apply in Supabase SQL Editor)
 │       └── 002_reservation_approval.sql  # user_email + pending/reserved/refused statuses
 │       └── 003_lock_down_roles.sql  # REVOKE table access from anon/authenticated roles
 │       └── 004_inventory_slug.sql   # slug column + unique (tag, slug) index for item detail URLs
+│       └── 005_expertise.sql   # expertise tag + expert_email + consultation fields (time_slots, request_summary, meeting_at)
+│       └── 006_consultation_scheduling.sql # cancelled status + zoom_meeting_id/join_url/password + cancelled_at/by
+│       └── 007_expertise_copy.sql # expertise long_body (short list text stays in body)
 ├── package.json
 ├── .env.example           # Required env template (copy to .env)
 ├── content/
@@ -98,13 +223,18 @@ ARL-Online/
 │   ├── app.css            # Global styles (fonts, layout, components)
 │   ├── components/
 │   │   ├── InventoryPanel.svelte   # Tag filter, grid, reserve auth gate, shared modals, availability clock
-│   │   ├── InventoryCard.svelte    # Card: title links to /{tag}/{slug}; availability badge + Reserve button
-│   │   ├── ItemDetailPage.svelte   # /{tag}/{slug} item overlay (`<dialog>`): breadcrumb, 3-col grid (image | description | calendar), auth gate; rendered on top of the grid
+│   │   ├── InventoryCard.svelte    # Card: title links to /{tag}/{slug}; availability badge (hidden for expertise) + Reserve / Request Consultation. Expertise rows are compact (photo, name, short text)
+│   │   ├── ItemDetailPage.svelte   # /{tag}/{slug} item overlay (`<dialog>`): breadcrumb, 3-col grid or compact expertise panel (photo, long text, consultation form), auth gate; rendered on top of the grid
 │   │   ├── ReserveAuthRequiredModal.svelte # Dialog when signed-out user clicks Reserve (prompts sign up)
 │   │   ├── ItemCalendar.svelte     # Month calendar: block reserved dates, create reservations
+│   │   ├── ConsultationRequestForm.svelte # Expertise items: time slots + summary form (replaces calendar)
 │   │   ├── AdminPage.svelte        # `/admin` page shell: access gate + page header + AdminPanel
-│   │   ├── AccountPage.svelte      # `/account` page: member email, sign out, admin link for admins
-│   │   ├── AdminPanel.svelte       # Admin UI: add/remove items + edit-reservations list
+│   │   ├── AccountPage.svelte      # `/account` page: member email, sign out, admin link, Share Expertise button, consultations
+│   │   ├── AccountShareExpertise.svelte # `/account` Share Expertise: one mentor profile, edit when email matches
+│   │   ├── AccountConsultations.svelte # `/account` consultations: member requests + expert scheduling/cancel
+│   │   ├── MeetingTimePicker.svelte # Select-a-time button over the native datetime picker; chosen time is a Lemon chip + change control
+│   │   ├── AdminPanel.svelte       # Admin UI: add/remove items, mentors, reservations
+│   │   ├── MentorBrowser.svelte    # Admin mentors list + edit expertise details
 │   │   ├── AddItemModal.svelte     # Dialog form for new items (includes tag/category selector)
 │   │   ├── AuthModal.svelte        # Login / register dialog (email + password; register requires member agreement + optional email-updates opt-in)
 │   │   ├── MemberAgreementModal.svelte # Scrollable member contract dialog on sign-up
@@ -119,20 +249,25 @@ ARL-Online/
 │   │   ├── auth.js        # Supabase session store + sign-in/up/out helpers (`signed_member_agreement`, `email_updates_opt_in` on sign-up)
 │   │   ├── member-agreement.js # Loads `content/contracts/` markdown by locale; renders HTML via `marked`
 │   │   ├── i18n.js        # Locale store + `$t()` translate function (en/fr JSON)
-│   │   ├── inventory.js   # API client + legacy localStorage migration
-│   │   ├── inventory-store.js # Supabase inventory + reservation CRUD (server)
+│   │   ├── inventory.js   # API client + legacy localStorage migration (`expertise` in INVENTORY_TAGS; consultation create/approve payloads)
+│   │   ├── inventory-store.js # Supabase inventory + reservation CRUD (server; expert_email + long_body + consultation fields; skip collisions for expertise)
+│   │   ├── expertise-fields.js # Short/long expertise text length limits (shared by client + server)
 │   │   ├── calendar.js    # Date/reservation helpers (shared by client + server.js)
 │   │   ├── availability-clock.js # Shared 60s clock for badge + calendar "today"
 │   │   ├── image.js       # Client-side image compression (canvas → JPEG)
+│   │   ├── item-routes.js # Shared category/item path helpers for server SEO/sitemap (mirrors router tags including expertise)
 │   │   ├── notification-store.js # Queue store + `notify()` API for Kimchi chat-bubble notifications
-│   │   ├── router.js      # Client-side routing: inventory, item detail /{tag}/{slug}, admin, static pages
+│   │   ├── router.js      # Client-side routing: inventory (incl. /expertise), item detail /{tag}/{slug}, admin, static pages
+│   │   ├── reservation-rules.js # Tag block rules (equipment/books fixed Tue blocks; rooms + expertise flexible)
 │   │   ├── seo.js         # Client SEO: meta/OG/Twitter/canonical/hreflang/JSON-LD + per-item Product schema
 │   │   ├── seo-server.js  # Async server HTML injection for crawlers (item lookup by slug)
 │   │   ├── slug.js        # slugifyTitle() + ensureUniqueSlug() for immutable per-tag item URLs
 │   │   ├── supabase.js    # Supabase browser client (anon key)
-│   │   └── supabase-server.js # Supabase service-role client (server only)
+│   │   ├── supabase-server.js # Supabase service-role client (server only)
+│   │   ├── zoom.js            # Zoom Server-to-Server OAuth client: create/delete consultation meetings (server only)
+│   │   └── email-brand.js     # Apathy is Boring HTML + plain-text layout for Resend emails
 │   └── assets/
-│       ├── brand/         # Apathy is Boring + FES logos; served at /assets/brand
+│       ├── brand/         # Apathy is Boring + FES logos; served at /assets/brand (includes the light wordmark used in emails)
 │       ├── fonts/         # Inter + Ringold; served at /assets/fonts
 │       └── inventory/     # Seed catalog from MyTurn library; served at /assets/inventory/
 │           ├── items.json # 9 items: title, body, image path, sourceId, tag
@@ -149,48 +284,55 @@ There is no other `public/` content beyond `robots.txt` and the fonts symlink. F
 
 - `index.html` loads `/src/main.js` and includes the Google Analytics tag (`G-5VERECD6ZJ`) immediately after `<head>`.
 - `main.js` uses Svelte 5 `mount()` when `#app` exists and imports global `app.css`.
-- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount, routes between inventory (`/`, `/equipment`, `/books`, `/rooms`), **How it works** (`/howthisworks`), **About** (`/about`), **Account** (`/account`), and admin (`/admin`) via `src/lib/router.js`. On item routes (`/{tag}/{slug}` e.g. `/equipment/megaphone`) it renders the inventory grid **and** the lazy-loaded `ItemDetailPage` overlay concurrently (the grid stays mounted underneath; `InventoryPanel` filters to the item's tag), so deep links show the item overlay on top of the right category grid. It wires a skip link (`site.skip_to_content` → `#main-content`), client-side SEO tags via `src/lib/seo.js` (`$effect` on route + locale; per-item Product JSON-LD on detail routes), Google Analytics + optional Plausible SPA pageviews on route change when each script is present, a lemon **PSA banner** (localized hyperlink above the header), the site header (logo + `SiteNav` + `LocaleSwitcher` + `HeaderAuth`), lazy-loaded admin / how-it-works / about / item-detail pages, add-item modal, fixed bottom quote footer, fixed bottom-left FES attribution, and the `KimchiNotification` chat widget. Homepage page header includes `site.intro` + `site.intro_extended` copy. `/` defaults to the equipment filter; category paths sync the inventory filter via `navigate(categoryToPath(tag))`.
+- `App.svelte` holds top-level state: `items`, `loading`, `loadError`. It loads inventory on mount, routes between inventory (`/`, `/equipment`, `/books`, `/rooms`, `/expertise`), **How it works** (`/howthisworks`), **About** (`/about`), **Account** (`/account`), and admin (`/admin`) via `src/lib/router.js`. On item routes (`/{tag}/{slug}` e.g. `/equipment/megaphone` or `/expertise/some-expert`) it renders the inventory grid **and** the lazy-loaded `ItemDetailPage` overlay concurrently (the grid stays mounted underneath; `InventoryPanel` filters to the item's tag), so deep links show the item overlay on top of the right category grid. It wires a skip link (`site.skip_to_content` → `#main-content`), client-side SEO tags via `src/lib/seo.js` (`$effect` on route + locale; per-item Product JSON-LD on detail routes), Google Analytics + optional Plausible SPA pageviews on route change when each script is present, a lemon **PSA banner** (localized hyperlink above the header), the site header (logo + `SiteNav` + `LocaleSwitcher` + `HeaderAuth`), lazy-loaded admin / how-it-works / about / item-detail pages, add-item modal, fixed bottom quote footer, fixed bottom-left FES attribution, and the `KimchiNotification` chat widget. Homepage page header includes `site.intro` + `site.intro_extended` + `site.intro_support` copy. `/` defaults to the equipment filter; category paths sync the inventory filter via `navigate(categoryToPath(tag))`.
 
 ### Components
 
 | Component | Responsibility |
 |-----------|----------------|
-| `InventoryPanel` | Tag filter buttons with per-category item counts (URL-synced via `categoryToPath` / `getCategoryFromPath`, and to the item's tag via `getItemRouteParams` while an item overlay is open), skeleton loading grid, filtered equal-height card grid, and shared availability clock subscription; **Reserve Inventory** on cards navigates to `/{tag}/{slug}?reserve=1` |
-| `InventoryCard` | Equal-height card: clamped title/body (title links to `/{tag}/{slug}` via `navigateToItem`, opening the item overlay), white image frame, availability badge (**Available**, **Check availability**, **Unavailable**), hover lift, and **Reserve Inventory** button pinned to card bottom; Reserve navigates to item overlay with `?reserve=1` |
-| `ItemDetailPage` | `/{tag}/{slug}` **modal overlay** (native `<dialog showModal()>`, opened on mount): breadcrumb bar with inline availability badge after item title, fetches item via API, 404 state, **three-column grid** (image | title/body | always-visible `ItemCalendar`). No overlay Reserve button — calendar is persistent. `?reserve=1` scrolls/highlights the calendar column (signed-in) or opens auth modal (signed-out). Confirm reservation gated via `ItemCalendar` `onbeforeconfirm` + `ReserveAuthRequiredModal`. Close (X / Escape / backdrop click) calls `closeItemOverlay(tag)`. Rendered concurrently with the inventory grid by `App.svelte`; the grid keeps `id="main-content"` (the overlay does not) |
+| `InventoryPanel` | Tag filter buttons with per-category item counts (URL-synced via `categoryToPath` / `getCategoryFromPath`, and to the item's tag via `getItemRouteParams` while an item overlay is open), skeleton loading grid, filtered equal-height card grid (Expertise uses `.expert-list` with the same 3-column breakpoints), and shared availability clock subscription; **Reserve Inventory** / **Request Consultation** navigates to `/{tag}/{slug}?reserve=1` |
+| `InventoryCard` | Equal-height card: clamped title/body (title links to `/{tag}/{slug}` via `navigateToItem`, opening the item overlay), white image frame, availability badge (**Available**, **Check availability**, **Unavailable** — hidden on `expertise` items), hover lift, and **Reserve Inventory** button pinned to card bottom. Expertise rows are a compact list (square photo, name, short text in `body`, **Request Consultation**); the whole row except the button opens the expert. Reserve navigates to the item overlay with `?reserve=1` |
+| `ItemDetailPage` | `/{tag}/{slug}` **modal overlay** (native `<dialog showModal()>`, opened on mount): breadcrumb bar with inline availability badge after item title (hidden for expertise), fetches item via API, 404 state. Equipment, books, and rooms use a **three-column grid** (image | title/body | always-visible `ItemCalendar`). Expertise uses a **compact panel** (`modal--expertise`, about 34rem): small photo, name, long text (`longBody`, falling back to `body`), and `ConsultationRequestForm`. No overlay Reserve button — the calendar or form stays visible. `?reserve=1` scrolls/highlights that column (signed-in) or opens auth modal (signed-out). Confirm gated via `onbeforeconfirm` + `ReserveAuthRequiredModal` on both calendar and consultation form. Close (X / Escape / backdrop click) calls `closeItemOverlay(tag)`. Rendered concurrently with the inventory grid by `App.svelte`; the grid keeps `id="main-content"` (the overlay does not) |
 | `ReserveAuthRequiredModal` | Native `<dialog>` shown when a signed-out user arrives via `?reserve=1` or confirms a calendar reservation (Supabase configured); error message + Register (opens header `AuthModal`) and Log in link; dismiss clears `?reserve=1` |
 | `ItemCalendar` | Month-view calendar in the item overlay right column; optional `onbeforeconfirm` gate; tag-specific block selection (equipment/books) or flexible range (rooms); `todayKey` refreshes via shared availability clock; POST reservation via API; Kimchi `kimchi.reservation_sent` on successful pending create |
+| `ConsultationRequestForm` | Expertise-only replacement for `ItemCalendar` in the item overlay right column: two textareas (available time slots + request summary), Submit button, same `onbeforeconfirm` auth gate + `onupdated`/`onconfirmed` contract; POSTs `{ timeSlots, summary }` to the reservation endpoint; Kimchi `kimchi.consultation_sent` on success |
 | `AdminPage` | `/admin` route: back link, access gate (auth configured, signed in, `isApathyAdmin`), page header, and `AdminPanel` |
-| `AdminPanel` | Add-item, remove-item, **Pending Reservations** (approve/refuse), and edit-reservations toggle buttons; loads full inventory (including member emails) via `GET /api/admin/inventory`; remove list (confirm + `DELETE /api/inventory/:id`); pending list (approve/refuse + member email); approved reservation list (confirm + `DELETE /api/inventory/:id/reservations/:reservationId`, updates shared inventory state); Kimchi confirmations on remove, approve, and delete success |
-| `AddItemModal` | Native `<dialog>`; form validation; tag/category radio selector; image pick + compress; POST new item; Kimchi `kimchi.item_added` on success. Exposes `open()` / `close()` via `export function` |
+| `AdminPanel` | Add-item, **Mentors** (`MentorBrowser.svelte`), remove-item, **Pending Reservations** (approve/refuse), and edit-reservations toggle buttons; loads full inventory (including member emails) via `GET /api/admin/inventory`; mentor editor saves via `PATCH /api/inventory/:id` and syncs the public inventory list (expert email stripped); remove list (confirm + `DELETE /api/inventory/:id`); pending list (approve/refuse + member email; expertise rows show requested date, time slots, summary, and a **Select a meeting time** control whose chosen time is sent as `meetingAt` on approve); approved reservation list (expertise rows show the booked meeting time instead of a date range) (confirm + `DELETE /api/inventory/:id/reservations/:reservationId`, updates shared inventory state); Kimchi confirmations on remove, approve, and delete success |
+| `MentorBrowser` | Admin **Mentors** list: expertise items sorted by name, with photo, expert email, and short text. **Edit** opens a form (name, expert email, short text, long text, optional new photo). Save calls `updateExpertiseItem`; Kimchi `kimchi.mentor_updated` |
+| `AddItemModal` | Native `<dialog>`; form validation; tag/category radio selector (Equipment / Books / Rooms / Expertise); expertise shows optional **Expert email** plus required **Short text** and **Long text** (sent as `body` and `longBody`); image pick + compress; POST new item; Kimchi `kimchi.item_added` on success. Exposes `open()` / `close()` via `export function` |
 | `QuoteFooter` | Fixed site footer; rotates 10 activist quotes every 10s with fade in/out; resets index on locale change |
-| `SiteNav` | Centered header links: **Inventory** (`/`), **How it works** (`/howthisworks`), and **About** (`/about`); active state from `path` store (inventory active on `/`, `/equipment`, `/books`, `/rooms`); uses `navigate()` for SPA transitions |
-| `HowThisWorksPage` | `/howthisworks` route: localized five-step guide (browse, account, reserve, approval, pickup), expandable FAQ section (`how_this_works.faq`), and back link to inventory |
+| `SiteNav` | Centered header links: **Inventory** (`/`), **How it works** (`/howthisworks`), and **About** (`/about`); active state from `path` store (inventory active on `/`, `/equipment`, `/books`, `/rooms`, `/expertise`); uses `navigate()` for SPA transitions |
+| `HowThisWorksPage` | `/howthisworks` route: localized five-step guide (browse, account, reserve, approval, pickup — copy covers Expertise consultations), expandable FAQ section (`how_this_works.faq`, includes consultation FAQ), and back link to inventory |
 | `AboutPage` | `/about` route: mission, Canada-wide framing, partner sections (Apathy is Boring, FES), and a public contact form (`POST /api/contact` via Resend to `samuel@apathyisboring.com`) with back link to inventory |
-| `AccountPage` | `/account` route: signed-in members see email, **Sign out**, and gated **Admin** link (`@apathyisboring.com` only); signed-out visitors see login/register prompts; Kimchi `kimchi.signed_out` on successful sign-out |
+| `AccountPage` | `/account` route: signed-in members see email, a **Share Expertise** button (opens the mentor form), **Sign out**, gated **Admin** link (`@apathyisboring.com` only), and `AccountConsultations`; signed-out visitors see login/register prompts; Kimchi `kimchi.signed_out` on successful sign-out |
+| `AccountShareExpertise` | **Share Expertise** form, hidden until the account-panel button is clicked. Loads `GET /api/account/mentor-profile` on first open. Confirmed members publish one mentor profile (`POST`) or edit it when `expert_email` matches the account (`PATCH`). Mentor email is shown read-only (the account email). Photo, name, short text, and long text. Link to the public expertise page. Kimchi `kimchi.mentor_profile_published` / `kimchi.mentor_profile_updated`. Saving updates the in-memory inventory list (expert email stripped) |
+| `AccountConsultations` | Loads `GET /api/account/consultations`. **Consultation requests for you** (expert role, only when non-empty): member email, slots, summary, **Select a meeting time** (native picker; chosen time shows as a Lemon chip with **(change date/time)**) + **Schedule meeting**, **Cancel**. **Schedule meeting** with no time shows **Please select a meeting time before approving.** under that row’s buttons. **Your consultation requests** (member role): status, expert email, slots, summary, meeting time + **Join Zoom** + passcode when scheduled, **Cancel**. Each list shows pending requests and upcoming meetings (soonest first). Cancelled, declined, and finished meetings (60 minutes after the start, labeled **Completed**) are hidden behind a **Past consultations** button on that list; the count is on the button, and opening it shows the newest first. On viewports ≤640px each row stacks so the request text uses the full card width and the buttons sit underneath. Kimchi `kimchi.consultation_scheduled` / `kimchi.consultation_cancelled` |
 | `HeaderAuth` | Header **Log in** / **Register** when signed out; **View account** (`auth.view_account`) + **Sign out** when signed in (Kimchi `kimchi.signed_out` on success). Exposes `openLogin()` / `openRegister()` for reserve auth prompt. Hidden if Supabase env vars are missing |
 | `AuthModal` | Native `<dialog>` for email/password login and registration; register mode requires member agreement sign-off and offers an optional email-updates checkbox. Exposes `open(mode)` / `close()` |
 | `MemberAgreementModal` | Scrollable member contract dialog opened from register flow; **Agree to the terms** sets signed state in parent. Exposes `open()` / `close()` |
 | `LocaleSwitcher` | EN/FR language toggle; persists choice in `localStorage` key `arl-locale` |
-| `KimchiNotification` | Fixed bottom-right chat widget shell (above quote footer): Kimchi avatar (`content/kimchi-awake.jpg` / `kimchi-sleep.jpg`) + `KimchiBubble` stack; signed-out greeting split into two bubbles (`kimchi.greeting`, then `kimchi.greeting_cta` + `/howthisworks` link after 1 second), or `kimchi.logged_in` confirmation when a session exists; also confirms on login during the visit; avatar tap adds a new random `kimchi.taps` message on top of existing stack; clickable green/grey status dot toggles awake/sleep (sleep shows `kimchi.sleep` “Zzz…” then suppresses all bubbles until awake; wake shows a random `kimchi.taps` message); inventory/reservation action confirmations queued from `AddItemModal`, `AdminPanel`, and `ItemCalendar` via `notify()` |
+| `KimchiNotification` | Fixed bottom-right chat widget shell (above quote footer): Kimchi avatar (`content/kimchi-awake.jpg` / `kimchi-sleep.jpg`) + `KimchiBubble` stack; signed-out greeting split into two bubbles (`kimchi.greeting`, then `kimchi.greeting_cta` + `/howthisworks` link after 1 second), or `kimchi.logged_in` confirmation when a session exists; also confirms on login during the visit; avatar tap adds a new random `kimchi.taps` message on top of existing stack; clickable green/grey status dot toggles awake/sleep (sleep shows `kimchi.sleep` “Zzz…” then suppresses all bubbles until awake; wake shows a random `kimchi.taps` message); inventory/reservation/consultation action confirmations queued from `AddItemModal`, `AdminPanel`, `MentorBrowser`, `AccountShareExpertise`, `ItemCalendar`, and `ConsultationRequestForm` via `notify()` |
 | `KimchiBubble` | One Kimchi chat bubble: elastic `backOut` pop-in, 350ms fade-out pinned in place during exit (flex stack collapse safe), per-bubble auto-dismiss timer, optional tail when anchored above avatar, close button |
 
 ### Shared libraries
 
-- **`src/lib/i18n.js`** — Store-based i18n (no extra dependency). Imports `locales/en.json` and `locales/fr.json`. Exports `locale` (writable store), `t` (derived translate function — use `$t('domain.key')` in templates), `translateKey()` for non-reactive scripts, and `quotes` (derived quote list). Initial locale: `?lang=en|fr` query param, else saved `arl-locale`, else `fr` when `navigator.language` starts with `fr`, else `en`. Updates `document.documentElement.lang` on change. Dynamic strings use `{variable}` interpolation (e.g. `$t('admin.remove_confirm', { title })`).
-- **`src/lib/seo.js`** — `getSiteOrigin`, `getSeoForRoute`, `getItemSeoConfig`, `getProductJsonLd`, `ROUTE_SEO_KEYS`, `applySeoTags`, `applyHreflangTags`, `setRobotsMeta` / `clearRobotsMeta`, `upsertMeta` / `upsertMetaProperty` / `upsertLink` / `upsertJsonLd`, `getOrganizationJsonLd`, `getFaqJsonLd`, `buildSeoHeadHtml`. Locale keys under `seo.*` in EN/FR JSON. `/admin` and `/account` set `noindex`; public routes inject Organization JSON-LD; `/howthisworks` also injects FAQPage JSON-LD; item detail routes use item title, truncated body description, item image, canonical `/{tag}/{slug}`, and Product JSON-LD.
-- **`src/lib/seo-server.js`** — Async `injectSeoIntoHtml(html, pathname, locale, origin, escapeHtml, options)` (looks up item by slug for `/{tag}/{slug}` via `findItemBySlug` option), `resolveRequestLocale(req)`, and `ROUTE_META` (paths mirroring `ROUTE_SEO_KEYS`) for Express HTML responses.
+- **`src/lib/i18n.js`** — Store-based i18n (no extra dependency). Imports `locales/en.json` and `locales/fr.json`. Exports `locale` (writable store), `t` (derived translate function — use `$t('domain.key')` in templates), `translateKey()` for non-reactive scripts, and `quotes` (derived quote list). Initial locale: `?lang=en|fr` query param, else saved `arl-locale`, else `fr` when `navigator.language` starts with `fr`, else `en`. Updates `document.documentElement.lang` on change. Dynamic strings use `{variable}` interpolation (e.g. `$t('admin.remove_confirm', { title })`). Domains include `site` (homepage intro + `intro_support`), `inventory` (incl. `filter_expertise`, `request_consultation`), `consultation` (request form), `share_expertise` (account mentor profile), `admin` (incl. consultation approve/meeting labels), `add_item` (incl. `expert_email_*`), `kimchi`, `how_this_works`, `seo` (incl. `category_expertise_*`), and others.
+- **`src/lib/seo.js`** — `getSiteOrigin`, `getSeoForRoute`, `getItemSeoConfig`, `getProductJsonLd`, `ROUTE_SEO_KEYS`, `applySeoTags`, `applyHreflangTags`, `setRobotsMeta` / `clearRobotsMeta`, `upsertMeta` / `upsertMetaProperty` / `upsertLink` / `upsertJsonLd`, `getOrganizationJsonLd`, `getFaqJsonLd`, `serializeJsonForScript`, `buildSeoHeadHtml`. Server-rendered JSON-LD blocks (Product / Organization / FAQ in `buildSeoHeadHtml`, used by `seo-server.js`) are serialized with `serializeJsonForScript`, which escapes `<`, `>`, `&`, U+2028 and U+2029 as JSON unicode escapes so admin-entered item text can never break out of the `<script>` block — **never use raw `JSON.stringify` inside a `<script>` tag**. Locale keys under `seo.*` in EN/FR JSON. Category routes include `/expertise` (`seo.category_expertise_title` / `description`). `/admin` and `/account` set `noindex`; public routes inject Organization JSON-LD; `/howthisworks` also injects FAQPage JSON-LD; item detail routes use item title, truncated body description (expertise uses `longBody` when set), item image, canonical `/{tag}/{slug}`, and Product JSON-LD.
+- **`src/lib/seo-server.js`** — Async `injectSeoIntoHtml(html, pathname, locale, origin, escapeHtml, options)` (looks up item by slug for `/{tag}/{slug}` via `findItemBySlug` option), `stripDefaultSeoTags(html)`, `resolveRequestLocale(req)`, and `ROUTE_META` (paths mirroring `ROUTE_SEO_KEYS`) for Express HTML responses. `injectSeoIntoHtml` first **strips the static fallback `<title>`, `description`, `og:*`, and `twitter:*` tags** from the `index.html` template (so each page has exactly one of each), rewrites `<html lang>` to the resolved locale (`?lang=` → `Accept-Language` → `en`), then appends the route-specific head tags. The static tags remain in `index.html` only as a fallback for the Vite dev server, which serves the file without injection. **Every HTML route — including `/` — is served through this injection at request time**; there is no build-time prerender step anymore.
 - **`src/lib/image.js`** — `compressImageFile(file)` — scales to max 1200px, exports WebP at 0.8 quality with JPEG fallback as a data URL.
-- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`, `isApathyAdmin`. `signUpWithEmail` passes `emailRedirectTo` from `getAuthRedirectUrl()` and sets `user_metadata.signed_member_agreement` when the user agrees during registration plus `user_metadata.email_updates_opt_in` from the register checkbox (defaults `false`). After sign-up or first sign-in, requests `POST /api/auth/welcome-email` when `welcome_email_sent` is unset (covers email-confirmation flow). `isApathyAdmin` returns true when the session user's email ends with `@apathyisboring.com` (case-insensitive). Subscribes to `onAuthStateChange` on first init.
+- **`src/lib/auth.js`** — `session` and `authReady` Svelte stores; `initAuth`, `signInWithEmail`, `signUpWithEmail`, `signOut`, `isApathyAdmin`. `signUpWithEmail` passes `emailRedirectTo` from `getAuthRedirectUrl()` and sets `user_metadata.signed_member_agreement` when the user agrees during registration plus `user_metadata.email_updates_opt_in` from the register checkbox (defaults `false`). After sign-up or first sign-in, requests `POST /api/auth/welcome-email` when `welcome_email_sent` is unset (on `SIGNED_IN` or initial session in `initAuth`; client dedupes to one request per user per page load). `isApathyAdmin` returns true when the session user's email ends with `@apathyisboring.com` (case-insensitive). Subscribes to `onAuthStateChange` on first init.
 - **`src/lib/member-agreement.js`** — Imports `content/contracts/{locale}/member-agreement.md` at build time; `getMemberAgreementHtml()` returns rendered HTML for the active locale (French falls back to English until `fr/` copy exists).
-- **`src/lib/inventory.js`** — `INVENTORY_TAGS`, `DEFAULT_INVENTORY_TAG`, `fetchInventory`, `fetchInventoryItem(tag, slug)`, `fetchAdminInventory`, `createInventoryItem`, `deleteInventoryItem`, `loadInventoryItems`, `createReservation`, `deleteReservation`, `approveReservation`, `refuseReservation`. Public `fetchInventory` / `fetchInventoryItem` return reservations without `userEmail` and include `slug`; admin panel uses `fetchAdminInventory` (auth + admin). Mutating calls attach `Authorization: Bearer <access_token>` from the Supabase session. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty (per-item try/catch; localStorage always cleared after attempt).
-- **`src/lib/calendar.js`** — `parseDateKey`, `compareDateKeys`, `hasReservationCollision`, `isCurrentlyReserved`, `hasAvailabilityWithinDays`, `getCalendarMonthGrid`, `toDateKey`, and related date helpers. `getBlockingReservations` (`pending` + `reserved`) drives calendar collision; `getConfirmedReservations` (`reserved` only) drives the unavailable badge. Shared by `InventoryCard`, `ItemCalendar`, and `server.js`.
+- **`src/lib/inventory.js`** — `INVENTORY_TAGS` (`equipment`, `books`, `rooms`, `expertise`), `DEFAULT_INVENTORY_TAG`, `fetchInventory`, `fetchInventoryItem(tag, slug)`, `fetchAdminInventory`, `createInventoryItem`, `updateExpertiseItem(id, item)`, `deleteInventoryItem`, `loadInventoryItems`, `createReservation` (accepts `{ startDate, endDate }` or `{ timeSlots, summary }` for expertise), `deleteReservation`, `approveReservation` (optional `meetingAt` for expertise), `refuseReservation`, `fetchAccountConsultations`, `scheduleConsultation(reservationId, meetingAt)`, `cancelConsultation(reservationId)`, `fetchMentorProfile`, `createMentorProfile`, `updateMentorProfile`. Public `fetchInventory` / `fetchInventoryItem` return reservations without `userEmail` and include `slug`; `fetchInventoryItem` uses `cache: 'no-store'` so an edited mentor opens with the saved copy. Admin panel uses `fetchAdminInventory` (auth + admin). Mutating calls attach `Authorization: Bearer <access_token>` from the Supabase session. Also migrates legacy items from `localStorage` key `arl-inventory-items` to the server on first load when the server inventory is empty (per-item try/catch; localStorage always cleared after attempt).
+- **`src/lib/inventory-store.js`** — Server-only Supabase CRUD for inventory + reservations. Normalizes `expertEmail` / `longBody` / `timeSlots` / `requestSummary` / `meetingAt`; omits unset expertise columns on insert so older DBs keep working for non-expertise items. Expertise `body` is the short list text (max 180) and `longBody` is the bio (max 4000, `src/lib/expertise-fields.js`). `updateExpertiseItem` patches title, short text, long text, expert email, and an optional new image on `tag === 'expertise'` only; the slug is left unchanged and a null email clears `expert_email`. `findMentorProfileByEmail` / `createMentorProfileForEmail` / `updateMentorProfileForEmail` are the account Share Expertise path: one expertise item whose `expert_email` matches the account (earliest if several), create forces that email, update leaves the email and slug unchanged. Name max is 120 (`EXPERT_NAME_MAX`). `addReservation` / `approveReservation` / `patchReservation` skip date collisions when `item.tag === 'expertise'`. `approveReservation` requires valid `meetingAt` for expertise. Schema-error detection covers missing `005_expertise.sql` / `007_expertise_copy.sql` columns/constraints.
+- **`src/lib/item-routes.js`** — Shared path helpers for Express SEO/sitemap (category routes and `ITEM_ROUTE_RE` including `expertise`); keep in sync with `src/lib/router.js`.
+- **`src/lib/calendar.js`** — `parseDateKey`, `compareDateKeys`, `hasReservationCollision`, `isCurrentlyReserved`, `hasAvailabilityWithinDays`, `getCalendarMonthGrid`, `toDateKey`, and related date helpers. `RESERVATION_STATUSES` (`pending`, `reserved`, `refused`, `cancelled`, `available`; unknown values normalize to `reserved`). `getBlockingReservations` (`pending` + `reserved`) drives calendar collision; `getConfirmedReservations` (`reserved` only) drives the unavailable badge. Shared by `InventoryCard`, `ItemCalendar`, and `server.js`. (Expertise UI does not use the calendar; collision helpers are still skipped at the store layer for expertise.)
 - **`src/lib/availability-clock.js`** — `availabilityNow` store plus ref-counted 60s interval (`subscribeAvailabilityClock` / `unsubscribeAvailabilityClock`). `InventoryPanel` subscribes on mount; cards and calendar read `$availabilityNow` without subscribing directly.
-- **`src/lib/reservation-rules.js`** — Tag-specific reservation block rules (`getBlockEndDate`, `validateReservationDates`, `isFixedBlockTag`). Shared by `ItemCalendar.svelte` and `server.js` reservation endpoints.
+- **`src/lib/reservation-rules.js`** — Tag-specific reservation block rules (`getBlockEndDate`, `validateReservationDates`, `isFixedBlockTag`). `rooms` and `expertise` are flexible tags (any date range); equipment/books require Tuesday fixed blocks. Shared by `ItemCalendar.svelte` and `server.js` reservation endpoints.
 - **`src/lib/contact.js`** — `sendContactMessage({ name, email, message, website? })` posts to `POST /api/contact` (public; honeypot `website` field; IP rate-limited).
 - **`src/lib/slug.js`** — `slugifyTitle()` and `ensureUniqueSlug()`; used server-side when creating/seeding/backfilling inventory slugs (unique per tag).
-- **`src/lib/notification-store.js`** — Queue-based notification API for the Kimchi widget. `notify(message, duration?, options?)` (default 5000ms) accepts a string or `{ text, link: { href, label } }` and returns an id (or `-1` when suppressed while Kimchi is asleep); `{ force: true }` bypasses the sleep gate (e.g. sleep “Zzz…” bubble). `setKimchiNotificationsEnabled(enabled)` toggles the sleep gate; `dismiss(id)`; `clearNotifications()`; read-only `notifications` store. All queued notifications stack upward in `KimchiNotification.svelte` (newest anchored above the avatar). Action keys: `kimchi.item_added`, `kimchi.item_removed`, `kimchi.reservation_approved`, `kimchi.reservation_deleted`, `kimchi.reservation_sent`.
-- **`src/lib/router.js`** — Writable `path` store synced to `window.location.pathname`; `navigate(to)` for client-side transitions; `navigateToItem(item)` (opens the item overlay; pushes the item path with a `{ arlItemOverlay: true }` history-state marker); `closeItemOverlay(tag)` (closes the overlay keeping URL in sync — `history.back()` when the current entry carries the overlay marker and there is prior history, else `navigate(categoryToPath(tag))` for deep links / refreshes); `navigateToItemWithReserve(item)`, `hasReserveIntent()`, `setReserveIntent()`, and `clearReserveIntent()` for the `?reserve=1` deep-link flow (reserve-intent `replaceState` calls preserve the existing `history.state`); `CATEGORY_ROUTES`, `ITEM_ROUTE_RE`, `getItemRouteParams`, `isItemDetailRoute`, `getCategoryFromPath`, `isInventoryHomePath`, `categoryToPath`, `itemToPath`; `isAdminRoute()`, `isHowThisWorksRoute()`, `isAboutRoute()`, `isAccountRoute()`. Item routes `/{tag}/{slug}` are distinct from category routes (`/equipment` only). Listens to `popstate` for back/forward.
+- **`src/lib/email-brand.js`** — Shared Apathy is Boring layout for every Resend email (table HTML + plain text). Mint header with the English light wordmark inlined as `cid:aisb-logo` (file `src/assets/brand/apathy-is-boring-logo-light.png`, flattened onto Mint, displayed 200×114), Light body, Lemon button with Dark text, Grape links, Dark footer. Inter with Helvetica/Arial fallback (Ringold and Mackinac are not loaded). Office line is `orgContact` (`ORG_ADDRESS` / `ORG_PHONE` optional overrides). YES Employment emails can show a funder strip when `EMAIL_FUNDER_LOGO_URL` is set. Emails stay English-only, so the French wordmark is not used.
+- **`src/lib/notification-store.js`** — Queue-based notification API for the Kimchi widget. `notify(message, duration?, options?)` (default 5000ms) accepts a string or `{ text, link: { href, label } }` and returns an id (or `-1` when suppressed while Kimchi is asleep); `{ force: true }` bypasses the sleep gate (e.g. sleep “Zzz…” bubble). `setKimchiNotificationsEnabled(enabled)` toggles the sleep gate; `dismiss(id)`; `clearNotifications()`; read-only `notifications` store. All queued notifications stack upward in `KimchiNotification.svelte` (newest anchored above the avatar). Action keys: `kimchi.item_added`, `kimchi.item_removed`, `kimchi.mentor_updated`, `kimchi.mentor_profile_published`, `kimchi.mentor_profile_updated`, `kimchi.reservation_approved`, `kimchi.reservation_deleted`, `kimchi.reservation_sent`, `kimchi.consultation_sent`.
+- **`src/lib/router.js`** — Writable `path` store synced to `window.location.pathname`; `navigate(to)` for client-side transitions; `navigateToItem(item)` (opens the item overlay; pushes the item path with a `{ arlItemOverlay: true }` history-state marker); `closeItemOverlay(tag)` (closes the overlay keeping URL in sync — `history.back()` when the current entry carries the overlay marker and there is prior history, else `navigate(categoryToPath(tag))` for deep links / refreshes); `navigateToItemWithReserve(item)`, `hasReserveIntent()`, `setReserveIntent()`, and `clearReserveIntent()` for the `?reserve=1` deep-link flow (also used for **Request Consultation**; reserve-intent `replaceState` calls preserve the existing `history.state`); `CATEGORY_ROUTES` (includes `/expertise`), `ITEM_ROUTE_RE` (`equipment|books|rooms|expertise`), `getItemRouteParams`, `isItemDetailRoute`, `getCategoryFromPath`, `isInventoryHomePath`, `categoryToPath`, `itemToPath`; `isAdminRoute()`, `isHowThisWorksRoute()`, `isAboutRoute()`, `isAccountRoute()`. Item routes `/{tag}/{slug}` are distinct from category routes (`/equipment` only). Listens to `popstate` for back/forward.
 - **`src/lib/supabase.js`** — `createClient` wrapper; reads `SUPABASE_URL` + `SUPABASE_API` from `window.__ARL_ENV__` (served by `GET /config.js` at runtime) with fallback to Vite `import.meta.env` (`VITE_SUPABASE_*` aliases). Exports `supabaseConfigured` and `getAuthRedirectUrl()` (`SITE_URL` / `VITE_SITE_URL`, else `window.location.origin`).
 
 ### Auth (Supabase)
@@ -221,12 +363,18 @@ There is no other `public/` content beyond `robots.txt` and the fonts symlink. F
 
 ## Backend (Express)
 
-Single file: `server.js`. Uses `helmet` for security headers (CSP allows Google Analytics `googletagmanager.com` / `google-analytics.com` plus inline gtag bootstrap; `connect-src` also includes `SUPABASE_URL` and optional Plausible), `app.set('trust proxy', 1)` for correct rate limiting behind Cloud Run, and admin audit logging (`[admin-audit]` console lines on every admin mutation).
+Single file: `server.js`. Uses `helmet` for security headers, `app.set('trust proxy', 1)` for correct rate limiting behind Cloud Run, and admin audit logging (`[admin-audit]` console lines on every admin mutation).
+
+**Content Security Policy** — `script-src` has **no `'unsafe-inline'`**. At startup, `extractInlineScriptHashes()` scans the inline executable `<script>` blocks in `dist/index.html` (currently only the Google Analytics gtag bootstrap) and adds a `'sha256-…'` hash for each to `script-src`; the per-request SEO injection only adds JSON-LD data blocks or external scripts, so the same hashes cover every HTML response. To add another inline script, put it in `index.html` and rebuild — the hash list refreshes on server start (restart after `npm run build`). External script sources: `'self'`, `https://*.googletagmanager.com`, and `https://plausible.io` when `PLAUSIBLE_DOMAIN` is set. `connect-src` includes `SUPABASE_URL`, GA collection hosts, and optional Plausible; `img-src` allows `data:` (compressed item images) plus GA beacon hosts; `style-src` still allows `'unsafe-inline'` (Svelte inline styles); `frame-ancestors 'none'`.
+
+**Dependency hygiene** — `package.json` `overrides` pins `qs` to `^6.16.0` because Express 4.x still declares `~6.15.x`, which has open advisories. Run `npm audit --omit=dev` before deploying; it must report 0 vulnerabilities. Remove the override once Express 4 (or a move to Express 5) ships a patched range.
 
 ### Static assets
 
 - `GET /config.js` — runtime public client config (`window.__ARL_ENV__`: `SUPABASE_URL`, `SUPABASE_API`, `SITE_URL`); `Cache-Control: no-store`.
-- `GET /*` from `dist/` — built SPA (`index.html`, hashed JS/CSS). Unknown GET paths fall through to injected `index.html` for client routes such as `/admin` and `/account` (meta/OG/canonical/hreflang/JSON-LD injected server-side via `seo-server.js`; `/admin` and `/account` also get `X-Robots-Tag: noindex, nofollow`).
+- `GET /assets/*.js|css`, `/robots.txt` from `dist/` — `express.static` with **`index: false, redirect: false`**, so it serves only real files (hashed JS/CSS, `robots.txt`). It never serves `index.html` itself and never 301-redirects `/about` → `/about/`.
+- `GET /api/*` (unmatched) — JSON `404 { error: 'Not found.' }` (`app.all('/api/*')` before the catch-all), so typo'd or removed API paths do not return the SPA shell as HTML 200.
+- `GET *` catch-all — every HTML route (`/`, `/equipment`, `/about`, `/howthisworks`, `/{tag}/{slug}`, `/admin`, `/account`, trailing-slash variants) is served from the in-memory `dist/index.html` template with per-request SEO injection via `seo-server.js` (single title/description/OG/Twitter set, canonical without trailing slash, hreflang, `<html lang>` for the resolved locale, Organization/FAQ/Product JSON-LD). `/admin` and `/account` also get `X-Robots-Tag: noindex, nofollow` and no JSON-LD.
 - `GET /robots.txt` — static file from `dist/` (copied from `public/` at build).
 - `GET /sitemap.xml` — dynamic sitemap (static routes + all items as `/{tag}/{slug}` with `lastmod` from `createdAt`); `Cache-Control: public, max-age=3600`.
 - `GET /assets/fonts/*` from `src/assets/fonts/`.
@@ -235,15 +383,16 @@ Single file: `server.js`. Uses `helmet` for security headers (CSP allows Google 
 
 ### Data
 
-- Inventory and reservations persist in **Supabase Postgres** via `src/lib/inventory-store.js` (service role key on the server). Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, `003_lock_down_roles.sql`, and `004_inventory_slug.sql` before first run (or after deploy if upgrading).
-- Tables: `inventory_items` (`id`, `title`, `body`, `image`, `tag`, `slug`, `created_at`) and `reservations` (`id`, `item_id`, `start_date`, `end_date`, `status`, `user_email`). Unique index on `(tag, slug)`. RLS is enabled with no public policies — Express uses the service role (bypasses RLS). Migration `003_lock_down_roles.sql` revokes direct table access from `anon`/`authenticated`. Slugs are generated server-side at create/seed time from title (`src/lib/slug.js`); immutable after create; collisions within a tag append `-2`, `-3`, etc. `ensureInventory()` runs a once-per-process slug backfill (`ensureSlugsBackfilled()`) that is **decoupled from the `inventorySeeded` flag** — it always populates missing slugs on existing rows even when the inventory is already seeded, and retries on the next request if it fails (errors are logged, not swallowed, and never break the inventory read). `npm run backfill:slugs` triggers the same backfill on demand.
-- **Public** API item shape (`GET /api/inventory`, `GET /api/inventory/by-slug/:tag/:slug`): `{ id, title, body, image, createdAt, tag, slug, reservations }` where `reservations` is `{ id, startDate, endDate, status }[]` — **`userEmail` is never returned on public routes**. Admin route `GET /api/admin/inventory` returns full items including `userEmail` on reservations.
-- `status` on reservations: `pending` (new member request), `reserved` (admin-approved), `refused` (admin declined — dates freed), or legacy `available`. New creates always use `pending` with member email from JWT.
+- Inventory and reservations persist in **Supabase Postgres** via `src/lib/inventory-store.js` (service role key on the server). Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, `003_lock_down_roles.sql`, `004_inventory_slug.sql`, `005_expertise.sql`, `006_consultation_scheduling.sql`, and `007_expertise_copy.sql` before first run (or after deploy if upgrading).
+- Tables: `inventory_items` (`id`, `title`, `body`, `image`, `tag`, `slug`, `created_at`, `expert_email`, `long_body`) and `reservations` (`id`, `item_id`, `start_date`, `end_date`, `status`, `user_email`, `time_slots`, `request_summary`, `meeting_at`, `zoom_meeting_id`, `zoom_join_url`, `zoom_password`, `cancelled_at`, `cancelled_by`). Unique index on `(tag, slug)`. RLS is enabled with no public policies — Express uses the service role (bypasses RLS). Migration `003_lock_down_roles.sql` revokes direct table access from `anon`/`authenticated`. Slugs are generated server-side at create/seed time from title (`src/lib/slug.js`); immutable after create; collisions within a tag append `-2`, `-3`, etc. `ensureInventory()` runs a once-per-process slug backfill (`ensureSlugsBackfilled()`) that is **decoupled from the `inventorySeeded` flag** — it always populates missing slugs on existing rows even when the inventory is already seeded, and retries on the next request if it fails (errors are logged, not swallowed, and never break the inventory read). `npm run backfill:slugs` triggers the same backfill on demand.
+- **Public** API item shape (`GET /api/inventory`, `GET /api/inventory/by-slug/:tag/:slug`): `{ id, title, body, image, createdAt, tag, slug, longBody, reservations }` where `reservations` is `{ id, startDate, endDate, status }[]` — **`userEmail`, `expertEmail`, `timeSlots`, `requestSummary`, and `meetingAt` are never returned on public routes**. `body` is the description (expertise: short list text). `longBody` is the expertise bio, or `null` on other tags. Admin route `GET /api/admin/inventory` returns full items including `userEmail` + consultation fields on reservations and `expertEmail` on items.
+- `status` on reservations: `pending` (new member request), `reserved` (admin-approved, or consultation scheduled), `refused` (admin declined — dates freed), `cancelled` (consultation cancelled by member/expert/admin), or legacy `available`. New creates always use `pending` with member email from JWT.
 - `pending` and `reserved` block calendar dates; only `reserved` marks the card **Unavailable** badge.
 - **Tag-specific reservation rules** (enforced in `ItemCalendar` and `POST`/`PATCH` reservation APIs via `src/lib/reservation-rules.js`; ranges are inclusive):
   - **equipment** — Start must be a **Tuesday**; end is automatically the **following Tuesday** (+7 days). One-week block; pickup/drop-off hours message shown on the calendar.
   - **books** — Start must be a **Tuesday**; end is **four weeks later** (+28 days, also a Tuesday). One-month block; same pickup/drop-off message.
   - **rooms** — Flexible inclusive range on any days (existing two-click range selection).
+  - **expertise** — No calendar. Consultation requests store the submission date as both start and end; free-text `time_slots` (max 500 chars) and `request_summary` (max 2000 chars) are required instead. Date collisions never apply (multiple members can request the same expert). Admin approval requires `meetingAt` (ISO timestamp, stored in `meeting_at`).
 - Calendar UI for equipment/books: only Tuesdays are selectable; clicking a Tuesday selects the full fixed block. Equipment and books modals show localized pickup/drop-off hours (10am–5pm Tuesdays).
 - `image` is either a `data:image/webp;base64,...` or `data:image/jpeg;base64,...` URL from the client compressor (WebP preferred, JPEG fallback), or a path like `/assets/inventory/images/...` for seeded MyTurn items. `POST /api/inventory` rejects other image formats/paths with 400.
 - Seeding runs via `ensureInventory()` in `inventory-store.js` (no-op after first successful seed via `inventorySeeded` flag). If the DB is empty: import `data/inventory.json` when present, else insert 9 seed items from `src/assets/inventory/items.json`.
@@ -258,28 +407,37 @@ Single file: `server.js`. Uses `helmet` for security headers (CSP allows Google 
 | `GET` | `/api/inventory` | — | Returns `{ items: [...] }` with reservations sanitized (no `userEmail`; `Cache-Control: no-store`) |
 | `GET` | `/api/inventory/by-slug/:tag/:slug` | — | Returns `{ item }` for one public item by tag + slug (sanitized; `Cache-Control: public, max-age=300`) |
 | `GET` | `/api/admin/inventory` | Admin | Returns full `{ items: [...] }` including `userEmail` on reservations for admin UI |
-| `POST` | `/api/inventory` | Admin | Body: `{ title, body, image, tag? }`. Creates item, returns `{ item }` (10mb JSON limit on this route only) |
+| `POST` | `/api/inventory` | Admin | Body: `{ title, body, image, tag?, expertEmail?, longBody? }` (`expertEmail` and `longBody` only kept on `expertise` items; email is validated; expertise requires `body` ≤180 and `longBody` ≤4000). Creates item, returns `{ item }` (10mb JSON limit on this route only) |
+| `PATCH` | `/api/inventory/:id` | Admin | Expertise mentors only. Body: `{ title, body, longBody, expertEmail?, image? }`. Updates name, short text (≤180), long text (≤4000), and expert email (blank clears it). `image` is optional (JPEG/WebP data URL or `/assets/inventory/` path); omitted keeps the current photo. Slug is unchanged. Returns `{ item }` including `expertEmail` (10mb JSON limit). 400 for non-expertise items or invalid fields; 404 if missing |
 | `DELETE` | `/api/inventory/:id` | Admin | Removes item by id; returns `{ success: true }` or 404 |
-| `POST` | `/api/inventory/:id/reservations` | User | Body: `{ startDate, endDate }`. Member email from JWT; creates `status: pending`; IP rate-limited (30/15min); max 5 pending reservations per user (429); returns sanitized `{ reservation, item }`, 401/400/409 as applicable |
-| `POST` | `/api/inventory/:id/reservations/:reservationId/approve` | Admin | Pending → `reserved`; member approval email via Resend |
+| `POST` | `/api/inventory/:id/reservations` | User | Body: `{ startDate, endDate }` for equipment/books/rooms, or `{ timeSlots, summary }` for expertise items (server stores submission date as the range; sends member "consultation request received" email). Member email from JWT; creates `status: pending`; IP rate-limited (30/15min); max 5 pending reservations per user (429); returns sanitized `{ reservation, item }`, 401/400/409 as applicable |
+| `POST` | `/api/inventory/:id/reservations/:reservationId/approve` | Admin | Pending → `reserved`; member approval email via Resend. Expertise reservations require body `{ meetingAt }` (ISO datetime; 400 if missing/invalid); stored on the reservation and included in the consultation confirmation email |
 | `POST` | `/api/inventory/:id/reservations/:reservationId/refuse` | Admin | Pending → `refused`; member refusal email via Resend |
 | `PATCH` | `/api/inventory/:id/reservations/:reservationId` | Admin | Body: optional `{ startDate, endDate, status }` (`pending`/`reserved`/`refused` only); 400 on invalid status |
 | `DELETE` | `/api/inventory/:id/reservations/:reservationId` | Admin | Removes reservation; returns `{ success: true, item }` |
-| `POST` | `/api/auth/welcome-email` | User | Sends one-time welcome email to the authenticated member (How it works + About links); skips if `user_metadata.welcome_email_sent` or account older than 7 days; IP rate-limited (10/15min); sets `welcome_email_sent` in metadata after send |
+| `POST` | `/api/auth/welcome-email` | User | Sends one-time welcome email to the authenticated member (How it works + About links); skips if `user_metadata.welcome_email_sent` or account older than 7 days; IP rate-limited (10/15min); sets `welcome_email_sent` in metadata before send (per-user in-process lock + fresh admin user fetch prevent duplicate sends) |
+| `GET` | `/api/account/consultations` | User | `{ asMember, asExpert }` consultations for the signed-in user (`asExpert` requires a confirmed email matching `expert_email`); `Cache-Control: no-store` |
+| `GET` | `/api/account/mentor-profile` | User | `{ profile, emailConfirmed }`. `profile` is the expertise item whose `expert_email` matches the confirmed account (earliest if several), or `null`. Includes `expertEmail` (the account address). Unconfirmed email returns `{ profile: null, emailConfirmed: false }`. `Cache-Control: no-store` |
+| `POST` | `/api/account/mentor-profile` | User | Body `{ title, body, longBody, image }`. Confirmed email required. Creates one expertise item with `expert_email` set to the JWT email. 409 if one already exists (body includes `profile`). 10mb JSON limit; rate-limited 10/15min. Returns `{ profile }` |
+| `PATCH` | `/api/account/mentor-profile` | User | Same body; `image` optional (omitted keeps the current photo). Updates the matching mentor profile only. Does not change `expert_email` or slug. 404 if none. 10mb JSON limit; rate-limited 10/15min |
+| `POST` | `/api/consultations/:reservationId/schedule` | Expert / Admin | Body `{ meetingAt }` (ISO, not in the past). Pending → `reserved`; creates Zoom meeting; emails member + expert with link + `.ics`. 502 if Zoom fails (nothing saved); rate-limited 30/15min |
+| `POST` | `/api/consultations/:reservationId/cancel` | Member / Expert / Admin | Pending or reserved → `cancelled` (+ `cancelled_by`); deletes Zoom meeting; emails member + expert; rate-limited 30/15min |
 | `POST` | `/api/contact` | — | Body: `{ name, email, message, website? }`. Public About-page contact form; honeypot on `website`; IP rate-limited (5/15min); sends email to `samuel@apathyisboring.com` via Resend with `replyTo` set to submitter email; 400/429/500 as applicable |
 
-JSON body limit: **100kb** default; **10mb** on `POST /api/inventory` only (image data URLs).
+JSON body limit: **100kb** default; **10mb** on `POST /api/inventory`, `PATCH /api/inventory/:id`, and `POST`/`PATCH /api/account/mentor-profile` (image data URLs).
 
 ### Email (Resend)
 
 - `RESEND_API_KEY` is lazy-initialized: the server starts without it (logs a warning); member approval/refusal emails fail with a clear error when sent if unset.
-- New pending reservation requests do **not** send email — admins are notified via the Slack webhook only.
-- Member approval/refusal emails go to the reservation `userEmail` (from JWT at create time; skipped with log if missing). No env-based `EMAIL_TO` fallback.
+- Every app email (reservation decisions, welcome, contact form, consultation request / scheduled / cancelled) is rendered by `renderBrandedEmail()` in `src/lib/email-brand.js`: full HTML document plus a plain-text part. The English light wordmark is attached inline (`cid:aisb-logo`) so it does not depend on a deployed image URL. Layout: Mint header, uppercase Inter headline, Lemon button with Dark text, Grape links, dotted divider, Dark identification footer. No unsubscribe link (these are transactional). Copy stays English-only.
+- New pending reservation requests on equipment/books/rooms do **not** send email — admins are notified via the Slack webhook only. **Expertise consultation requests** send the member a "consultation request received" confirmation email on submit (fire-and-forget).
+- Member approval/refusal emails go to the reservation `userEmail` (from JWT at create time; skipped with log if missing). No env-based `EMAIL_TO` fallback. Expertise approvals schedule the consultation and send the scheduled emails (Zoom link + `.ics`) to member and expert. The member message includes "This project is funded by YES Employment." and the data-sharing form link (**placeholder `CONSULTATION_DATA_FORM_URL` in `server.js` — replace before launch**). A funder logo strip renders above the footer only when `EMAIL_FUNDER_LOGO_URL` is set.
 - Member welcome email on sign-up: `POST /api/auth/welcome-email` (client fire-and-forget after sign-up or first sign-in within 7 days); links to `/howthisworks` and `/about`; deduped via `user_metadata.welcome_email_sent`.
 - About-page contact form emails go to `samuel@apathyisboring.com` with `replyTo` set to the submitter's email (`POST /api/contact`; requires `RESEND_API_KEY` at send time).
-- Approval emails include pickup/drop-off hours and address: 10am–5pm Tuesdays at 5310 Saint-Laurent, Montreal QC H2T 1S1.
-- All Resend email links use `SITE_URL` (or `VITE_SITE_URL`), falling back to `https://activistresourcelibrary.com` when unset — member decision emails link to the item and library home.
+- Approval emails include pickup/drop-off hours and the office address from `orgContact` (default `5310 Boulevard Saint-Laurent, Montréal QC H2T 1S1`).
+- All Resend email links use `SITE_URL` (or `VITE_SITE_URL`), falling back to `https://activistresourcelibrary.com` when unset — member decision emails link to the item and library home. The header logo is an inline attachment, not a site URL.
 - `EMAIL_FROM` defaults to `noreply@activistresourcelibrary.com`; legacy `onboarding@resend.dev` in env is ignored at runtime.
+- Footer contact (`orgContact` in `email-brand.js`): Apathy is Boring · address · phone · apathyisboring.com. Optional env overrides: `ORG_ADDRESS`, `ORG_PHONE`. `npm run cloud:build` passes `ORG_PHONE` when set; it does not pass `ORG_ADDRESS` (the comma breaks gcloud's env list).
 
 ### Slack reservation webhook (optional)
 
@@ -290,12 +448,16 @@ When `SLACK_RESERVATION_WEBHOOK_URL` is set, a successful `POST /api/inventory/:
 | `item_id` | Inventory item id |
 | `item_title` | Item title |
 | `item_body` | Item description |
-| `item_tag` | `equipment`, `books`, or `rooms` |
+| `item_tag` | `equipment`, `books`, `rooms`, or `expertise` |
 | `reservation_id` | New reservation UUID |
-| `start_date` | Reservation start (`YYYY-MM-DD`) |
-| `end_date` | Reservation end (`YYYY-MM-DD`) |
+| `start_date` | Reservation start (`YYYY-MM-DD`; submission date for expertise) |
+| `end_date` | Reservation end (`YYYY-MM-DD`; same as start for expertise) |
 | `status` | `pending` on create |
 | `user_email` | Member email from JWT |
+| `time_slots` | Member availability free-text (expertise only; else empty string) |
+| `request_summary` | Consultation topic summary (expertise only; else empty string) |
+| `expert_email` | Expert contact from the item (expertise only; else empty string) |
+| `admin_url` | Absolute link to `/admin` for reviewing the request |
 
 Mutating routes return 401 without a valid JWT and 403 when admin is required but the email is not `@apathyisboring.com` or the admin email is not confirmed.
 
@@ -315,12 +477,19 @@ See `.env.example`:
 |----------|----------|---------|
 | `RESEND_API_KEY` | No* | Resend API key; required for member approval/refusal emails |
 | `EMAIL_FROM` | No | Sender address |
+| `ORG_ADDRESS` | No | Email footer street address. Default in `src/lib/email-brand.js`. Not passed by `cloud:build` (value contains a comma) |
+| `ORG_PHONE` | No | Email footer phone. Default `514.844.2472`. Passed by `cloud:build` when set in `.env` |
+| `EMAIL_FUNDER_LOGO_URL` | No | Absolute URL of the YES Employment / government funder strip. When set, consultation-confirmed member emails show it above the footer |
 | `SLACK_RESERVATION_WEBHOOK_URL` | No | Slack workflow trigger URL; POST text JSON on new reservation |
 | `PORT` | No | Express listen port |
 | `SUPABASE_URL` | Yes* | Supabase project URL (client auth + server). Aliases: `VITE_SUPABASE_URL` |
 | `SUPABASE_API` | No* | Supabase anon/public key (client auth). Aliases: `SUPABASE_ANON_KEY`, `VITE_SUPABASE_ANON_KEY` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes* | Server-only service role for inventory/reservations. Never expose to Vite/build args |
 | `SITE_URL` | No | Public site origin for Supabase `emailRedirectTo` on sign-up. Aliases: `VITE_SITE_URL`. Baked at build time; omit in local dev to use browser origin |
+| `ZOOM_ACCOUNT_ID` | No | Zoom Server-to-Server OAuth account id. All three `ZOOM_*` credentials are needed to create consultation meetings; when unset, consultations schedule without a link |
+| `ZOOM_CLIENT_ID` | No | Zoom S2S OAuth client id |
+| `ZOOM_CLIENT_SECRET` | No | Zoom S2S OAuth client secret (Secret Manager `zoom-client-secret` on Cloud Run) |
+| `ZOOM_HOST_USER` | No | Zoom user (email or id) that hosts meetings; default `me` |
 | `PLAUSIBLE_DOMAIN` | No | When set, Express injects deferred Plausible script into HTML and extends CSP `script-src` / `connect-src` for `https://plausible.io`; client fires SPA pageviews on route change |
 | `NODE_ENV` | No | Set to `development` by `npm run dev`; enables strict port mode |
 | `STRICT_PORT` | No | Set `true` to force strict port outside development |
@@ -337,7 +506,7 @@ See `.env.example`:
 | `npm run dev` | Starts Express API/static assets and Vite dev server together |
 | `npm run dev:client` | Vite dev server only; requires an Express server at `VITE_API_TARGET` or `PORT` |
 | `npm run dev:server` | Express API/static asset server in development mode (no build step) |
-| `npm run build` | Production build to `dist/` + `scripts/prerender.js` static shells for `/howthisworks`, `/about`, `/equipment`, `/books`, `/rooms` |
+| `npm run build` | Production Vite build to `dist/` (SEO head tags are injected per request by Express, not at build time) |
 | `npm start` | `build` + Express server, so source changes are reflected after restart |
 | `npm run serve` | Express only; serves the existing `dist/` without rebuilding |
 | `npm run preview` | Alias for `npm start` |
@@ -345,6 +514,7 @@ See `.env.example`:
 | `npm run docker:build` | Docker image build with `SUPABASE_URL`, `SUPABASE_API`, and `SITE_URL` from `.env` as build args (`scripts/docker-build.sh`; set `IMAGE` for Artifact Registry tag) |
 | `npm run cloud:build` | Build + push + deploy via Google Cloud Build (no local Docker required). Reads Supabase + `SITE_URL` from `.env` (default production URL `https://activistresourcelibrary.com`); deploys to `arl-online` in `us-east1`. Images push to Artifact Registry in `us-east1` (`GCP_ARTIFACT_REGION`). Sets runtime env on Cloud Run (`SITE_URL`, optional `EMAIL_*`, `SLACK_RESERVATION_WEBHOOK_URL`); mounts `SUPABASE_SERVICE_ROLE_KEY` and `RESEND_API_KEY` from Google Secret Manager via `--set-secrets` (see comment block in `scripts/cloud-build.sh`). |
 | `npm run migrate:inventory` | Upsert `data/inventory.json` into Supabase (`inventory_items` + `reservations`); requires `data/inventory.json` to exist |
+| `npm run zoom:check` | Verify Zoom credentials: token, granted scopes, host user, and host screen-share settings (needs network) |
 | `npm run backfill:slugs` | Populate slugs on existing `inventory_items` rows with a null/empty slug (idempotent; safe to re-run). Use after applying `004_inventory_slug.sql` to fix items that have `slug = null` |
 
 ---
@@ -372,6 +542,7 @@ Production image: multi-stage `Dockerfile` at the repo root.
 - `RESEND_API_KEY` (required for member approval/refusal emails; **Secret Manager on Cloud Run** when set in `.env` during deploy)
 - `PORT` (Cloud Run sets this automatically, default `3000` locally)
 - `EMAIL_FROM` (optional)
+- `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID` (plain env) + `ZOOM_CLIENT_SECRET` (**Secret Manager** `zoom-client-secret`) — set by `npm run cloud:build` when present in `.env`
 
 **Secret Manager (Cloud Run):** Before first `npm run cloud:build` deploy with secrets, create `supabase-service-role-key` and optionally `resend-api-key` secrets and grant the Cloud Run service account `secretAccessor`. One-time `gcloud` commands are documented in the comment block at the top of `scripts/cloud-build.sh`.
 
@@ -395,7 +566,7 @@ docker run --rm -p 8080:8080 \
 
 **Cloud Run:** choose **Dockerfile** as the build type; pass build args for Supabase if auth is enabled (or rely on runtime `/config.js`); map runtime env for `SUPABASE_URL`, `SUPABASE_API`, email vars; mount `SUPABASE_SERVICE_ROLE_KEY` and `RESEND_API_KEY` via Secret Manager (see `scripts/cloud-build.sh`).
 
-**Persistence:** Inventory and reservations live in Supabase Postgres. Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, `003_lock_down_roles.sql`, and `004_inventory_slug.sql` to your project before deploying.
+**Persistence:** Inventory and reservations live in Supabase Postgres. Apply `supabase/migrations/001_inventory.sql`, `002_reservation_approval.sql`, `003_lock_down_roles.sql`, `004_inventory_slug.sql`, `005_expertise.sql`, `006_consultation_scheduling.sql`, and `007_expertise_copy.sql` to your project before deploying.
 
 ---
 
@@ -404,11 +575,12 @@ docker run --rm -p 8080:8080 \
 | Task | Where to edit |
 |------|----------------|
 | New inventory field | `src/lib/inventory-store.js`, `AddItemModal.svelte`, `InventoryCard.svelte`, API client in `inventory.js`, SQL migration if needed |
-| Inventory tags / filter | `inventory-store.js`, `src/assets/inventory/items.json`, `InventoryPanel.svelte`, `AddItemModal.svelte`, `src/lib/inventory.js`, `locales/en.json` + `fr.json`, styles in `app.css` |
+| Inventory tags / filter | `inventory-store.js`, `src/lib/inventory.js`, `src/lib/router.js`, `src/lib/item-routes.js`, `InventoryPanel.svelte`, `AddItemModal.svelte`, `locales/en.json` + `fr.json`, sitemap/SEO (`seo.js`, `server.js`), styles in `app.css` |
 | Reservation calendar | `server.js` (reservation endpoints), `inventory-store.js`, `src/lib/calendar.js`, `src/lib/reservation-rules.js`, `ItemCalendar.svelte`, `InventoryCard.svelte`, `locales/en.json` + `fr.json` |
+| Expertise consultations | See **Expertise consultations** section (checklist). Core: `005_expertise.sql`, `007_expertise_copy.sql`, `inventory-store.js`, `server.js` emails/Slack, `ConsultationRequestForm.svelte`, `ItemDetailPage.svelte`, `AdminPanel.svelte`, `MentorBrowser.svelte`, `AccountShareExpertise.svelte`, `AddItemModal.svelte`, `locales` `consultation.*` / `share_expertise.*` / `admin.consultation_*` / `admin.mentors_*` / `kimchi.consultation_sent` / `kimchi.mentor_updated` / `kimchi.mentor_profile_*` |
 | New page / tab | `App.svelte`, `src/lib/router.js`, new component under `components/`, optional `SiteNav.svelte` link, styles in `app.css`; Express already serves `index.html` for unknown GET paths (e.g. `/howthisworks`) |
 | New API route | `server.js`; add client function in `src/lib/` if the UI needs it |
-| Email content | `server.js` reservation notification handler |
+| Email content | `server.js` (copy and triggers), `src/lib/email-brand.js` (shared branded layout) |
 | Dev proxy | `vite.config.js` `server.proxy` |
 | Auth UI / session | `HeaderAuth.svelte`, `AuthModal.svelte`, `src/lib/auth.js`, `src/lib/supabase.js` |
 | User-facing copy / new language | Add matching keys to `locales/en.json` and `locales/fr.json`; use `$t('domain.key')` in components or `translateKey()` in `src/lib/` |
@@ -420,9 +592,9 @@ After any of the above, **update this file**.
 ## Related documentation
 
 - `docs/Apathy_is_Boring_Brand_Guidelines.md` — brand/design reference (not wired into the app automatically).
-- `docs/automated-notifications.md` — Kimchi chat bubbles: every `notify()` trigger, locale keys, durations, and sleep suppression.
-- `docs/automated-emails.md` — Resend emails: triggers, recipients, subjects, env vars, and failure behavior.
-- `docs/automated-webhooks.md` — Slack reservation webhook: payload, env var, timeout, and failure behavior.
+- `docs/automated-notifications.md` — Kimchi chat bubbles: every `notify()` trigger, locale keys, durations, and sleep suppression (includes `kimchi.consultation_sent`).
+- `docs/automated-emails.md` — Resend emails: triggers, recipients, subjects, env vars, and failure behavior (includes consultation request + approval/refusal variants).
+- `docs/automated-webhooks.md` — Slack reservation webhook: payload (incl. consultation fields), env var, timeout, and failure behavior.
 
 ---
 
@@ -558,3 +730,27 @@ Document meaningful structural changes here with date and short note.
 | 2026-06-16 | Member approval email includes pickup/drop-off notice: 10am–5pm Tuesdays at 5310 Saint-Laurent, Montreal QC H2T 1S1. |
 | 2026-06-16 | About page contact form: `POST /api/contact` sends messages to `samuel@apathyisboring.com` via Resend (`src/lib/contact.js`, localized form on `AboutPage.svelte`; IP rate limit + honeypot). |
 | 2026-06-16 | Member welcome email on sign-up: `POST /api/auth/welcome-email` sends How it works + About links via Resend; client triggers after sign-up/first sign-in; deduped with `user_metadata.welcome_email_sent`. |
+| 2026-06-16 | Fixed welcome email sent 3× on sign-up: client dedupes to one POST per user per page load (removed duplicate trigger from `signUpWithEmail`); server claims `welcome_email_sent` before Resend send under per-user lock with fresh metadata fetch. |
+| 2026-08-20 | **Expertise category + consultation requests**: `005_expertise.sql` (tag constraint + `expert_email` on items; `time_slots`, `request_summary`, `meeting_at` on reservations); new homepage intro copy (`site.subtitle`/`intro`/`intro_extended`/`intro_support`); Expertise filter tab + `/expertise` category route (router, prerender, sitemap, SEO); cards show **Request Consultation** and no availability badge; `ConsultationRequestForm.svelte` replaces the calendar in the item overlay (free-text time slots + summary); server branch on `POST /api/inventory/:id/reservations` for expertise (no date collision, submission-date range, member "request received" email via Resend); Slack payload extended with `time_slots`, `request_summary`, `expert_email`, `admin_url`; Add Item gets optional expert email for expertise items; admin pending rows show consultation details + required `datetime-local` meeting time on approve (`meetingAt` → `meeting_at`); consultation approval email includes meeting time, expert, YES Employment funding note, and placeholder data-sharing link (`CONSULTATION_DATA_FORM_URL`); How it works copy + FAQ updated. Zoom/calendar-invite auto-generation deferred. |
+| 2026-08-20 | AGENTS.md: added dedicated **Expertise consultations** section (member/admin flows, schema, API sanitization, file checklist, deferred gaps) and fixed stale retrieval hints (`/expertise` routes, `item-routes.js`, `inventory-store` collision rules, locale domains, Kimchi `consultation_sent`, common-change-pattern row). |
+| 2026-09-04 | Security hardening (screen findings F1–F3): (1) `npm audit` → 0 vulnerabilities via `npm audit fix` + `package.json` `overrides` pinning `qs@^6.16.0` (Express 4 pins a vulnerable range). (2) CSP `script-src` drops `'unsafe-inline'`; `server.js` `extractInlineScriptHashes()` hashes the inline gtag bootstrap from `dist/index.html` at startup and emits `'sha256-…'`; GA hosts widened to `https://*.googletagmanager.com` / `*.google-analytics.com` in `script-src`, `connect-src`, `img-src`. (3) `seo.js` `serializeJsonForScript()` escapes `<`, `>`, `&`, U+2028/9 in all server-rendered JSON-LD (`buildSeoHeadHtml`), closing a stored-XSS path via admin-entered item title/body on `/{tag}/{slug}`. |
+| 2026-09-04 | SEO serving fix: `/` was served as the raw static `index.html` (no canonical/hreflang/JSON-LD), and `/about`, `/equipment`, `/howthisworks` 301-redirected to trailing-slash prerendered shells that carried duplicate `<title>`/description/OG tags and ignored `?lang=`. Now `express.static(dist, { index: false, redirect: false })` serves only real assets and **every HTML route goes through the per-request injection** in `seo-server.js`, which strips the template's fallback SEO tags (`stripDefaultSeoTags`) and sets `<html lang>` from the resolved locale. Removed the build-time prerender (`scripts/prerender.js`; `npm run build` is now just `vite build`). Added `app.all('/api/*')` JSON 404 so unknown API paths no longer return HTML 200 (screen finding F10). Verified: one title/description/OG set per page, canonical without trailing slash, FR served for `?lang=fr`, CSP hash unchanged. |
+| 2026-10-02 | **Expert-scheduled consultations with Zoom**: new `006_consultation_scheduling.sql` (`cancelled` status, `zoom_meeting_id` / `zoom_join_url` / `zoom_password`, `cancelled_at` / `cancelled_by`); `src/lib/zoom.js` Server-to-Server OAuth client (join before host, no waiting room, best-effort host screen-share setting) + `npm run zoom:check`; experts (confirmed email = item `expert_email`) get a new-request email and schedule from `/account` via `AccountConsultations.svelte` → `POST /api/consultations/:id/schedule` creates the Zoom meeting and emails member + expert with link + `.ics`; member, expert, or admin can cancel (`POST /api/consultations/:id/cancel`, admin delete of an active consultation or expertise item) → Zoom meeting deleted + both emailed (`.ics` CANCEL). Admin approve on expertise now runs the same scheduling path. `GET /api/account/consultations`; `cancelled` added to `RESERVATION_STATUSES` in `calendar.js`; `approveReservation` no longer handles expertise; consultation emails refactored onto `buildConsultationEmail`; EN/FR `account_consultations.*` + Kimchi `consultation_scheduled` / `consultation_cancelled`; Cloud Run deploy passes `ZOOM_*` (secret via `zoom-client-secret`). |
+| 2026-10-02 | Account consultations list crashed after a meeting was scheduled: `formatMeetingTime` in `AccountConsultations.svelte` combined `dateStyle` with `timeZoneName`, which throws in Chrome and Safari and unmounted the list. Meeting times now use explicit date and time fields plus a short time-zone name. |
+| 2026-10-02 | Transactional emails use a shared Apathy is Boring layout (`src/lib/email-brand.js`): Mint header, English light wordmark, Pear/Lavender button, Grape links, Dark footer. Office address and phone live in `orgContact`. Optional `EMAIL_FUNDER_LOGO_URL` for the YES Employment strip. |
+| 2026-10-05 | Email logo is inlined (`cid:aisb-logo`) so it loads without a deployed image URL. CTA buttons are Lemon with Dark text. |
+| 2026-10-05 | Account consultation rows stack on narrow screens (≤640px) so expert/member request text uses the full card width, with Schedule and Cancel underneath. |
+| 2026-10-05 | Consultation schedule/approve buttons use Light text on Mint. Member answers (email, time slots, summary, meeting time) render as Lemon chips under quiet uppercase labels. |
+| 2026-10-05 | Expert and admin meeting time is a **Select a meeting time** button that opens the native datetime picker. A chosen time shows as a Lemon chip with a **(change date/time)** control. |
+| 2026-10-05 | **Select a meeting time** calls `showPicker()` on the datetime field. A transparent overlay input did not open the picker on click. |
+| 2026-10-05 | Mobile header (≤900px) is three rows — logo + EN/FR, full-width nav, then auth buttons — so longer French labels stay inside the screen. Wider viewports keep one row, and the account column no longer shrinks over the nav. |
+| 2026-10-05 | French header account button copy is **Voir ton compte** (`auth.view_account`). |
+| 2026-10-05 | Expert meeting-time control on `/account` has a **Meeting time** label above the select button (`account_consultations.meeting_time_label`, same style as the other field labels). The hint underneath is only “Times use your device's time zone.” |
+| 2026-10-05 | **Schedule meeting** with no time on **Consultation requests for you** shows “Please select a meeting time before approving.” under that row’s buttons. |
+| 2026-10-05 | That missing-time message no longer stretches the button row. The buttons stay at the right edge, and the message wraps underneath them. |
+| 2026-10-05 | Expertise list shows short text (`body`, max 180); opening an expert shows long text (`long_body` / `longBody`, migration `007_expertise_copy.sql`). Expertise list and overlay are a compact column on desktop and a full-width stacked row on mobile. |
+| 2026-10-05 | Admin **Mentors** browser (`MentorBrowser.svelte`) edits expertise name, expert email, short text, long text, and photo via `PATCH /api/inventory/:id`. The public slug is left unchanged. |
+| 2026-10-05 | Expertise list uses the same grid as Equipment, Books, and Rooms: 3 cards per row from 900px, one column below 640px. |
+| 2026-10-05 | **Share Expertise** on every account (`AccountShareExpertise.svelte`): a confirmed member publishes one mentor profile (`POST /api/account/mentor-profile`, `expert_email` forced to the account). It appears on the Expertise list. `PATCH` edits it when that email matches; the email and slug stay fixed. |
+| 2026-10-05 | Account consultation lists show only active requests. Cancelled, declined, and finished meetings (60 minutes after the start) open from a **Past consultations** button on each list. |
+| 2026-10-05 | Account **Share Expertise** form stays behind a button on the account panel until it is opened. |

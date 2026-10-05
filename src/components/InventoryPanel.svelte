@@ -37,6 +37,7 @@
     equipment: 'inventory.filter_equipment',
     books: 'inventory.filter_books',
     rooms: 'inventory.filter_rooms',
+    expertise: 'inventory.filter_expertise',
   };
 
   $effect(() => {
@@ -110,19 +111,33 @@
   </div>
 
   {#if loading}
-    <div class="inventory-skeleton-grid" aria-busy="true" aria-label={$t('inventory.loading')}>
-      {#each Array(6) as _, index (index)}
-        <div class="inventory-skeleton-card">
-          <div class="inventory-skeleton-card__image"></div>
-          <div class="inventory-skeleton-card__body">
-            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
-            <div class="inventory-skeleton-card__line"></div>
-            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--short"></div>
-            <div class="inventory-skeleton-card__button"></div>
+    {#if activeTag === 'expertise'}
+      <div class="expert-list" aria-busy="true" aria-label={$t('inventory.loading')}>
+        {#each Array(4) as _, index (index)}
+          <div class="expert-skeleton">
+            <div class="expert-skeleton__avatar"></div>
+            <div class="expert-skeleton__copy">
+              <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
+              <div class="inventory-skeleton-card__line"></div>
+            </div>
           </div>
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="inventory-skeleton-grid" aria-busy="true" aria-label={$t('inventory.loading')}>
+        {#each Array(6) as _, index (index)}
+          <div class="inventory-skeleton-card">
+            <div class="inventory-skeleton-card__image"></div>
+            <div class="inventory-skeleton-card__body">
+              <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
+              <div class="inventory-skeleton-card__line"></div>
+              <div class="inventory-skeleton-card__line inventory-skeleton-card__line--short"></div>
+              <div class="inventory-skeleton-card__button"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   {:else if loadError}
     <p class="status error inventory-load-error" role="alert">{loadError}</p>
   {:else if items.length === 0}
@@ -130,7 +145,7 @@
   {:else if filteredItems.length === 0}
     <p class="empty-state">{$t('inventory.empty_filtered')}</p>
   {:else}
-    <div class="inventory-grid">
+    <div class:inventory-grid={activeTag !== 'expertise'} class:expert-list={activeTag === 'expertise'}>
       {#each filteredItems as item (item.id)}
         <InventoryCard {item} onOpenReserve={openReserve} />
       {/each}

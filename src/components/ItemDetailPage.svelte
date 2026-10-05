@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { availabilityNow } from '../lib/availability-clock.js';
   import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
+  import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { fetchInventoryItem } from '../lib/inventory.js';
   import { t } from '../lib/i18n.js';
   import {
@@ -20,6 +21,7 @@
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
+  import ConsultationRequestForm from './ConsultationRequestForm.svelte';
   import ItemCalendar from './ItemCalendar.svelte';
   import ReserveAuthRequiredModal from './ReserveAuthRequiredModal.svelte';
 
@@ -54,10 +56,13 @@
     equipment: 'inventory.filter_equipment',
     books: 'inventory.filter_books',
     rooms: 'inventory.filter_rooms',
+    expertise: 'inventory.filter_expertise',
   };
 
   const reservations = $derived(item?.reservations ?? []);
   const itemTag = $derived(item?.tag ?? routeParams?.tag ?? 'equipment');
+  const isExpertise = $derived(itemTag === 'expertise');
+  const expertiseCopy = $derived(splitExpertiseCopy(item));
 
   let unavailable = $derived(
     item ? isCurrentlyReserved(reservations, new Date($availabilityNow)) : false,
@@ -208,9 +213,11 @@
     }
 
     setStatus(
-      detail?.reservation?.status === 'pending'
-        ? $t('inventory.reservation_pending')
-        : $t('inventory.reservation_complete'),
+      isExpertise
+        ? $t('consultation.request_pending')
+        : detail?.reservation?.status === 'pending'
+          ? $t('inventory.reservation_pending')
+          : $t('inventory.reservation_complete'),
       'success',
     );
     onReserveSuccess?.(detail);
@@ -250,7 +257,11 @@
     const { id, at, pending } = reserveSuccessTick ?? {};
     if (item && id === item.id && at) {
       setStatus(
-        pending ? $t('inventory.reservation_pending') : $t('inventory.reservation_complete'),
+        isExpertise
+          ? $t('consultation.request_pending')
+          : pending
+            ? $t('inventory.reservation_pending')
+            : $t('inventory.reservation_complete'),
         'success',
       );
     }
@@ -284,11 +295,15 @@
 <dialog
   bind:this={overlayDialog}
   class="modal modal--item-detail"
+  class:modal--expertise={routeParams?.tag === 'expertise'}
   aria-label={item ? item.title : $t('item_detail.breadcrumb_home')}
   oncancel={handleCancel}
   onclick={handleBackdropClick}
 >
-  <div class="item-detail-overlay">
+  <div
+    class="item-detail-overlay"
+    class:item-detail-overlay--expertise={routeParams?.tag === 'expertise'}
+  >
     <div class="item-detail-overlay__bar">
       <nav class="item-detail-breadcrumb" aria-label={$t('item_detail.breadcrumb_aria')}>
         <ol class="item-detail-breadcrumb__list">
@@ -310,22 +325,24 @@
             {#if item}
               <li class="item-detail-breadcrumb__item item-detail-breadcrumb__item--current" aria-current="page">
                 {item.title}
-                <span
-                  class="availability-badge item-detail-breadcrumb__badge"
-                  class:availability-badge--available={!unavailable && !checkAvailability}
-                  class:availability-badge--check={checkAvailability}
-                  class:availability-badge--unavailable={unavailable}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {#if unavailable}
-                    ({$t('calendar.unavailable')})
-                  {:else if checkAvailability}
-                    ({$t('calendar.check_availability')})
-                  {:else}
-                    ({$t('calendar.available')})
-                  {/if}
-                </span>
+                {#if !isExpertise}
+                  <span
+                    class="availability-badge item-detail-breadcrumb__badge"
+                    class:availability-badge--available={!unavailable && !checkAvailability}
+                    class:availability-badge--check={checkAvailability}
+                    class:availability-badge--unavailable={unavailable}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {#if unavailable}
+                      ({$t('calendar.unavailable')})
+                    {:else if checkAvailability}
+                      ({$t('calendar.check_availability')})
+                    {:else}
+                      ({$t('calendar.available')})
+                    {/if}
+                  </span>
+                {/if}
               </li>
             {/if}
           {/if}
@@ -353,25 +370,20 @@
         </p>
       </div>
     {:else if item}
-      <article class="item-detail">
-        <div class="item-detail__media">
-          <img
-            class="item-detail__image"
-            src={item.image}
-            alt={$t('inventory.image_alt', { title: item.title })}
-            width="960"
-            height="540"
-            decoding="async"
-          />
-        </div>
-
-        <div class="item-detail__content">
-          <header class="item-detail__header">
+      {#if isExpertise}
+        <article class="item-detail item-detail--expertise">
+          <header class="expert-detail__heading">
+            <img
+              class="expert-detail__avatar"
+              src={item.image}
+              alt=""
+              width="80"
+              height="80"
+              decoding="async"
+            />
             <h1>{item.title}</h1>
           </header>
-          <div class="item-detail__body">
-            <p>{item.body}</p>
-          </div>
+          <p class="expert-detail__bio">{expertiseCopy.longText}</p>
 
           {#if statusMessage}
             <p
@@ -383,22 +395,68 @@
               {statusMessage}
             </p>
           {/if}
-        </div>
 
-        <aside
-          bind:this={calendarColumn}
-          class="item-detail__calendar"
-          class:item-detail__calendar--highlight={calendarHighlight}
-        >
-          <ItemCalendar
-            item={item}
-            hideHeading
-            onbeforeconfirm={requireAuthForReservation}
-            onupdated={handleReserveUpdated}
-            onconfirmed={handleReserveSuccess}
-          />
-        </aside>
-      </article>
+          <aside
+            bind:this={calendarColumn}
+            class="item-detail__calendar"
+            class:item-detail__calendar--highlight={calendarHighlight}
+          >
+            <ConsultationRequestForm
+              item={item}
+              onbeforeconfirm={requireAuthForReservation}
+              onupdated={handleReserveUpdated}
+              onconfirmed={handleReserveSuccess}
+            />
+          </aside>
+        </article>
+      {:else}
+        <article class="item-detail">
+          <div class="item-detail__media">
+            <img
+              class="item-detail__image"
+              src={item.image}
+              alt={$t('inventory.image_alt', { title: item.title })}
+              width="960"
+              height="540"
+              decoding="async"
+            />
+          </div>
+
+          <div class="item-detail__content">
+            <header class="item-detail__header">
+              <h1>{item.title}</h1>
+            </header>
+            <div class="item-detail__body">
+              <p>{item.body}</p>
+            </div>
+
+            {#if statusMessage}
+              <p
+                class="card-status status {statusType} item-detail__status"
+                class:fade-out={fadeOut}
+                role="status"
+                aria-live="polite"
+              >
+                {statusMessage}
+              </p>
+            {/if}
+          </div>
+
+          <aside
+            bind:this={calendarColumn}
+            class="item-detail__calendar"
+            class:item-detail__calendar--highlight={calendarHighlight}
+          >
+            <ItemCalendar
+              item={item}
+              hideHeading
+              onbeforeconfirm={requireAuthForReservation}
+              onupdated={handleReserveUpdated}
+              onconfirmed={handleReserveSuccess}
+            />
+          </aside>
+        </article>
+      {/if}
     {/if}
   </div>
 </dialog>

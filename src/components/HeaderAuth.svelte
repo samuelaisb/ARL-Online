@@ -69,7 +69,7 @@
         {$t('auth.register')}
       </button>
     {/if}
-  </div>
 
-  <AuthModal bind:this={authModal} />
+    <AuthModal bind:this={authModal} />
+  </div>
 {/if}

@@ -35,6 +35,7 @@
 <script>
   import { onDestroy } from 'svelte';
   import { availabilityNow } from '../lib/availability-clock.js';
+  import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
   import { t } from '../lib/i18n.js';
   import { itemToPath, navigateToItem } from '../lib/router.js';
@@ -53,6 +54,8 @@
   // tracking is guaranteed even when item.reservations is mutated in-place on the proxy.
   const reservations = $derived(item.reservations ?? []);
   const itemTag = $derived(item.tag ?? 'equipment');
+  const isExpertise = $derived(itemTag === 'expertise');
+  const expertiseCopy = $derived(splitExpertiseCopy(item));
 
   let unavailable = $derived(isCurrentlyReserved(reservations, new Date($availabilityNow)));
   let checkAvailability = $derived(
@@ -116,44 +119,85 @@
   });
 </script>
 
-<article class="inventory-card" onmouseenter={handleMouseEnter} onmouseleave={handleMouseLeave}>
-  <div class="inventory-image-frame">
-    <img
-      class="inventory-image"
-      src={item.image}
-      alt={$t('inventory.image_alt', { title: item.title })}
-      width="640"
-      height="360"
-      decoding="async"
-      loading="lazy"
-    />
-    <span
-      class="availability-badge"
-      class:availability-badge--available={!unavailable && !checkAvailability}
-      class:availability-badge--check={checkAvailability}
-      class:availability-badge--unavailable={unavailable}
-      role="status"
-      aria-live="polite"
-    >
-      {#if unavailable}
-        {$t('calendar.unavailable')}
-      {:else if checkAvailability}
-        {$t('calendar.check_availability')}
-      {:else}
-        {$t('calendar.available')}
-      {/if}
-    </span>
-  </div>
-  <div class="inventory-content">
-    <h3>
-      <a class="inventory-card__title-link" href={itemToPath(item)} onclick={goToDetail}>
-        {item.title}
-      </a>
-    </h3>
-    <p>{item.body}</p>
+<article
+  class="inventory-card"
+  class:inventory-card--expert={isExpertise}
+  onmouseenter={handleMouseEnter}
+  onmouseleave={handleMouseLeave}
+>
+  {#if isExpertise}
+    <a class="expert-card__link" href={itemToPath(item)} onclick={goToDetail}>
+      <div class="inventory-image-frame">
+        <img
+          class="inventory-image"
+          src={item.image}
+          alt=""
+          width="96"
+          height="96"
+          decoding="async"
+          loading="lazy"
+        />
+      </div>
+      <div class="expert-card__copy">
+        <h3>{item.title}</h3>
+        <p>{expertiseCopy.shortText}</p>
+      </div>
+    </a>
+  {:else}
+    <div class="inventory-image-frame">
+      <img
+        class="inventory-image"
+        src={item.image}
+        alt={$t('inventory.image_alt', { title: item.title })}
+        width="640"
+        height="360"
+        decoding="async"
+        loading="lazy"
+      />
+      <span
+        class="availability-badge"
+        class:availability-badge--available={!unavailable && !checkAvailability}
+        class:availability-badge--check={checkAvailability}
+        class:availability-badge--unavailable={unavailable}
+        role="status"
+        aria-live="polite"
+      >
+        {#if unavailable}
+          {$t('calendar.unavailable')}
+        {:else if checkAvailability}
+          {$t('calendar.check_availability')}
+        {:else}
+          {$t('calendar.available')}
+        {/if}
+      </span>
+    </div>
+    <div class="inventory-content">
+      <h3>
+        <a class="inventory-card__title-link" href={itemToPath(item)} onclick={goToDetail}>
+          {item.title}
+        </a>
+      </h3>
+      <p>{item.body}</p>
 
+      <button type="button" class="btn-reserve" onclick={openReserveModal}>
+        {$t('inventory.reserve')}
+      </button>
+      {#if statusMessage}
+        <p
+          class="card-status status {statusType}"
+          class:fade-out={fadeOut}
+          role="status"
+          aria-live="polite"
+        >
+          {statusMessage}
+        </p>
+      {/if}
+    </div>
+  {/if}
+
+  {#if isExpertise}
     <button type="button" class="btn-reserve" onclick={openReserveModal}>
-      {$t('inventory.reserve')}
+      {$t('inventory.request_consultation')}
     </button>
     {#if statusMessage}
       <p
@@ -165,5 +209,5 @@
         {statusMessage}
       </p>
     {/if}
-  </div>
+  {/if}
 </article>

@@ -1,9 +1,10 @@
 <script>
-  import {
-    createInventoryItem,
-    INVENTORY_TAGS,
-    DEFAULT_INVENTORY_TAG,
-  } from '../lib/inventory.js';
+import { EXPERT_LONG_TEXT_MAX, EXPERT_SHORT_TEXT_MAX } from '../lib/expertise-fields.js';
+import {
+  createInventoryItem,
+  INVENTORY_TAGS,
+  DEFAULT_INVENTORY_TAG,
+} from '../lib/inventory.js';
   import { compressImageFile } from '../lib/image.js';
   import { t, translateKey } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
@@ -13,7 +14,9 @@
   let dialog = $state();
   let title = $state('');
   let body = $state('');
+  let longBody = $state('');
   let tag = $state(DEFAULT_INVENTORY_TAG);
+  let expertEmail = $state('');
   let selectedImageDataUrl = $state('');
   let imageFileName = $state('');
   let processingImage = $state(false);
@@ -26,7 +29,9 @@
   export function open() {
     title = '';
     body = '';
+    longBody = '';
     tag = DEFAULT_INVENTORY_TAG;
+    expertEmail = '';
     selectedImageDataUrl = '';
     imageFileName = '';
     formStatus = '';
@@ -87,10 +92,33 @@
 
     const trimmedTitle = title.trim();
     const trimmedBody = body.trim();
+    const trimmedLongBody = longBody.trim();
+    const trimmedExpertEmail = tag === 'expertise' ? expertEmail.trim() : '';
     const image = selectedImageDataUrl;
+    const isExpertise = tag === 'expertise';
 
-    if (!trimmedTitle || !trimmedBody || !image) {
+    if (isExpertise) {
+      if (!trimmedTitle || !trimmedBody || !trimmedLongBody || !image) {
+        showFormStatus($t('add_item.fill_expertise_fields'), 'error');
+        return;
+      }
+
+      if (trimmedBody.length > EXPERT_SHORT_TEXT_MAX) {
+        showFormStatus($t('add_item.short_text_too_long'), 'error');
+        return;
+      }
+
+      if (trimmedLongBody.length > EXPERT_LONG_TEXT_MAX) {
+        showFormStatus($t('add_item.long_text_too_long'), 'error');
+        return;
+      }
+    } else if (!trimmedTitle || !trimmedBody || !image) {
       showFormStatus($t('add_item.fill_all_fields'), 'error');
+      return;
+    }
+
+    if (trimmedExpertEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedExpertEmail)) {
+      showFormStatus($t('add_item.expert_email_invalid'), 'error');
       return;
     }
 
@@ -102,6 +130,8 @@
         body: trimmedBody,
         image,
         tag,
+        ...(isExpertise ? { longBody: trimmedLongBody } : {}),
+        ...(trimmedExpertEmail ? { expertEmail: trimmedExpertEmail } : {}),
       });
       oncreated?.(item);
       notify(translateKey('kimchi.item_added'), DEFAULT_NOTIFICATION_DURATION);
@@ -127,12 +157,16 @@
       </button>
     </header>
 
-    <label for="item-title">{$t('add_item.title_label')}</label>
+    <label for="item-title">
+      {tag === 'expertise' ? $t('add_item.expert_name_label') : $t('add_item.title_label')}
+    </label>
     <input
       id="item-title"
       name="title"
       type="text"
-      placeholder={$t('add_item.title_placeholder')}
+      placeholder={tag === 'expertise'
+        ? $t('add_item.expert_name_placeholder')
+        : $t('add_item.title_placeholder')}
       required
       bind:value={title}
     />
@@ -154,15 +188,52 @@
       </div>
     </div>
 
-    <label for="item-body">{$t('add_item.body_label')}</label>
-    <textarea
-      id="item-body"
-      name="body"
-      rows="5"
-      placeholder={$t('add_item.body_placeholder')}
-      required
-      bind:value={body}
-    ></textarea>
+    {#if tag === 'expertise'}
+      <label for="item-expert-email">{$t('add_item.expert_email_label')}</label>
+      <input
+        id="item-expert-email"
+        name="expertEmail"
+        type="email"
+        placeholder={$t('add_item.expert_email_placeholder')}
+        bind:value={expertEmail}
+      />
+      <p class="field-hint">{$t('add_item.expert_email_hint')}</p>
+
+      <label for="item-short-text">{$t('add_item.short_text_label')}</label>
+      <textarea
+        id="item-short-text"
+        class="add-item-short-text"
+        name="body"
+        rows="2"
+        maxlength={EXPERT_SHORT_TEXT_MAX}
+        placeholder={$t('add_item.short_text_placeholder')}
+        required
+        bind:value={body}
+      ></textarea>
+      <p class="field-hint">{$t('add_item.short_text_hint')}</p>
+
+      <label for="item-long-text">{$t('add_item.long_text_label')}</label>
+      <textarea
+        id="item-long-text"
+        name="longBody"
+        rows="5"
+        maxlength={EXPERT_LONG_TEXT_MAX}
+        placeholder={$t('add_item.long_text_placeholder')}
+        required
+        bind:value={longBody}
+      ></textarea>
+      <p class="field-hint">{$t('add_item.long_text_hint')}</p>
+    {:else}
+      <label for="item-body">{$t('add_item.body_label')}</label>
+      <textarea
+        id="item-body"
+        name="body"
+        rows="5"
+        placeholder={$t('add_item.body_placeholder')}
+        required
+        bind:value={body}
+      ></textarea>
+    {/if}
 
     <label for="item-image">{$t('add_item.image_label')}</label>
     <div class="image-upload">

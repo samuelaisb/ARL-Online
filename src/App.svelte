@@ -71,6 +71,29 @@
     items = items.filter((item) => item.id !== id);
   }
 
+  function handleMentorProfileSaved(profile) {
+    if (!profile?.id) {
+      return;
+    }
+
+    const existing = items.find((item) => item.id === profile.id);
+    const publicItem = {
+      id: profile.id,
+      title: profile.title,
+      body: profile.body,
+      image: profile.image,
+      createdAt: profile.createdAt,
+      tag: profile.tag || 'expertise',
+      slug: profile.slug,
+      longBody: profile.longBody ?? null,
+      reservations: existing?.reservations ?? [],
+    };
+
+    items = existing
+      ? items.map((item) => (item.id === publicItem.id ? publicItem : item))
+      : [publicItem, ...items];
+  }
+
   function handleItemUpdated(updatedItem) {
     items = items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
     if (itemDetailSeoItem?.id === updatedItem.id) {
@@ -232,6 +255,7 @@
         <AccountPage
           onOpenLogin={openLoginFromReserve}
           onOpenRegister={openRegisterFromReserve}
+          onProfileSaved={handleMentorProfileSaved}
         />
       {/await}
     {:else if onInventoryPage || onItemDetailPage}
@@ -241,6 +265,7 @@
           <p class="subtitle">{$t('site.subtitle')}</p>
           <p class="page-intro">{$t('site.intro')}</p>
           <p class="page-intro page-intro--extended">{$t('site.intro_extended')}</p>
+          <p class="page-intro page-intro--extended">{$t('site.intro_support')}</p>
         </header>
 
         <InventoryPanel

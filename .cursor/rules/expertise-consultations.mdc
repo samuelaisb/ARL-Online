@@ -1,0 +1,34 @@
+---
+description: Expertise category and consultation requests — schema, UI, API, Zoom, emails/Slack. Read when editing expertise, consultation form, expert scheduling, cancellation, Zoom, or migrations 005/006.
+globs: supabase/migrations/005_expertise.sql,supabase/migrations/006_consultation_scheduling.sql,supabase/migrations/007_expertise_copy.sql,src/components/ConsultationRequestForm.svelte,src/components/AccountConsultations.svelte,src/components/AccountPage.svelte,src/components/AccountShareExpertise.svelte,src/components/AdminPanel.svelte,src/components/MentorBrowser.svelte,src/components/AddItemModal.svelte,src/components/ItemDetailPage.svelte,src/components/InventoryCard.svelte,src/components/InventoryPanel.svelte,src/lib/inventory-store.js,src/lib/inventory.js,src/lib/expertise-fields.js,src/lib/reservation-rules.js,src/lib/zoom.js,src/lib/calendar.js,server.js,locales/**/*.json,docs/automated-emails.md,docs/automated-webhooks.md
+alwaysApply: false
+---
+
+# Expertise consultations
+
+Canonical detail lives in **`AGENTS.md` → section "Expertise consultations"**. Keep that section accurate when behavior changes.
+
+## Invariants
+
+- Tag `expertise` is a fourth inventory category (`/expertise`, filter, Add Item). The list uses the same grid as the other categories (3 per row from 900px): photo, name, and **short text** (`body`, max 180). Opening an expert shows **long text** (`long_body` / `longBody`, max 4000, migration `007_expertise_copy.sql`) in a narrow overlay. Until `longBody` is set, a blank line in `body` splits list text (first paragraph) from the overlay bio. Cards say **Request Consultation** and hide availability badges. `longBody` is public; `expert_email` is not.
+- Consultations **reuse** `reservations` + `POST /api/inventory/:id/reservations` — not a separate table.
+- Create body: `{ timeSlots, summary }` (not dates). Server sets start/end to submission date. **No date collision** for expertise.
+- UI: `ConsultationRequestForm.svelte` replaces `ItemCalendar` in the expertise overlay (compact panel, not the three-column calendar layout).
+- **The expert** is the signed-in user whose **confirmed** email matches the item's `expert_email` (case-insensitive). Experts schedule and cancel from `/account` (`AccountConsultations.svelte`); admins can do the same from `/admin`. Each account list shows pending requests and upcoming meetings only. Cancelled, declined, and finished meetings (60 minutes after the start) open from that list's **Past consultations** button.
+- **Share Expertise** (`AccountShareExpertise.svelte`) is on every account, behind a button on the account panel. The form stays closed until that button is clicked. A confirmed member can publish **one** mentor profile (`POST /api/account/mentor-profile`). `expert_email` is forced to the JWT email. The profile is an expertise item and shows on the Expertise list. `PATCH` edits it only when that email matches; it does not change the email or the slug. If several items share the email, the earliest is the one they edit.
+- Lifecycle: `pending` → `reserved` (scheduled, `meeting_at` + Zoom fields) → `cancelled`; or `pending` → `refused` (admin) / `cancelled`.
+- Scheduling (expert `POST /api/consultations/:id/schedule` or admin approve) creates the Zoom meeting **inside the item lock** before writing `reserved`. Zoom failure → 502, nothing saved. Zoom unset → schedules without a link.
+- Cancelling (member, expert, or admin) sets `cancelled` + `cancelled_by`, deletes the Zoom meeting (best effort, logged), and emails both member and expert. Admin delete of an active consultation (or its item) does the same.
+- `normalizeReservationStatus` defaults unknown statuses to `reserved` — any new status **must** be added to `RESERVATION_STATUSES` in `calendar.js`.
+- `expert_email` is optional on items; **never** returned on public inventory APIs. The account mentor-profile response includes it for the signed-in owner only. Admin **Mentors** (`MentorBrowser.svelte`) edits it, plus name, short text, long text, and photo, via `PATCH /api/inventory/:id`. The slug stays as created. Blank email clears `expert_email`.
+- Public sanitization strips `timeSlots`, `requestSummary`, `meetingAt`, `userEmail`, and all Zoom/cancel fields (whitelist in `sanitizeReservationForPublic`).
+- Account API: members see the expert email; experts see the member email; neither sees other users' requests.
+- Emails: request-received (member) + new-request (expert) on create; scheduled (both, with Zoom link + `.ics` REQUEST); cancelled (both, `.ics` CANCEL when it had been scheduled); admin refuse (member only).
+- Zoom meetings: join before host, `jbh_time: 0`, no waiting room. "Everyone can share screen" is a **host-user setting** — set once per process via `PATCH /users/{host}/settings` (needs `user:update:settings:admin` scope) or in the Zoom web portal.
+- Slack payload always includes `time_slots`, `request_summary`, `expert_email`, `admin_url` (empty strings when N/A). Slack fires only on create.
+- Replace `CONSULTATION_DATA_FORM_URL` in `server.js` before launch.
+- Migrations: `005_expertise.sql`, then `006_consultation_scheduling.sql`, then `007_expertise_copy.sql`.
+
+## Locale domains
+
+`consultation.*`, `account_consultations.*`, `share_expertise.*`, `inventory.filter_expertise`, `inventory.request_consultation`, `admin.consultation_*` / `meeting_*` / `mentors_*`, `add_item.expert_*`, `kimchi.consultation_sent` / `consultation_scheduled` / `consultation_cancelled` / `mentor_updated` / `mentor_profile_published` / `mentor_profile_updated`, `seo.category_expertise_*`, `how_this_works.*` (browse/reserve/pickup + FAQ).
