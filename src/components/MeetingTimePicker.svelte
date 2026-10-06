@@ -35,7 +35,9 @@
   // iOS and Android; desktop browsers show editable date and time segments.
   // (A hidden input driven by showPicker() did nothing on iOS Safari.)
   // iOS enforces neither min nor max in its picker, so callers still check the time.
-  let { value = $bindable(), error = $bindable(''), min = '', label, hint = '' } = $props();
+  // No fallbacks on the bindable props: callers bind to per-row maps that start
+  // empty, and Svelte throws on bind:x={undefined} when x has a fallback.
+  let { value = $bindable(), error = $bindable(), min = '', label, hint = '' } = $props();
 
   const id = $props.id();
   const hintId = `${id}-hint`;
