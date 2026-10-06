@@ -16,7 +16,7 @@
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
-  import MeetingTimePicker from './MeetingTimePicker.svelte';
+  import MeetingTimePicker, { parseMeetingTimeInput } from './MeetingTimePicker.svelte';
   import MentorBrowser from './MentorBrowser.svelte';
 
   let { items = [], onAddItem, onItemRemoved, onItemUpdated } = $props();
@@ -38,6 +38,8 @@
   let pendingError = $state('');
   // Per-entry datetime-local values for approving expertise consultations.
   let meetingTimes = $state({});
+  let meetingTimeErrors = $state({});
+  const meetingPickers = {};
 
   async function refreshAdminItems() {
     loading = true;
@@ -256,11 +258,17 @@
     let meetingAt = null;
 
     if (isExpertise) {
-      const rawMeetingTime = meetingTimes[entry.id]?.trim() ?? '';
-      const parsed = rawMeetingTime ? new Date(rawMeetingTime) : null;
+      const parsed = parseMeetingTimeInput(meetingTimes[entry.id]);
+      // iOS doesn't enforce min in its picker, so check for a past time here, before the confirm.
+      const timeError = !parsed
+        ? $t('admin.meeting_time_required')
+        : parsed.getTime() <= Date.now()
+          ? $t('admin.meeting_time_past')
+          : '';
 
-      if (!parsed || Number.isNaN(parsed.getTime())) {
-        pendingError = $t('admin.meeting_time_required');
+      meetingTimeErrors[entry.id] = timeError;
+      if (timeError) {
+        meetingPickers[entry.id]?.focus();
         return;
       }
 
@@ -452,7 +460,7 @@
         <ul class="admin-item-list">
           {#each pendingEntries as entry (entry.id)}
             {@const isExpertiseEntry = entry.itemTag === 'expertise'}
-            <li class="admin-item-row admin-item-row--pending">
+            <li class="admin-item-row admin-item-row--pending" class:consultation-row={isExpertiseEntry}>
               <div class="admin-reservation-details">
                 <span class="admin-item-title">{entry.itemTitle}</span>
                 {#if isExpertiseEntry}
@@ -490,10 +498,11 @@
                 {/if}
                 {#if isExpertiseEntry}
                   <MeetingTimePicker
+                    bind:this={meetingPickers[entry.id]}
                     bind:value={meetingTimes[entry.id]}
-                    selectLabel={$t('admin.select_meeting_time')}
-                    changeLabel={$t('admin.change_meeting_time')}
-                    displayValue={formatMeetingTime(meetingTimes[entry.id])}
+                    bind:error={meetingTimeErrors[entry.id]}
+                    label={$t('admin.meeting_time_label')}
+                    hint={$t('admin.meeting_time_hint')}
                   />
                 {/if}
               </div>

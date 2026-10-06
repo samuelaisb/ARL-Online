@@ -52,6 +52,7 @@ Steps outside the repo for the 2026-10-05 fixes. Commit and deploy are done (`5d
 - **Search Console** (`AGENTS.md` → Google Search Console, steps 4–5): (a) Settings → robots.txt → request a recrawl. (b) URL Inspection on an item URL from the sitemap → Test live URL: the screenshot shows the item title, and Page resources lists `/api/inventory/by-slug/...` as loaded, not blocked. (c) URL Inspection on a made-up path such as `/how-it-works` reports Not found (404).
 - **Share previews:** item links shared before the deploy show the old logo until each platform refetches. Re-scrape the important URLs in Facebook's Sharing Debugger and LinkedIn's Post Inspector, for example `/rooms/meeting-room-max-15-people` and `/expertise/samuel-miriello`.
 - **Smoke tests:**
+  - **Meeting date and time on an iPhone:** as an expert with a pending request on `/account` (or an admin on `/admin` → Pending), tap the field: the iOS date and time wheel opens. Pick a future time, tap Done, then Schedule / Approve reaches the confirm. A past time shows "That time has already passed" under the field. Also try desktop Firefox and Safari, and VoiceOver.
   - Forgot password? end to end with a non-staff address: the email arrives, the link opens **Set a new password**, and the new password logs in.
   - Approve a test reservation or send a consultation email to yourself and press Reply: it should be addressed to `samuel@apathyisboring.com`. Optional: `npm run send-email` sends one test email through the live Resend key.
   - Open `/books` and check the photos load from `/media/items/...`. Edit a mentor's text in `/admin` without choosing a new photo and check the photo is kept.
@@ -69,9 +70,7 @@ What's left from the 2026-10-05 deep review and the earlier code review. Fixed i
 
 ### High
 
-#### Scheduling
-
-- **Meeting-time picker probably does nothing on iPhone/iPad.** Where: `MeetingTimePicker.svelte`; the `.meeting-time-picker__input` hiding rules in `app.css`; used by `AccountConsultations.svelte` and `AdminPanel.svelte`. Problem: the only real field is a hidden, unfocusable `datetime-local`, and the button relies on `showPicker()`, which iOS WebKit ignores for date inputs. Desktop Firefox and Safari probably can't set the time part either, so experts there can't schedule, and screen readers get an unlabeled field. Fix: make the `datetime-local` a normal visible field (drop `aria-hidden` / `tabindex`, `<label for>`, `aria-describedby` on the hint) styled like other inputs; keep the button only as an optional `showPicker()` helper that focuses the field first. Left unfixed on 2026-10-05 on purpose, because it needs a real-device check: test on an iPhone and in desktop Firefox and Safari (plus VoiceOver) before and after the change.
+None open. The meeting-time picker was rebuilt on 2026-10-05 after the user confirmed it failed on an iPhone: it is now a visible native field (see the AGENTS.md changelog). It was checked in Chromium only; the iPhone, desktop Firefox/Safari and VoiceOver checks are under **After deploying**. Re-test on an iPhone after any change to `MeetingTimePicker.svelte`.
 
 ### Medium
 
@@ -157,7 +156,6 @@ What's left from the 2026-10-05 deep review and the earlier code review. Fixed i
 #### Account and admin UI
 
 - **Both consultation buttons show a progress label.** Where: `AccountConsultations.svelte`. Problem: "Cancelling…" shows while scheduling and vice versa. Fix: track an `actionType` next to `actionId`.
-- **Admin meeting picker has no minimum.** Where: `AdminPanel.svelte` (`handleApprove`); `handleSchedule` in `AccountConsultations.svelte`. Problem: the server rejects a past time only after the confirm dialog. Fix: pass `min` in admin and pre-check for a past time in both handlers.
 - **Share Expertise 409 overwrites what the user typed.** Where: the save catch in `AccountShareExpertise.svelte`. Fix: on 409, set `profile` only and keep the typed fields so the next Save PATCHes.
 - **Links from `/account` into a mentor overlay close to `/expertise`.** Where: `AccountConsultations.svelte` and `AccountShareExpertise.svelte` (`navigate(path)`). Fix: use `navigateToItem` from `router.js` (added for `AccountReservations`), which pushes the overlay history marker.
 - **`aria-controls` points at nothing.** Where: `AccountPage.svelte` (`share-expertise-panel`). Problem: the panel doesn't exist until first opened. Fix: render the id on a stable wrapper, or set `aria-controls` only while open.

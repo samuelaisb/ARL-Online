@@ -14,7 +14,7 @@
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
-  import MeetingTimePicker from './MeetingTimePicker.svelte';
+  import MeetingTimePicker, { parseMeetingTimeInput } from './MeetingTimePicker.svelte';
 
   const STATUS_ORDER = { pending: 0, reserved: 1, cancelled: 2, refused: 3 };
 
@@ -23,6 +23,8 @@
   let asMember = $state([]);
   let asExpert = $state([]);
   let meetingTimes = $state({});
+  let meetingTimeErrors = $state({});
+  const meetingPickers = {};
   let actionId = $state('');
   let actionError = $state('');
   let actionErrorId = $state('');
@@ -67,18 +69,6 @@
     });
   }
 
-  function formatSelectedMeetingTime(value) {
-    const date = new Date(value);
-    if (!value || Number.isNaN(date.getTime())) {
-      return '';
-    }
-
-    return new Intl.DateTimeFormat($locale === 'fr' ? 'fr-CA' : 'en-CA', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(date);
-  }
-
   function formatMeetingTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -108,12 +98,6 @@
     }).format(new Date(year, month - 1, day));
   }
 
-  function nowLocalInputValue() {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-  }
-
   function replaceEntry(updated) {
     const swap = (entries) => entries.map((entry) => (entry.id === updated.id ? { ...entry, ...updated, role: entry.role } : entry));
     asMember = swap(asMember);
@@ -140,12 +124,17 @@
       return;
     }
 
-    const raw = meetingTimes[entry.id]?.trim() ?? '';
-    const parsed = raw ? new Date(raw) : null;
+    const parsed = parseMeetingTimeInput(meetingTimes[entry.id]);
+    // iOS doesn't enforce min in its picker, so check for a past time here, before the confirm.
+    const timeError = !parsed
+      ? $t('account_consultations.meeting_time_required')
+      : parsed.getTime() <= Date.now()
+        ? $t('account_consultations.meeting_time_past')
+        : '';
 
-    if (!parsed || Number.isNaN(parsed.getTime())) {
-      actionErrorId = `${entry.role}:${entry.id}`;
-      actionError = $t('account_consultations.meeting_time_required');
+    meetingTimeErrors[entry.id] = timeError;
+    if (timeError) {
+      meetingPickers[entry.id]?.focus();
       return;
     }
 
@@ -303,13 +292,11 @@
 
       {#if entry.status === 'pending' && entry.role === 'expert'}
         <MeetingTimePicker
+          bind:this={meetingPickers[entry.id]}
           bind:value={meetingTimes[entry.id]}
-          min={nowLocalInputValue()}
+          bind:error={meetingTimeErrors[entry.id]}
           label={$t('account_consultations.meeting_time_label')}
-          selectLabel={$t('account_consultations.select_meeting_time')}
-          changeLabel={$t('account_consultations.change_meeting_time')}
           hint={$t('account_consultations.meeting_time_hint')}
-          displayValue={formatSelectedMeetingTime(meetingTimes[entry.id])}
         />
       {/if}
     </div>
