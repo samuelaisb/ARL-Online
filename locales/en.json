@@ -64,6 +64,9 @@
     "create_error": "Could not save reservation.",
     "delete_error": "Could not remove reservation.",
     "collision_error": "Those dates overlap an existing reservation.",
+    "daily_limit": "You've reached your account's request limit for today. Please try again tomorrow.",
+    "pending_limit": "You already have too many requests waiting for a reply. Please wait until one is answered before sending another.",
+    "rate_limited": "Too many requests in a short time. Please wait a few minutes and try again.",
     "pickup_dropoff_hours": "Pickup and drop off is between 10am and 5pm on Tuesdays.",
     "select_tuesday_equipment": "Select a Tuesday to reserve a one-week block.",
     "select_tuesday_books": "Select a Tuesday to reserve a one-month block.",
@@ -71,16 +74,18 @@
   },
   "consultation": {
     "heading": "Request a consultation",
-    "intro": "Tell us when you're free and what you'd like to talk about — the expert will pick a time and you'll both get a Zoom invitation by email.",
-    "time_slots_label": "Give us 2-3 time slots you'd be available",
+    "intro": "Share when you're free and what you'd like to talk about. {name} will pick a time, and you'll both get a Zoom invitation by email.",
+    "time_slots_label": "List 2-3 time slots when you're available",
     "time_slots_placeholder": "e.g. Tuesday 2-4pm, Wednesday morning, Friday after 5pm",
-    "summary_label": "Give us a summary of what you'd like expertise about",
+    "summary_label": "Summarize what you'd like help with",
     "summary_placeholder": "What are you working on, and what would you like help with?",
     "submit": "Submit",
     "submitting": "Submitting…",
+    "sharing_note": "Your request and your account email go to {name} and to the Apathy is Boring team. Only include personal details you're comfortable sharing with them.",
     "fill_all_fields": "Please share your availability and a summary of your request.",
     "request_pending": "Thanks for requesting a consultation! The expert will pick a time and you'll get a Zoom invitation by email. You can follow or cancel it from your account page.",
-    "create_error": "Could not submit your consultation request."
+    "create_error": "Could not submit your consultation request.",
+    "already_open": "You already have an open request with this expert. You can follow or cancel it from your account page."
   },
   "auth": {
     "loading": "Loading...",
@@ -124,7 +129,34 @@
     "complete_signup_message": "One more step: read and sign the member agreement to finish creating your account.",
     "complete_signup_contract_required": "Please read and agree to the member agreement to finish creating your account.",
     "complete_signup_submit": "Finish sign-up",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "forgot_password": "Forgot password?",
+    "reset_title": "Reset your password",
+    "reset_intro": "Enter the email you log in with and we'll send you a link to choose a new password.",
+    "reset_submit": "Send reset link",
+    "reset_sending": "Sending...",
+    "reset_sent": "If an account exists for {email}, we've sent a link to reset your password. Check your spam folder if it doesn't arrive.",
+    "reset_send_failed": "We couldn't send the reset email. Check your connection and try again in a few minutes.",
+    "reset_link_expired": "This reset link has expired or was already used. Request a new one.",
+    "back_to_log_in": "Back to log in",
+    "enter_email": "Please enter your email address.",
+    "enter_valid_email": "Please enter a valid email address.",
+    "rate_limited": "Too many attempts. Please wait a few minutes and try again.",
+    "change_password": "Change password",
+    "change_password_title": "Change your password",
+    "set_password_title": "Set a new password",
+    "set_password_intro": "Choose a new password for {email}.",
+    "new_password": "New password",
+    "confirm_password": "Confirm new password",
+    "password_hint": "At least 8 characters.",
+    "password_mismatch": "The two passwords don't match.",
+    "save_password": "Save password",
+    "password_updated": "Your password has been updated.",
+    "password_weak": "That password is too weak or too common. Try a longer one, or mix letters, numbers and symbols.",
+    "password_same": "Your new password must be different from your current one.",
+    "password_reauth_needed": "For your security, log out and log back in, then change your password.",
+    "password_session_expired": "Your session has expired. Log in again or request a new reset link, then try again.",
+    "password_update_failed": "Couldn't update your password. Check your connection and try again."
   },
   "admin": {
     "heading": "Hello lovely AisBer! Welcome to the Admin Page",
@@ -168,13 +200,18 @@
     "reservation_dates": "{start} to {end}",
     "delete_reservation": "Delete",
     "deleting_reservation": "Deleting…",
-    "delete_reservation_confirm": "Delete reservation for \"{title}\" ({start} to {end})?",
+    "delete_reservation_confirm": "Delete the reservation for \"{title}\" ({start} to {end}) for {email}? They will be emailed that the library team cancelled it.",
+    "delete_reservation_silent_confirm": "Delete the reservation for \"{title}\" ({start} to {end}) for {email}? Nobody is notified.",
+    "delete_consultation_confirm": "Cancel the consultation \"{title}\" ({time}) with {email}? The Zoom meeting is deleted and the member and expert are emailed.",
+    "delete_held_consultation_confirm": "Delete the record of the completed consultation \"{title}\" ({time}) with {email}? The record is removed without notifying anyone.",
     "delete_reservation_error": "Could not delete reservation.",
     "loading": "Loading inventory…",
     "empty": "No items to remove.",
     "remove": "Remove",
     "removing": "Removing…",
     "remove_confirm": "Remove \"{title}\" from inventory?",
+    "remove_with_reservations_confirm": "Remove \"{title}\" from inventory? Pending or upcoming reservations on it: {count}. They are cancelled, and each member is emailed that the library team cancelled their reservation.",
+    "remove_expertise_confirm": "Remove \"{title}\" from inventory? This permanently deletes the mentor's consultation records ({count} in total). Pending and upcoming consultations are cancelled and both people are emailed; completed ones are deleted without notice.",
     "remove_error": "Could not remove item.",
     "delete_error": "Could not delete inventory item.",
     "back_to_inventory": "← Back to inventory",
@@ -233,9 +270,41 @@
     "cancel_confirm_member": "Cancel your consultation for \"{title}\"? The expert will be notified by email.",
     "cancel_confirm_expert": "Cancel the consultation \"{title}\" with {email}? They will be notified by email.",
     "cancel_error": "Could not cancel the consultation.",
+    "already_held": "This consultation has already taken place, so it can no longer be cancelled.",
     "cancelled_by_member": "Cancelled by the member",
     "cancelled_by_expert": "Cancelled by the expert",
     "cancelled_by_admin": "Cancelled by the library team"
+  },
+  "account_reservations": {
+    "heading": "Reservations",
+    "heading_active": "Upcoming and pending reservations",
+    "loading": "Loading reservations…",
+    "load_error": "Could not load your reservations.",
+    "empty": "You haven't reserved any equipment, books, or rooms yet.",
+    "browse": "Browse the library",
+    "active_empty": "No upcoming or pending reservations.",
+    "past_show": "Past reservations",
+    "past_hide": "Hide past reservations",
+    "dates": "{start} to {end}",
+    "status_pending": "Pending review",
+    "status_reserved": "Confirmed",
+    "status_refused": "Declined",
+    "status_cancelled": "Cancelled",
+    "status_ended": "Ended",
+    "pending_hint": "Apathy is Boring will email you once your request is reviewed.",
+    "started_hint": "This reservation has started. To change it, reply to your confirmation email.",
+    "withdraw": "Withdraw request",
+    "withdrawing": "Withdrawing…",
+    "cancel": "Cancel reservation",
+    "cancelling": "Cancelling…",
+    "withdraw_confirm": "Withdraw your request for \"{title}\" ({dates})?",
+    "cancel_confirm": "Cancel your reservation for \"{title}\" ({dates})? The library team will be notified.",
+    "cancel_error": "Could not cancel this reservation.",
+    "already_started": "This reservation has already started, so it can no longer be cancelled here. Reply to your confirmation email if anything changes.",
+    "not_active": "This reservation is no longer active. Reload the page to see its current status.",
+    "rate_limited": "Too many changes in a short time. Please try again later.",
+    "withdrawn_status": "Request withdrawn.",
+    "cancelled_status": "Reservation cancelled. The library team has been notified."
   },
   "share_expertise": {
     "heading": "Share Expertise",
@@ -296,7 +365,9 @@
     "save_item": "Save Item",
     "fill_all_fields": "Please fill in title, body, and choose an image.",
     "save_error": "Could not save inventory item.",
-    "process_image_error": "Could not process the image."
+    "process_image_error": "Could not process the image.",
+    "image_too_large": "This photo is too large. Please choose a smaller image.",
+    "image_invalid": "This photo format is not supported. Please choose a JPEG, PNG, WebP, or GIF image."
   },
   "how_this_works": {
     "heading": "How it works",
@@ -352,7 +423,7 @@
       },
       {
         "question": "Where do I pick up and return items?",
-        "answer": "Equipment and books are picked up and returned at the Apathy is Boring office in Montreal on Tuesdays between 10am and 5pm. Room access details are confirmed by email after approval."
+        "answer": "Equipment and books are picked up and returned at the Apathy is Boring office in Montreal on Tuesdays between 10am and 5pm."
       },
       {
         "question": "What do the availability badges mean?",
@@ -424,11 +495,14 @@
     "reservation_approved": "Meow! Reservation approved, the member will get an email.",
     "reservation_deleted": "Meow! Reservation deleted.",
     "reservation_sent": "Meow! Your reservation request is sent, AisB will review it.",
+    "reservation_withdrawn": "Meow! Your request is withdrawn.",
+    "reservation_cancelled": "Meow! Reservation cancelled, the team has been told.",
     "consultation_sent": "Meow! Your consultation request is sent to the expert.",
     "consultation_scheduled": "Meow! Meeting scheduled, Zoom invitations are on their way.",
     "consultation_cancelled": "Meow! Consultation cancelled, everyone has been notified.",
     "mentor_profile_published": "Meow! Your mentor profile is on the Expertise list.",
     "mentor_profile_updated": "Meow! Your mentor profile is updated.",
+    "password_updated": "Meow! Your password is updated.",
     "signed_out": "You've signed out! See you next time 👋",
     "register_click": "You want to join? Awesome! 🎉",
     "taps": [
@@ -450,11 +524,23 @@
     "breadcrumb_aria": "Breadcrumb",
     "breadcrumb_home": "Home",
     "not_found": "Item not found",
+    "load_error": "Couldn't load this item.",
+    "try_again": "Try again",
     "reserve": "Reserve Inventory",
     "back_to_category": "Back to category"
   },
+  "not_found": {
+    "heading": "Page not found",
+    "body": "We couldn't find the page you were looking for. It may have moved, or the link may have a typo.",
+    "back_to_library": "Back to the library"
+  },
+  "page_load_error": {
+    "message": "This page couldn't load. The site may have just been updated.",
+    "reload": "Reload the page"
+  },
   "seo": {
     "default_title": "Activist Resource Library | Apathy is Boring",
+    "not_found_title": "Page not found | Activist Resource Library",
     "default_description": "Browse and reserve activist expertise, equipment, books, and meeting rooms from Apathy is Boring's shared lending library serving organizers across Canada.",
     "og_type": "website",
     "og_site_name": "Activist Resource Library",
@@ -477,50 +563,5 @@
     "account_title": "Account | Activist Resource Library",
     "privacy_title": "Privacy Policy | Activist Resource Library",
     "privacy_description": "How Apathy is Boring collects, uses, and protects personal information on the Activist Resource Library, and how to exercise your rights under Québec law."
-  },
-  "quotes": {
-    "aria_label": "Inspirational quotes",
-    "items": [
-      {
-        "text": "Do your little bit of good where you are; it's those little bits of good put together that overwhelm the world.",
-        "author": "Desmond Tutu"
-      },
-      {
-        "text": "Never doubt that a small group of thoughtful, committed citizens can change the world; indeed, it's the only thing that ever has.",
-        "author": "Margaret Mead"
-      },
-      {
-        "text": "I am only one, but still I am one. I cannot do everything, but still I can do something; and because I cannot do everything, I will not refuse to do something that I can do.",
-        "author": "Helen Keller"
-      },
-      {
-        "text": "What you do makes a difference, and you have to decide what kind of difference you want to make.",
-        "author": "Jane Goodall"
-      },
-      {
-        "text": "It always seems impossible until it's done.",
-        "author": "Nelson Mandela"
-      },
-      {
-        "text": "The most common way people give up their power is by thinking they don't have any.",
-        "author": "Alice Walker"
-      },
-      {
-        "text": "Start where you are. Use what you have. Do what you can.",
-        "author": "Arthur Ashe"
-      },
-      {
-        "text": "When the whole world is silent, even one voice becomes powerful.",
-        "author": "Malala Yousafzai"
-      },
-      {
-        "text": "The time is always right to do what is right.",
-        "author": "Dr. Martin Luther King Jr."
-      },
-      {
-        "text": "When I was a boy and I would see scary things in the news, my mother would say to me, 'Look for the helpers. You will always find people who are helping.'",
-        "author": "Fred Rogers"
-      }
-    ]
   }
 }

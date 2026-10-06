@@ -111,33 +111,19 @@
   </div>
 
   {#if loading}
-    {#if activeTag === 'expertise'}
-      <div class="expert-list" aria-busy="true" aria-label={$t('inventory.loading')}>
-        {#each Array(4) as _, index (index)}
-          <div class="expert-skeleton">
-            <div class="expert-skeleton__avatar"></div>
-            <div class="expert-skeleton__copy">
-              <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
-              <div class="inventory-skeleton-card__line"></div>
-            </div>
+    <div class="inventory-skeleton-grid" aria-busy="true" aria-label={$t('inventory.loading')}>
+      {#each Array(6) as _, index (index)}
+        <div class="inventory-skeleton-card">
+          <div class="inventory-skeleton-card__image"></div>
+          <div class="inventory-skeleton-card__body">
+            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
+            <div class="inventory-skeleton-card__line"></div>
+            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--short"></div>
+            <div class="inventory-skeleton-card__button"></div>
           </div>
-        {/each}
-      </div>
-    {:else}
-      <div class="inventory-skeleton-grid" aria-busy="true" aria-label={$t('inventory.loading')}>
-        {#each Array(6) as _, index (index)}
-          <div class="inventory-skeleton-card">
-            <div class="inventory-skeleton-card__image"></div>
-            <div class="inventory-skeleton-card__body">
-              <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
-              <div class="inventory-skeleton-card__line"></div>
-              <div class="inventory-skeleton-card__line inventory-skeleton-card__line--short"></div>
-              <div class="inventory-skeleton-card__button"></div>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
+        </div>
+      {/each}
+    </div>
   {:else if loadError}
     <p class="status error inventory-load-error" role="alert">{loadError}</p>
   {:else if items.length === 0}
@@ -145,7 +131,7 @@
   {:else if filteredItems.length === 0}
     <p class="empty-state">{$t('inventory.empty_filtered')}</p>
   {:else}
-    <div class:inventory-grid={activeTag !== 'expertise'} class:expert-list={activeTag === 'expertise'}>
+    <div class="inventory-grid">
       {#each filteredItems as item (item.id)}
         <InventoryCard {item} onOpenReserve={openReserve} />
       {/each}

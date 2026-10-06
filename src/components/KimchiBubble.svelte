@@ -162,7 +162,7 @@
 
   .kimchi-bubble__close:focus-visible,
   .kimchi-bubble__link:focus-visible {
-    outline: 2px solid var(--color-lemon, #ffdd2a);
+    outline: 2px solid var(--color-mint, #024238);
     outline-offset: 2px;
   }
 </style>

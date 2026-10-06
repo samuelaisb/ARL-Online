@@ -89,6 +89,9 @@ fi
 if [[ -n "${ZOOM_HOST_USER:-}" ]]; then
   RUNTIME_ENV+=",ZOOM_HOST_USER=${ZOOM_HOST_USER}"
 fi
+if [[ -n "${EMAIL_REPLY_TO:-}" ]]; then
+  RUNTIME_ENV+=",EMAIL_REPLY_TO=${EMAIL_REPLY_TO}"
+fi
 if [[ -n "${ORG_PHONE:-}" ]]; then
   RUNTIME_ENV+=",ORG_PHONE=${ORG_PHONE}"
 fi

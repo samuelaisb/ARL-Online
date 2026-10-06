@@ -1,10 +1,18 @@
 <script>
-  import { authReady, isApathyAdmin, session, signOut } from '../lib/auth.js';
+  import {
+    authReady,
+    isApathyAdmin,
+    openPasswordChange,
+    session,
+    signOut,
+    userHasPasswordLogin,
+  } from '../lib/auth.js';
   import { supabaseConfigured } from '../lib/supabase.js';
   import { navigate } from '../lib/router.js';
   import { t, translateKey } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
   import AccountConsultations from './AccountConsultations.svelte';
+  import AccountReservations from './AccountReservations.svelte';
   import AccountShareExpertise from './AccountShareExpertise.svelte';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
 
@@ -102,6 +110,16 @@
         >
           {$t('auth.member_agreement_title')}
         </button>
+        {#if userHasPasswordLogin($session.user)}
+          <button
+            type="button"
+            class="btn-header btn-header--secondary"
+            aria-haspopup="dialog"
+            onclick={openPasswordChange}
+          >
+            {$t('auth.change_password')}
+          </button>
+        {/if}
         {#if isApathyAdmin($session)}
           <a href="/admin" class="btn-header btn-header--secondary" onclick={openAdmin}>
             {$t('auth.admin')}
@@ -127,6 +145,8 @@
         <AccountShareExpertise {onProfileSaved} />
       </div>
     {/if}
+
+    <AccountReservations />
 
     <AccountConsultations />
 

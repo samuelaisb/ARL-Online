@@ -53,6 +53,27 @@ export function isInventoryHomePath(pathname) {
   return normalized === '/' || normalized in CATEGORY_ROUTES;
 }
 
+/** Non-item paths App.svelte renders a page for (see the route checks in router.js). */
+export const APP_PAGE_PATHS = [
+  '/',
+  ...Object.keys(CATEGORY_ROUTES),
+  '/howthisworks',
+  '/about',
+  '/privacy',
+  '/account',
+  '/admin',
+];
+
+/**
+ * True for a page path or a `/{tag}/{slug}` item path (the slug may still not
+ * exist). Everything else is a 404: the server sends status 404 and the client
+ * renders its not-found view.
+ */
+export function isKnownAppPath(pathname) {
+  const normalized = normalizePath(pathname);
+  return APP_PAGE_PATHS.includes(normalized) || isItemDetailRoute(normalized);
+}
+
 export function categoryToPath(tag) {
   if (tag === 'equipment') {
     return '/';

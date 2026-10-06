@@ -28,6 +28,34 @@ function clearLegacyLocalItems() {
   }
 }
 
+/** Errors the server tags with a `code`, shown in the reader's language. */
+const ERROR_CODE_KEYS = {
+  image_too_large: 'add_item.image_too_large',
+  image_invalid: 'add_item.image_invalid',
+  reservation_rate_limited: 'calendar.rate_limited',
+  daily_request_limit: 'calendar.daily_limit',
+  pending_request_limit: 'calendar.pending_limit',
+  consultation_already_open: 'consultation.already_open',
+  consultation_already_held: 'account_consultations.already_held',
+  reservation_already_started: 'account_reservations.already_started',
+  reservation_not_active: 'account_reservations.not_active',
+  reservation_action_limit: 'account_reservations.rate_limited',
+};
+
+function apiErrorMessage(result, fallbackKey, code = result.code) {
+  const key = ERROR_CODE_KEYS[code];
+  return key ? translateKey(key) : result.error || translateKey(fallbackKey);
+}
+
+function imageWriteErrorMessage(response, result, fallbackKey) {
+  // A 413 without JSON comes from a proxy body limit; it is still an oversized photo.
+  return apiErrorMessage(
+    result,
+    fallbackKey,
+    result.code || (response.status === 413 ? 'image_too_large' : ''),
+  );
+}
+
 async function authHeaders(includeJson = false) {
   const headers = {};
 
@@ -98,7 +126,7 @@ export async function createInventoryItem(item) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('add_item.save_error'));
+    throw new Error(imageWriteErrorMessage(response, result, 'add_item.save_error'));
   }
 
   return result.item;
@@ -121,7 +149,7 @@ export async function fetchMentorProfile() {
 }
 
 function mentorProfileError(response, result) {
-  const error = new Error(result.error || translateKey('share_expertise.save_error'));
+  const error = new Error(imageWriteErrorMessage(response, result, 'share_expertise.save_error'));
   error.status = response.status;
   error.profile = result.profile ?? null;
   return error;
@@ -167,7 +195,7 @@ export async function updateExpertiseItem(id, item) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('admin.mentors_save_error'));
+    throw new Error(imageWriteErrorMessage(response, result, 'admin.mentors_save_error'));
   }
 
   return result.item;
@@ -234,7 +262,7 @@ export async function createReservation(itemId, payload) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('calendar.create_error'));
+    throw new Error(apiErrorMessage(result, 'calendar.create_error'));
   }
 
   return result;
@@ -318,10 +346,39 @@ export async function cancelConsultation(reservationId) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('account_consultations.cancel_error'));
+    throw new Error(apiErrorMessage(result, 'account_consultations.cancel_error'));
   }
 
   return result.consultation;
+}
+
+/** The signed-in member's equipment, book and room reservations (all statuses but `available`). */
+export async function fetchAccountReservations() {
+  const response = await fetch('/api/account/reservations', {
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.error || translateKey('account_reservations.load_error'));
+  }
+
+  return Array.isArray(result.reservations) ? result.reservations : [];
+}
+
+/** Member withdraws a pending request or cancels an approved booking that has not started. */
+export async function cancelAccountReservation(reservationId) {
+  const response = await fetch(
+    `/api/account/reservations/${encodeURIComponent(reservationId)}/cancel`,
+    { method: 'POST', headers: await authHeaders() },
+  );
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'account_reservations.cancel_error'));
+  }
+
+  return result.reservation;
 }
 
 export async function refuseReservation(itemId, reservationId) {

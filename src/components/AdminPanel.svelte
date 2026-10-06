@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import {
     approveReservation,
     deleteInventoryItem,
@@ -7,9 +7,15 @@
     fetchAdminInventory,
     refuseReservation,
   } from '../lib/inventory.js';
-  import { parseDateKey } from '../lib/calendar.js';
+  import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
+  import { isConsultationHeld } from '../lib/reservation-rules.js';
   import { locale, t, translateKey } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
+  import {
+    availabilityNow,
+    subscribeAvailabilityClock,
+    unsubscribeAvailabilityClock,
+  } from '../lib/availability-clock.js';
   import MeetingTimePicker from './MeetingTimePicker.svelte';
   import MentorBrowser from './MentorBrowser.svelte';
 
@@ -68,8 +74,11 @@
   }
 
   onMount(() => {
+    subscribeAvailabilityClock();
     refreshAdminItems();
   });
+
+  onDestroy(unsubscribeAvailabilityClock);
 
   $effect(() => {
     if (items.length !== lastParentCount) {
@@ -93,6 +102,20 @@
     ),
   );
 
+  const now = $derived.by(() => Math.max($availabilityNow, Date.now()));
+  // Montréal's date, as on the server, so the "will be emailed" confirms match what it sends.
+  const todayKey = $derived(libraryTodayKey(new Date(now)));
+
+  // Pending, or approved and not over yet: deleting one (or its item) emails the member.
+  function isUpcomingReservation(reservation) {
+    return (
+      (reservation.status === 'pending' || reservation.status === 'reserved') &&
+      compareDateKeys(reservation.endDate, todayKey) >= 0
+    );
+  }
+
+  // Expertise rows whose meeting has ended are `held`: shown as Completed, and deleting one
+  // only removes the record (the server skips the Zoom delete and cancellation emails).
   const reservationEntries = $derived(
     adminItems.flatMap((item) =>
       (item.reservations ?? [])
@@ -102,6 +125,10 @@
           itemId: item.id,
           itemTitle: item.title,
           itemTag: item.tag ?? 'equipment',
+          held: item.tag === 'expertise' && isConsultationHeld(reservation, now),
+          // Over, or no member address: deleting it emails nobody.
+          silent:
+            item.tag !== 'expertise' && (!reservation.userEmail || !isUpcomingReservation(reservation)),
         })),
     ),
   );
@@ -146,7 +173,18 @@
       return;
     }
 
-    const confirmed = window.confirm($t('admin.remove_confirm', { title: item.title }));
+    // Reservations cascade with the item, so warn before a mentor's consultation history goes,
+    // and before members' upcoming bookings are cancelled (the server emails each member).
+    const consultationCount = item.tag === 'expertise' ? (item.reservations ?? []).length : 0;
+    const upcomingCount =
+      item.tag === 'expertise' ? 0 : (item.reservations ?? []).filter(isUpcomingReservation).length;
+    let message = $t('admin.remove_confirm', { title: item.title });
+    if (consultationCount > 0) {
+      message = $t('admin.remove_expertise_confirm', { title: item.title, count: consultationCount });
+    } else if (upcomingCount > 0) {
+      message = $t('admin.remove_with_reservations_confirm', { title: item.title, count: upcomingCount });
+    }
+    const confirmed = window.confirm(message);
     if (!confirmed) {
       return;
     }
@@ -171,15 +209,25 @@
       return;
     }
 
-    const start = formatDateKey(entry.startDate);
-    const end = formatDateKey(entry.endDate);
-    const confirmed = window.confirm(
-      $t('admin.delete_reservation_confirm', {
-        title: entry.itemTitle,
-        start,
-        end,
-      }),
-    );
+    const email = entry.userEmail || $t('admin.no_member_email');
+    let message;
+    if (entry.itemTag === 'expertise' && entry.meetingAt) {
+      message = $t(
+        entry.held ? 'admin.delete_held_consultation_confirm' : 'admin.delete_consultation_confirm',
+        { title: entry.itemTitle, time: formatMeetingTime(entry.meetingAt), email },
+      );
+    } else {
+      message = $t(
+        entry.silent ? 'admin.delete_reservation_silent_confirm' : 'admin.delete_reservation_confirm',
+        {
+          title: entry.itemTitle,
+          start: formatDateKey(entry.startDate),
+          end: formatDateKey(entry.endDate),
+          email,
+        },
+      );
+    }
+    const confirmed = window.confirm(message);
 
     if (!confirmed) {
       return;
@@ -505,6 +553,11 @@
                     {$t('admin.consultation_meeting', {
                       time: formatMeetingTime(entry.meetingAt),
                     })}
+                    {#if entry.held}
+                      <span class="consultation-status consultation-status--completed">
+                        {$t('account_consultations.status_completed')}
+                      </span>
+                    {/if}
                   </span>
                   {#if entry.zoomJoinUrl}
                     <a
@@ -522,6 +575,13 @@
                       start: formatDateKey(entry.startDate),
                       end: formatDateKey(entry.endDate),
                     })}
+                  </span>
+                {/if}
+                {#if entry.userEmail}
+                  <span class="admin-reservation-email">{entry.userEmail}</span>
+                {:else}
+                  <span class="admin-reservation-email admin-reservation-email--missing">
+                    {$t('admin.no_member_email')}
                   </span>
                 {/if}
               </div>

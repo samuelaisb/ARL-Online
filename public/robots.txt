@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
+Allow: /api/inventory$
+Allow: /api/inventory/by-slug/
 Disallow: /api/
 Disallow: /admin
 Disallow: /account

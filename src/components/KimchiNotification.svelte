@@ -179,8 +179,8 @@
 <style>
   .kimchi-widget {
     position: fixed;
-    right: 1rem;
-    bottom: calc(var(--quote-footer-height) + 0.75rem);
+    right: calc(1rem + env(safe-area-inset-right, 0px));
+    bottom: var(--corner-widget-bottom);
     z-index: 30;
     display: flex;
     flex-direction: column;
@@ -229,9 +229,15 @@
     box-shadow: 0 6px 18px rgba(255, 221, 42, 0.4);
   }
 
+  /* Two-tone ring (Mint line, white halo outside it): the widget floats over
+     page content such as the Mint Reserve buttons, so one tone always reaches
+     3:1 against whatever is underneath. */
   .kimchi-widget__avatar:focus-visible {
-    outline: 2px solid var(--color-lemon, #ffdd2a);
-    outline-offset: 3px;
+    outline: 2px solid var(--color-mint, #024238);
+    outline-offset: 0;
+    box-shadow:
+      0 0 0 4px #fff,
+      0 4px 14px rgba(30, 30, 30, 0.25);
   }
 
   .kimchi-widget__avatar--talking {
@@ -267,9 +273,15 @@
     transform: scale(1.12);
   }
 
+  /* Same two-tone ring as the avatar. The pulse animates box-shadow, so it
+     stops while focused or it would paint over the white halo. */
   .kimchi-widget__status:focus-visible {
-    outline: 2px solid var(--color-lemon, #ffdd2a);
-    outline-offset: 2px;
+    outline: 2px solid var(--color-mint, #024238);
+    outline-offset: 0;
+    box-shadow:
+      0 0 0 4px #fff,
+      0 1px 3px rgba(30, 30, 30, 0.25);
+    animation: none;
   }
 
   .kimchi-widget__status--offline {
@@ -313,7 +325,7 @@
 
   @media (max-width: 600px) {
     .kimchi-widget {
-      right: 0.75rem;
+      right: calc(0.75rem + env(safe-area-inset-right, 0px));
     }
   }
 </style>

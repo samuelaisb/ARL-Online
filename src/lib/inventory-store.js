@@ -3,8 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { compareDateKeys, hasReservationCollision, normalizeReservationStatus, parseDateKey } from './calendar.js';
-import { validateReservationDates } from './reservation-rules.js';
+import { isConsultationHeld, validateReservationDates } from './reservation-rules.js';
 import { EXPERT_LONG_TEXT_MAX, EXPERT_NAME_MAX, EXPERT_SHORT_TEXT_MAX } from './expertise-fields.js';
+import { isStorableImageDataUrl } from './item-media.js';
 import { ensureUniqueSlug, slugifyTitle } from './slug.js';
 import { getSupabaseAdmin } from './supabase-server.js';
 
@@ -15,9 +16,6 @@ const SEED_INVENTORY_FILE = path.join(PROJECT_ROOT, 'src', 'assets', 'inventory'
 const INVENTORY_IMAGE_BASE = '/assets/inventory';
 const INVENTORY_TAGS = ['equipment', 'books', 'rooms', 'expertise'];
 const DEFAULT_INVENTORY_TAG = 'equipment';
-
-const IMAGE_DATA_URL_RE = /^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
-const JPEG_DATA_URL_RE = IMAGE_DATA_URL_RE;
 
 /** In-process per-item lock — safe for single-instance Cloud Run only, not across replicas. */
 const itemLocks = new Map();
@@ -53,7 +51,7 @@ const EXPERTISE_SCHEMA_MIGRATION = 'supabase/migrations/005_expertise.sql';
 const SCHEDULING_SCHEMA_MIGRATION = 'supabase/migrations/006_consultation_scheduling.sql';
 const EXPERTISE_COPY_SCHEMA_MIGRATION = 'supabase/migrations/007_expertise_copy.sql';
 
-export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE, JPEG_DATA_URL_RE };
+export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE };
 
 export function isReservationSchemaError(message) {
   if (typeof message !== 'string') {
@@ -95,13 +93,31 @@ export function isValidTag(raw) {
   return INVENTORY_TAGS.includes(tag);
 }
 
+const SEED_IMAGE_PATH_MAX_LENGTH = 200;
+const SEED_IMAGE_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
+
+/** A short path under /assets/inventory/ made of plain file-name segments (no `.` or `..`). */
+function isSeedImagePath(value) {
+  const prefix = `${INVENTORY_IMAGE_BASE}/`;
+
+  if (value.length > SEED_IMAGE_PATH_MAX_LENGTH || !value.startsWith(prefix)) {
+    return false;
+  }
+
+  return value
+    .slice(prefix.length)
+    .split('/')
+    .every((segment) => SEED_IMAGE_SEGMENT_RE.test(segment) && segment !== '.' && segment !== '..');
+}
+
+/** A JPEG, PNG, WebP or GIF data URL within the upload cap, or a seed path under /assets/inventory/. */
 export function isValidInventoryImage(image) {
   if (typeof image !== 'string' || !image.trim()) {
     return false;
   }
 
   const trimmed = image.trim();
-  return IMAGE_DATA_URL_RE.test(trimmed) || trimmed.startsWith(`${INVENTORY_IMAGE_BASE}/`);
+  return isStorableImageDataUrl(trimmed) || isSeedImagePath(trimmed);
 }
 
 function normalizeOptionalText(value) {
@@ -675,6 +691,22 @@ export async function findInventoryItem(id) {
   return itemRowToApi(data, reservations);
 }
 
+/** Only the stored `image` value of one item (for `GET /media/items/...`); null when the item is missing. */
+export async function findInventoryItemImage(id) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('image')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Could not load inventory image.');
+  }
+
+  return data?.image ?? null;
+}
+
 export async function countPendingReservationsByEmail(userEmail) {
   const email = typeof userEmail === 'string' ? userEmail.trim() : '';
 
@@ -713,6 +745,18 @@ export async function addReservation(
     // request the same expert at the same time, so date collisions do not apply.
     if (item.tag !== 'expertise' && hasReservationCollision(reservations, startDate, endDate)) {
       return { collision: true };
+    }
+
+    // One open request per member per expert: pending, or scheduled and not yet held.
+    if (
+      item.tag === 'expertise' &&
+      reservations.some(
+        (entry) =>
+          emailsMatch(entry.userEmail, userEmail) &&
+          (entry.status === 'pending' || (entry.status === 'reserved' && !isConsultationHeld(entry))),
+      )
+    ) {
+      return { consultationAlreadyOpen: true };
     }
 
     const reservation = {
@@ -994,7 +1038,8 @@ export async function createMentorProfileForEmail(email, fields) {
 
   const image = typeof fields.image === 'string' ? fields.image.trim() : '';
 
-  if (!isValidInventoryImage(image)) {
+  // Members upload a photo; /assets/inventory/ seed paths are admin-only.
+  if (!isStorableImageDataUrl(image)) {
     return { invalid: true };
   }
 
@@ -1023,7 +1068,7 @@ export async function createMentorProfileForEmail(email, fields) {
   });
 }
 
-/** Updates that profile. The mentor email stays the account email. */
+/** Updates that profile. The mentor email stays the account email. `previous` is the item before the update. */
 export async function updateMentorProfileForEmail(email, fields) {
   const ownerEmail = typeof email === 'string' ? email.trim() : '';
 
@@ -1033,7 +1078,7 @@ export async function updateMentorProfileForEmail(email, fields) {
 
   const nextImage = typeof fields.image === 'string' ? fields.image.trim() : '';
 
-  if (nextImage && !isValidInventoryImage(nextImage)) {
+  if (nextImage && !isStorableImageDataUrl(nextImage)) {
     return { invalid: true };
   }
 
@@ -1081,7 +1126,7 @@ export async function updateMentorProfileForEmail(email, fields) {
       return { notFound: true };
     }
 
-    return { item: updated };
+    return { item: updated, previous: existing };
   });
 }
 
@@ -1172,7 +1217,10 @@ export async function scheduleConsultation(
   });
 }
 
-/** Pending or reserved → cancelled. `cancelledBy` is 'member', 'expert', or 'admin'. */
+/**
+ * Pending or reserved → cancelled. `cancelledBy` is 'member', 'expert', or 'admin'.
+ * A meeting that has already been held can't be cancelled (`alreadyHeld`).
+ */
 export async function cancelConsultation(itemId, reservationId, { cancelledBy }) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
@@ -1191,6 +1239,10 @@ export async function cancelConsultation(itemId, reservationId, { cancelledBy })
 
     if (existing.status !== 'pending' && existing.status !== 'reserved') {
       return { invalidStatus: true };
+    }
+
+    if (isConsultationHeld(existing)) {
+      return { alreadyHeld: true };
     }
 
     const cancelledAt = new Date().toISOString();
@@ -1278,6 +1330,126 @@ export async function listConsultationsForUser(email, { includeExpert = false } 
   }
 
   return { asMember, asExpert };
+}
+
+const MEMBER_RESERVATION_STATUSES = ['pending', 'reserved', 'refused', 'cancelled'];
+
+/** LIKE pattern that matches `value` literally (`\`, `%` and `_` escaped). */
+function literalLikePattern(value) {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+/**
+ * Equipment, book and room reservations made by this account email (compared
+ * case-insensitively), each with its item's id, title, slug and tag, earliest start first.
+ * Consultations are listed by listConsultationsForUser instead.
+ */
+export async function listReservationsForMember(email) {
+  const memberEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!memberEmail) {
+    return [];
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, item_id, start_date, end_date, status, user_email, inventory_items(id, title, slug, tag)')
+    .ilike('user_email', literalLikePattern(memberEmail))
+    .in('status', MEMBER_RESERVATION_STATUSES);
+
+  if (error) {
+    throw new Error(error.message || 'Could not load reservations.');
+  }
+
+  const entries = [];
+
+  for (const row of data ?? []) {
+    const itemRow = Array.isArray(row.inventory_items) ? row.inventory_items[0] : row.inventory_items;
+
+    // The ilike only narrows the query; ownership is decided here.
+    if (!itemRow || itemRow.tag === 'expertise' || !emailsMatch(row.user_email, memberEmail)) {
+      continue;
+    }
+
+    entries.push({
+      item: { id: itemRow.id, title: itemRow.title, slug: itemRow.slug ?? null, tag: itemRow.tag },
+      reservation: reservationRowToApi(row),
+    });
+  }
+
+  entries.sort((a, b) => compareDateKeys(a.reservation.startDate, b.reservation.startDate));
+  return entries;
+}
+
+/**
+ * A member withdraws their own equipment, book or room reservation: `pending`, or
+ * `reserved` with `startDate` after `today` (a `YYYY-MM-DD` key) → `cancelled`,
+ * `cancelled_by: 'member'`. Someone else's reservation, or a consultation, is `notFound`.
+ */
+export async function cancelReservationForMember(reservationId, email, { today }) {
+  const id = typeof reservationId === 'string' ? reservationId.trim() : '';
+  const memberEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!id || !memberEmail) {
+    return { notFound: true };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: located, error: locateError } = await supabase
+    .from('reservations')
+    .select('item_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (locateError) {
+    throw new Error(locateError.message || 'Could not load reservation.');
+  }
+
+  if (!located) {
+    return { notFound: true };
+  }
+
+  const itemId = located.item_id;
+
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+    const reservationIndex = item ? item.reservations.findIndex((entry) => entry.id === id) : -1;
+
+    if (!item || item.tag === 'expertise' || reservationIndex === -1) {
+      return { notFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+
+    if (!emailsMatch(existing.userEmail, memberEmail)) {
+      return { notFound: true };
+    }
+
+    if (existing.status === 'reserved' && compareDateKeys(existing.startDate, today) <= 0) {
+      return { alreadyStarted: true };
+    }
+
+    if (existing.status !== 'pending' && existing.status !== 'reserved') {
+      return { invalidStatus: true };
+    }
+
+    const cancelledAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled', cancelled_at: cancelledAt, cancelled_by: 'member' })
+      .eq('id', id)
+      .eq('item_id', itemId);
+
+    if (error) {
+      throw new Error(error.message || 'Could not cancel reservation.');
+    }
+
+    const updated = { ...existing, status: 'cancelled', cancelledAt, cancelledBy: 'member' };
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated, previousStatus: existing.status };
+  });
 }
 
 export async function refuseReservation(itemId, reservationId) {

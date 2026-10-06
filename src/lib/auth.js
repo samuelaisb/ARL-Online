@@ -1,6 +1,16 @@
 import { derived, writable } from 'svelte/store';
 import {
+  isAuthError,
+  isAuthRetryableFetchError,
+  isAuthSessionMissingError,
+  isAuthWeakPasswordError,
+} from '@supabase/supabase-js';
+import { categoryToPath, getItemRouteParams } from './item-routes.js';
+import {
+  PASSWORD_RESET_RETURN_PARAM,
   authCallbackError,
+  authCallbackPasswordReset,
+  authCallbackRecovery,
   fetchAuthSettings,
   getAuthRedirectUrl,
   supabase,
@@ -9,6 +19,36 @@ import {
 
 export const session = writable(null);
 export const authReady = writable(false);
+
+/** Sign-up and new-password minimum (keep `auth.password_min_length` / `auth.password_hint` in sync). */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Which new-password dialog `SetPasswordModal` shows: 'recovery' after a reset link signs
+ * the member in, 'change' from /account, null when closed. A reset link sets it before
+ * the session lands, so `CompleteSignupModal` waits instead of stacking on top.
+ */
+export const passwordPrompt = writable(authCallbackRecovery ? 'recovery' : null);
+
+export function openPasswordChange() {
+  passwordPrompt.set('change');
+}
+
+export function closePasswordPrompt() {
+  passwordPrompt.set(null);
+}
+
+/** True when the account has an email/password login, so Change password applies. */
+export function userHasPasswordLogin(user) {
+  if (!user) {
+    return false;
+  }
+  const providers = user.app_metadata?.providers ?? [user.app_metadata?.provider];
+  return (
+    providers.includes('email') ||
+    (user.identities ?? []).some((identity) => identity.provider === 'email')
+  );
+}
 
 /** OAuth providers the UI knows how to show, in display order. */
 export const OAUTH_PROVIDERS = ['google', 'discord'];
@@ -19,6 +59,9 @@ export const oauthProviders = writable([]);
 
 /** Error message from an OAuth / email-link redirect that loaded this page ('' when none). */
 export const authRedirectError = authCallbackError;
+
+/** True when that redirect came from a password-reset email (`initAuth` reports its failure). */
+export const authRedirectFromPasswordReset = authCallbackPasswordReset;
 
 /**
  * OAuth sign-up skips the register form, so accounts created through a provider must
@@ -133,10 +176,27 @@ function maybeRequestWelcomeEmail(user) {
   requestWelcomeEmail();
 }
 
+/**
+ * Resolves to `{ passwordResetLinkFailed }`: true when this page came from a reset email
+ * whose link had expired or was already used, so the caller can offer a new one.
+ */
 export async function initAuth() {
   if (!supabaseConfigured || !supabase) {
     authReady.set(true);
-    return;
+    return { passwordResetLinkFailed: false };
+  }
+
+  let passwordResetLinkFailed = authCallbackPasswordReset && Boolean(authCallbackError);
+  if (authCallbackRecovery) {
+    // The client started initialize() itself; awaiting it again returns how reading the
+    // recovery session from the URL went. On failure any stored session (possibly another
+    // account) stays signed in, so don't offer it a new password.
+    const { error: recoveryError } = await supabase.auth.initialize();
+    if (recoveryError) {
+      console.warn('Password recovery link was not accepted:', recoveryError.message);
+      passwordPrompt.set(null);
+      passwordResetLinkFailed = true;
+    }
   }
 
   const { data, error } = await supabase.auth.getSession();
@@ -159,12 +219,20 @@ export async function initAuth() {
         maybeRequestWelcomeEmail(newSession.user);
         // Supabase calls inside this callback can deadlock its auth lock; defer them.
         setTimeout(() => applyPendingOAuthSignup(newSession.user), 0);
+      } else if (event === 'PASSWORD_RECOVERY' && newSession?.user && authCallbackRecovery) {
+        // supabase-js relays auth events to the site's other tabs; only the tab that opened
+        // the reset link asks for a new password (the one that requested it may still show
+        // the log-in dialog, and the prompt would never clear there).
+        passwordPrompt.set('recovery');
+      } else if (event === 'SIGNED_OUT') {
+        passwordPrompt.set(null);
       }
     });
     authSubscription = listener.subscription;
   }
 
   authReady.set(true);
+  return { passwordResetLinkFailed };
 }
 
 export async function signInWithEmail(email, password) {
@@ -240,6 +308,102 @@ export async function completeMemberAgreement({ emailUpdatesOptIn = false } = {}
   if (error) throw error;
   const { data } = await supabase.auth.getSession();
   session.set(data.session);
+}
+
+/**
+ * Where a reset email returns the member: the current page without `?reserve` (an item
+ * page becomes its category, since the item overlay would cover the new-password dialog),
+ * flagged with PASSWORD_RESET_RETURN_PARAM. Like OAuth, it must match a Supabase
+ * redirect URL, otherwise Supabase falls back to the Site URL.
+ */
+function passwordResetReturnUrl() {
+  const url = new URL(window.location.href);
+  url.hash = '';
+  url.searchParams.delete('reserve');
+  const itemRoute = getItemRouteParams(url.pathname);
+  if (itemRoute) {
+    url.pathname = categoryToPath(itemRoute.tag);
+  }
+  url.searchParams.set(PASSWORD_RESET_RETURN_PARAM, '1');
+  return url.toString();
+}
+
+/** Asks Supabase to email a reset link. Supabase answers the same whether or not the account exists. */
+export async function requestPasswordReset(email) {
+  if (!supabase) throw new Error('Auth is not configured.');
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: passwordResetReturnUrl(),
+  });
+  if (error) throw error;
+}
+
+/** Sets a new password on the signed-in account (reset-link session or /account). */
+export async function updatePassword(password) {
+  if (!supabase) throw new Error('Auth is not configured.');
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
+const RATE_LIMIT_CODES = ['over_email_send_rate_limit', 'over_request_rate_limit'];
+const SESSION_ERROR_CODES = [
+  'bad_jwt',
+  'session_expired',
+  'session_not_found',
+  'refresh_token_not_found',
+  'refresh_token_already_used',
+  'user_not_found',
+];
+
+function isRateLimitError(error) {
+  return error?.status === 429 || RATE_LIMIT_CODES.includes(error?.code);
+}
+
+/** Network failure, gateway error, or a server error such as Supabase failing to send mail. */
+function isRequestFailure(error) {
+  return !isAuthError(error) || isAuthRetryableFetchError(error) || error.status >= 500;
+}
+
+/**
+ * `$t` key for a failed reset request, or '' when the caller should show the neutral
+ * "if an account exists" confirmation anyway. Only rate limits, a malformed address and
+ * requests that never got an email out are reported. Supabase's message is English, so
+ * it is only logged.
+ */
+export function passwordResetErrorKey(error) {
+  if (isRateLimitError(error)) {
+    return 'auth.rate_limited';
+  }
+  if (error?.code === 'email_address_invalid' || error?.code === 'validation_failed') {
+    return 'auth.enter_valid_email';
+  }
+  if (isRequestFailure(error) || error?.code === 'email_address_not_authorized') {
+    console.error('Password reset email failed:', error);
+    return 'auth.reset_send_failed';
+  }
+  console.warn('Password reset request returned an error:', error?.code || error?.message);
+  return '';
+}
+
+/** `$t` key for a failed `updatePassword`. */
+export function passwordUpdateErrorKey(error) {
+  const code = error?.code;
+  if (isAuthWeakPasswordError(error) || code === 'weak_password') {
+    return 'auth.password_weak';
+  }
+  if (code === 'same_password') {
+    return 'auth.password_same';
+  }
+  if (code === 'reauthentication_needed' || code === 'reauthentication_not_valid') {
+    return 'auth.password_reauth_needed';
+  }
+  if (isRateLimitError(error)) {
+    return 'auth.rate_limited';
+  }
+  if (isAuthSessionMissingError(error) || error?.status === 401 || SESSION_ERROR_CODES.includes(code)) {
+    return 'auth.password_session_expired';
+  }
+  console.error('Password update failed:', error);
+  return 'auth.password_update_failed';
 }
 
 export async function signOut() {

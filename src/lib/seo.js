@@ -159,11 +159,10 @@ export function getItemSeoConfig(item, localeCode = 'en', origin = getSiteOrigin
   const description = truncateSeoDescription(itemSeoDescription(item));
   let ogImageUrl = `${origin}${DEFAULT_OG_IMAGE_PATH}`;
 
+  // Uploaded photos arrive as /media/items/... paths (the server maps stored data URLs).
   if (typeof item.image === 'string' && item.image.trim()) {
     const image = item.image.trim();
-    if (image.startsWith('data:')) {
-      ogImageUrl = `${origin}${DEFAULT_OG_IMAGE_PATH}`;
-    } else if (image.startsWith('http://') || image.startsWith('https://')) {
+    if (image.startsWith('http://') || image.startsWith('https://')) {
       ogImageUrl = image;
     } else if (image.startsWith('/')) {
       ogImageUrl = `${origin}${image}`;
@@ -190,9 +189,7 @@ export function getProductJsonLd(item, origin = getSiteOrigin()) {
 
   if (typeof item.image === 'string' && item.image.trim()) {
     const itemImage = item.image.trim();
-    if (itemImage.startsWith('data:')) {
-      image = `${origin}${DEFAULT_OG_IMAGE_PATH}`;
-    } else if (itemImage.startsWith('http://') || itemImage.startsWith('https://')) {
+    if (itemImage.startsWith('http://') || itemImage.startsWith('https://')) {
       image = itemImage;
     } else if (itemImage.startsWith('/')) {
       image = `${origin}${itemImage}`;
@@ -227,6 +224,15 @@ export function getSeoForRoute(pathname, localeCode = 'en') {
     twitterCard: translateLocale(localeCode, 'seo.twitter_card'),
     locale: localeCode,
     noindex: Boolean(routeConfig?.noindex),
+  };
+}
+
+/** Unknown paths and missing items: "Page not found" title, kept out of the index. */
+export function getNotFoundSeoConfig(pathname, localeCode = 'en') {
+  return {
+    ...getSeoForRoute(pathname, localeCode),
+    title: translateLocale(localeCode, 'seo.not_found_title'),
+    noindex: true,
   };
 }
 
@@ -443,8 +449,9 @@ export function buildSeoHeadHtml(seo, pathname, localeCode, origin, escapeHtml, 
   tags.push(`<meta name="description" content="${escapeHtml(seo.description)}" />`);
   tags.push(`<link rel="canonical" href="${escapeHtml(seo.canonicalUrl)}" />`);
 
+  // The marker lets clearRobotsMeta() drop it after client-side navigation.
   if (seo.noindex) {
-    tags.push('<meta name="robots" content="noindex, nofollow" />');
+    tags.push(`<meta name="robots" content="noindex, nofollow" ${META_MARKER}="true" />`);
   }
 
   tags.push(`<meta property="og:title" content="${escapeHtml(seo.title)}" />`);
@@ -473,24 +480,22 @@ export function buildSeoHeadHtml(seo, pathname, localeCode, origin, escapeHtml, 
     `<link rel="alternate" hreflang="x-default" href="${escapeHtml(buildHreflangUrl(path, 'en', origin))}" />`,
   );
 
+  // Same ids as upsertJsonLd(), so the client replaces these blocks instead of
+  // adding a second copy.
+  const jsonLdTag = (id, data) =>
+    `<script type="application/ld+json" id="arl-jsonld-${id}">${serializeJsonForScript(data)}</script>`;
+
   if (includeJsonLd && !seo.noindex) {
     if (productJsonLd) {
-      tags.push(
-        `<script type="application/ld+json">${serializeJsonForScript(productJsonLd)}</script>`,
-      );
+      tags.push(jsonLdTag('product', productJsonLd));
     }
 
-    const jsonLd = getOrganizationJsonLd(origin);
-    tags.push(
-      `<script type="application/ld+json">${serializeJsonForScript(jsonLd)}</script>`,
-    );
+    tags.push(jsonLdTag('organization', getOrganizationJsonLd(origin)));
 
     if (path === '/howthisworks') {
       const faqJsonLd = getFaqJsonLd(localeCode);
       if (faqJsonLd) {
-        tags.push(
-          `<script type="application/ld+json">${serializeJsonForScript(faqJsonLd)}</script>`,
-        );
+        tags.push(jsonLdTag('faq', faqJsonLd));
       }
     }
   }

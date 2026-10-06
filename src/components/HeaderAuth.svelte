@@ -1,19 +1,32 @@
 <script>
   import { onMount } from 'svelte';
   import { supabaseConfigured } from '../lib/supabase.js';
-  import { authReady, authRedirectError, initAuth, session, signOut } from '../lib/auth.js';
+  import {
+    authReady,
+    authRedirectError,
+    authRedirectFromPasswordReset,
+    initAuth,
+    session,
+    signOut,
+  } from '../lib/auth.js';
   import { navigate } from '../lib/router.js';
   import { t, translateKey } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
   import AuthModal from './AuthModal.svelte';
   import CompleteSignupModal from './CompleteSignupModal.svelte';
+  import SetPasswordModal from './SetPasswordModal.svelte';
 
   let authModal = $state();
   let signingOut = $state(false);
 
   onMount(() => {
-    initAuth();
-    if (authRedirectError) {
+    initAuth().then(({ passwordResetLinkFailed }) => {
+      // Expired or already-used reset link: go straight to requesting a new one.
+      if (passwordResetLinkFailed) {
+        authModal?.open('reset', $t('auth.reset_link_expired'));
+      }
+    });
+    if (authRedirectError && !authRedirectFromPasswordReset) {
       authModal?.open('login', formatRedirectError(authRedirectError));
     }
   });
@@ -84,5 +97,6 @@
 
     <AuthModal bind:this={authModal} />
     <CompleteSignupModal />
+    <SetPasswordModal />
   </div>
 {/if}

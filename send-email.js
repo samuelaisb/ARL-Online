@@ -23,6 +23,7 @@ const { html, text, attachments } = renderBrandedEmail({
 
 const { data, error } = await resend.emails.send({
   from: 'noreply@activistresourcelibrary.com',
+  replyTo: process.env.EMAIL_REPLY_TO?.trim() || 'samuel@apathyisboring.com',
   to: 'samuel@apathyisboring.com',
   subject,
   html,

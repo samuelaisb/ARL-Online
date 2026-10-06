@@ -64,6 +64,9 @@
     "create_error": "Impossible d'enregistrer la réservation.",
     "delete_error": "Impossible de supprimer la réservation.",
     "collision_error": "Ces dates chevauchent une réservation existante.",
+    "daily_limit": "Vous avez atteint la limite de demandes de votre compte pour aujourd'hui. Veuillez réessayer demain.",
+    "pending_limit": "Vous avez déjà trop de demandes en attente d'une réponse. Veuillez attendre qu'on réponde à l'une d'elles avant d'en envoyer une autre.",
+    "rate_limited": "Trop de demandes en peu de temps. Veuillez patienter quelques minutes, puis réessayer.",
     "pickup_dropoff_hours": "Le ramassage et le retour se font entre 10 h et 17 h le mardi.",
     "select_tuesday_equipment": "Choisissez un mardi pour réserver un bloc d'une semaine.",
     "select_tuesday_books": "Choisissez un mardi pour réserver un bloc d'un mois.",
@@ -71,16 +74,18 @@
   },
   "consultation": {
     "heading": "Demander une consultation",
-    "intro": "Dites-nous quand vous êtes disponible et de quoi vous aimeriez discuter — l'expert choisira un moment et vous recevrez tous les deux une invitation Zoom par courriel.",
-    "time_slots_label": "Donnez-nous 2-3 plages horaires où vous êtes disponible",
+    "intro": "Indiquez vos disponibilités et le sujet dont vous aimeriez discuter. {name} choisira un moment, et vous recevrez tous les deux une invitation Zoom par courriel.",
+    "time_slots_label": "Proposez 2 ou 3 plages horaires où vous êtes disponible",
     "time_slots_placeholder": "p. ex. mardi 14 h à 16 h, mercredi matin, vendredi après 17 h",
     "summary_label": "Résumez le sujet sur lequel vous aimeriez de l'expertise",
     "summary_placeholder": "Sur quoi travaillez-vous et avec quoi aimeriez-vous de l'aide ?",
     "submit": "Envoyer",
     "submitting": "Envoi…",
+    "sharing_note": "Votre demande et l'adresse courriel de votre compte sont transmises à {name} et à l'équipe d'Apathy is Boring. N'y incluez que les renseignements personnels que vous êtes à l'aise de leur communiquer.",
     "fill_all_fields": "Veuillez indiquer vos disponibilités et un résumé de votre demande.",
     "request_pending": "Merci d'avoir demandé une consultation ! L'expert choisira un moment et vous recevrez une invitation Zoom par courriel. Vous pouvez la suivre ou l'annuler depuis votre compte.",
-    "create_error": "Impossible d'envoyer votre demande de consultation."
+    "create_error": "Impossible d'envoyer votre demande de consultation.",
+    "already_open": "Vous avez déjà une demande en cours avec cet expert. Vous pouvez la suivre ou l'annuler depuis votre compte."
   },
   "auth": {
     "loading": "Chargement…",
@@ -124,7 +129,34 @@
     "complete_signup_message": "Dernière étape : lisez et signez l'entente de membre pour terminer la création de votre compte.",
     "complete_signup_contract_required": "Veuillez lire et accepter l'entente de membre pour terminer la création de votre compte.",
     "complete_signup_submit": "Terminer l'inscription",
-    "saving": "Enregistrement…"
+    "saving": "Enregistrement…",
+    "forgot_password": "Mot de passe oublié ?",
+    "reset_title": "Réinitialiser votre mot de passe",
+    "reset_intro": "Entrez le courriel de votre compte et nous vous enverrons un lien pour choisir un nouveau mot de passe.",
+    "reset_submit": "Envoyer le lien",
+    "reset_sending": "Envoi…",
+    "reset_sent": "Si un compte existe pour {email}, nous vous avons envoyé un lien pour réinitialiser votre mot de passe. S'il n'arrive pas, vérifiez vos courriels indésirables.",
+    "reset_send_failed": "Nous n'avons pas pu envoyer le courriel de réinitialisation. Vérifiez votre connexion et réessayez dans quelques minutes.",
+    "reset_link_expired": "Ce lien de réinitialisation a expiré ou a déjà été utilisé. Demandez-en un nouveau.",
+    "back_to_log_in": "Retour à la connexion",
+    "enter_email": "Entrez votre courriel.",
+    "enter_valid_email": "Entrez une adresse courriel valide.",
+    "rate_limited": "Trop de tentatives. Patientez quelques minutes, puis réessayez.",
+    "change_password": "Changer le mot de passe",
+    "change_password_title": "Changer votre mot de passe",
+    "set_password_title": "Choisir un nouveau mot de passe",
+    "set_password_intro": "Choisissez un nouveau mot de passe pour {email}.",
+    "new_password": "Nouveau mot de passe",
+    "confirm_password": "Confirmer le nouveau mot de passe",
+    "password_hint": "Au moins 8 caractères.",
+    "password_mismatch": "Les deux mots de passe ne correspondent pas.",
+    "save_password": "Enregistrer",
+    "password_updated": "Votre mot de passe a été mis à jour.",
+    "password_weak": "Ce mot de passe est trop faible ou trop courant. Choisissez-en un plus long, ou combinez lettres, chiffres et symboles.",
+    "password_same": "Le nouveau mot de passe doit être différent de l'actuel.",
+    "password_reauth_needed": "Par sécurité, déconnectez-vous et reconnectez-vous, puis changez votre mot de passe.",
+    "password_session_expired": "Votre session a expiré. Reconnectez-vous ou demandez un nouveau lien de réinitialisation, puis réessayez.",
+    "password_update_failed": "Impossible de mettre à jour votre mot de passe. Vérifiez votre connexion et réessayez."
   },
   "admin": {
     "heading": "Bonjour lovely AisBer! Bienvenue sur la page Admin",
@@ -168,13 +200,18 @@
     "reservation_dates": "{start} au {end}",
     "delete_reservation": "Supprimer",
     "deleting_reservation": "Suppression…",
-    "delete_reservation_confirm": "Supprimer la réservation pour « {title} » ({start} au {end})?",
+    "delete_reservation_confirm": "Supprimer la réservation pour « {title} » ({start} au {end}) de {email} ? La personne recevra un courriel indiquant que l'équipe de la bibliothèque l'a annulée.",
+    "delete_reservation_silent_confirm": "Supprimer la réservation pour « {title} » ({start} au {end}) de {email} ? Personne ne sera avisé.",
+    "delete_consultation_confirm": "Annuler la consultation « {title} » ({time}) avec {email} ? La rencontre Zoom sera supprimée et le membre et l'expert recevront un courriel.",
+    "delete_held_consultation_confirm": "Supprimer la fiche de la consultation terminée « {title} » ({time}) avec {email} ? La fiche sera supprimée sans aviser personne.",
     "delete_reservation_error": "Impossible de supprimer la réservation.",
     "loading": "Chargement…",
     "empty": "Aucun article à supprimer.",
     "remove": "Supprimer",
     "removing": "Suppression…",
     "remove_confirm": "Supprimer « {title} » de l'inventaire?",
+    "remove_with_reservations_confirm": "Supprimer « {title} » de l'inventaire ? Réservations en attente ou à venir pour cet article : {count}. Elles seront annulées, et chaque membre recevra un courriel indiquant que l'équipe de la bibliothèque a annulé sa réservation.",
+    "remove_expertise_confirm": "Supprimer « {title} » de l'inventaire ? Les fiches de consultation de ce mentor ({count} au total) seront supprimées définitivement. Les consultations en attente ou à venir seront annulées et les deux personnes recevront un courriel ; les consultations terminées seront supprimées sans avis.",
     "remove_error": "Impossible de supprimer l'article.",
     "delete_error": "Impossible de supprimer l'article.",
     "back_to_inventory": "← Retour à l'inventaire",
@@ -233,9 +270,41 @@
     "cancel_confirm_member": "Annuler votre consultation pour « {title} »? L'expert sera avisé par courriel.",
     "cancel_confirm_expert": "Annuler la consultation « {title} » avec {email}? La personne sera avisée par courriel.",
     "cancel_error": "Impossible d'annuler la consultation.",
+    "already_held": "Cette consultation a déjà eu lieu ; elle ne peut donc plus être annulée.",
     "cancelled_by_member": "Annulée par le membre",
     "cancelled_by_expert": "Annulée par l'expert",
     "cancelled_by_admin": "Annulée par l'équipe de la bibliothèque"
+  },
+  "account_reservations": {
+    "heading": "Réservations",
+    "heading_active": "Réservations à venir et en attente",
+    "loading": "Chargement des réservations…",
+    "load_error": "Impossible de charger vos réservations.",
+    "empty": "Vous n'avez encore réservé aucun équipement, livre ou salle.",
+    "browse": "Parcourir la bibliothèque",
+    "active_empty": "Aucune réservation à venir ou en attente.",
+    "past_show": "Réservations passées",
+    "past_hide": "Masquer les réservations passées",
+    "dates": "{start} au {end}",
+    "status_pending": "En attente d'approbation",
+    "status_reserved": "Confirmée",
+    "status_refused": "Refusée",
+    "status_cancelled": "Annulée",
+    "status_ended": "Terminée",
+    "pending_hint": "Apathy is Boring vous écrira par courriel une fois votre demande examinée.",
+    "started_hint": "Cette réservation est commencée. Pour la modifier, répondez à votre courriel de confirmation.",
+    "withdraw": "Retirer la demande",
+    "withdrawing": "Retrait…",
+    "cancel": "Annuler la réservation",
+    "cancelling": "Annulation…",
+    "withdraw_confirm": "Retirer votre demande pour « {title} » ({dates}) ?",
+    "cancel_confirm": "Annuler votre réservation pour « {title} » ({dates}) ? L'équipe de la bibliothèque en sera avisée.",
+    "cancel_error": "Impossible d'annuler cette réservation.",
+    "already_started": "Cette réservation est déjà commencée ; elle ne peut donc plus être annulée ici. Répondez à votre courriel de confirmation si quelque chose change.",
+    "not_active": "Cette réservation n'est plus active. Rechargez la page pour voir son statut actuel.",
+    "rate_limited": "Trop de modifications en peu de temps. Veuillez réessayer plus tard.",
+    "withdrawn_status": "Demande retirée.",
+    "cancelled_status": "Réservation annulée. L'équipe de la bibliothèque a été avisée."
   },
   "share_expertise": {
     "heading": "Partager votre expertise",
@@ -296,7 +365,9 @@
     "save_item": "Enregistrer",
     "fill_all_fields": "Remplissez le titre, la description et choisissez une image.",
     "save_error": "Impossible d'enregistrer l'article.",
-    "process_image_error": "Impossible de traiter l'image."
+    "process_image_error": "Impossible de traiter l'image.",
+    "image_too_large": "Cette photo est trop lourde. Veuillez choisir une image plus petite.",
+    "image_invalid": "Ce format de photo n'est pas pris en charge. Veuillez choisir une image JPEG, PNG, WebP ou GIF."
   },
   "how_this_works": {
     "heading": "Comment ça marche",
@@ -352,7 +423,7 @@
       },
       {
         "question": "Où cueillir et retourner les articles?",
-        "answer": "L'équipement et les livres se cueillent et se retournent au bureau d'Apathy is Boring à Montréal, les mardis entre 10 h et 17 h. Les détails d'accès aux salles sont confirmés par courriel après approbation."
+        "answer": "L'équipement et les livres se cueillent et se retournent au bureau d'Apathy is Boring à Montréal, les mardis entre 10 h et 17 h."
       },
       {
         "question": "Que signifient les badges de disponibilité?",
@@ -424,11 +495,14 @@
     "reservation_approved": "Miaou ! Réservation approuvée, le membre recevra un courriel.",
     "reservation_deleted": "Miaou ! Réservation supprimée.",
     "reservation_sent": "Miaou ! Ta demande de réservation est envoyée, AisB va l'examiner.",
+    "reservation_withdrawn": "Miaou ! Ta demande est retirée.",
+    "reservation_cancelled": "Miaou ! Réservation annulée, l'équipe est avisée.",
     "consultation_sent": "Miaou ! Ta demande de consultation est envoyée à l'expert.",
     "consultation_scheduled": "Miaou ! Rencontre planifiée, les invitations Zoom sont en route.",
     "consultation_cancelled": "Miaou ! Consultation annulée, tout le monde a été avisé.",
     "mentor_profile_published": "Miaou ! Ton profil de mentor est dans la liste Expertise.",
     "mentor_profile_updated": "Miaou ! Ton profil de mentor est à jour.",
+    "password_updated": "Miaou ! Ton mot de passe est à jour.",
     "signed_out": "Tu t'es déconnecté(e) ! À bientôt 👋",
     "register_click": "Tu veux nous rejoindre ? Super ! 🎉",
     "taps": [
@@ -450,11 +524,23 @@
     "breadcrumb_aria": "Fil d'Ariane",
     "breadcrumb_home": "Accueil",
     "not_found": "Article introuvable",
+    "load_error": "Impossible de charger cet article.",
+    "try_again": "Réessayer",
     "reserve": "Réserver l'inventaire",
     "back_to_category": "Retour à la catégorie"
   },
+  "not_found": {
+    "heading": "Page introuvable",
+    "body": "Nous n'avons pas trouvé la page que vous cherchez. Elle a peut-être été déplacée, ou le lien contient une faute de frappe.",
+    "back_to_library": "Retour à la bibliothèque"
+  },
+  "page_load_error": {
+    "message": "Cette page n'a pas pu se charger. Le site vient peut-être d'être mis à jour.",
+    "reload": "Recharger la page"
+  },
   "seo": {
     "default_title": "Bibliothèque ressources activistes | Apathy is Boring",
+    "not_found_title": "Page introuvable | Bibliothèque ressources activistes",
     "default_description": "Parcourez et réservez de l'expertise, de l'équipement militant, des livres et des salles dans la bibliothèque partagée d'Apathy is Boring, au service des organisateurs partout au Canada.",
     "og_type": "website",
     "og_site_name": "Bibliothèque ressources activistes",
@@ -477,50 +563,5 @@
     "account_title": "Compte | Bibliothèque ressources activistes",
     "privacy_title": "Politique de confidentialité | Bibliothèque ressources activistes",
     "privacy_description": "Comment Apathy is Boring recueille, utilise et protège les renseignements personnels sur la bibliothèque ressources activistes, et comment exercer vos droits selon la loi québécoise."
-  },
-  "quotes": {
-    "aria_label": "Citations inspirantes",
-    "items": [
-      {
-        "text": "Faites votre part de bien là où vous êtes; ce sont ces petits gestes, mis ensemble, qui envahissent le monde.",
-        "author": "Desmond Tutu"
-      },
-      {
-        "text": "Ne doutez jamais qu'un petit groupe de citoyens réfléchis et engagés peut changer le monde; c'est la seule chose qui y soit jamais parvenue.",
-        "author": "Margaret Mead"
-      },
-      {
-        "text": "Je ne suis qu'une personne, mais j'en suis une. Je ne peux pas tout faire, mais je peux faire quelque chose; et parce que je ne peux pas tout, je ne refuserai pas ce que je peux faire.",
-        "author": "Helen Keller"
-      },
-      {
-        "text": "Ce que vous faites compte; vous devez choisir quel genre de différence vous voulez faire.",
-        "author": "Jane Goodall"
-      },
-      {
-        "text": "Tout semble impossible jusqu'à ce que ce soit fait.",
-        "author": "Nelson Mandela"
-      },
-      {
-        "text": "La façon la plus courante de renoncer à son pouvoir est de croire qu'on n'en a pas.",
-        "author": "Alice Walker"
-      },
-      {
-        "text": "Commencez où vous êtes. Utilisez ce que vous avez. Faites ce que vous pouvez.",
-        "author": "Arthur Ashe"
-      },
-      {
-        "text": "Quand le monde entier se tait, une seule voix devient puissante.",
-        "author": "Malala Yousafzai"
-      },
-      {
-        "text": "Le moment est toujours propice pour faire ce qui est juste.",
-        "author": "Dr. Martin Luther King Jr."
-      },
-      {
-        "text": "Quand j'étais enfant et que je voyais des choses effrayantes à la télé, ma mère me disait : « Cherche les aidants. Tu en trouveras toujours. »",
-        "author": "Fred Rogers"
-      }
-    ]
   }
 }

@@ -91,16 +91,6 @@ export function translateKey(key, vars = {}) {
   return translate(get(locale), key, vars);
 }
 
-/** Quote list for the current locale (reactive via `$quotes`). */
-export const quotes = derived(locale, ($locale) => {
-  const items = lookup(dictionaries[$locale], 'quotes.items');
-  if (Array.isArray(items)) {
-    return items;
-  }
-
-  return lookup(dictionaries.en, 'quotes.items') ?? [];
-});
-
 /** FAQ list for the current locale (reactive via `$faq`). */
 export const faq = derived(locale, ($locale) => {
   const items = lookup(dictionaries[$locale], 'how_this_works.faq');

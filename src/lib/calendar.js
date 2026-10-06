@@ -24,6 +24,40 @@ export function toDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
+/** The library's own time zone (Montréal); same zone as `CONSULTATION_TIMEZONE` in zoom.js. */
+export const LIBRARY_TIME_ZONE = 'America/Toronto';
+
+let libraryDateFormat;
+
+/**
+ * Today's date key in Montréal, whatever the clock's zone (Cloud Run is UTC, a browser may be
+ * anywhere). Server and client use it for the member cancel cutoff and for which bookings an
+ * admin delete emails about, so both sides agree on "today". Falls back to the local date
+ * if the runtime has no time zone data.
+ */
+export function libraryTodayKey(now = new Date()) {
+  const d = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(d.getTime())) {
+    return '';
+  }
+
+  try {
+    libraryDateFormat ??= new Intl.DateTimeFormat('en-CA', {
+      timeZone: LIBRARY_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    // formatToParts, not format(): en-CA's short date pattern has changed between ICU releases.
+    const parts = Object.fromEntries(
+      libraryDateFormat.formatToParts(d).map(({ type, value }) => [type, value]),
+    );
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  } catch {
+    return toDateKey(d);
+  }
+}
+
 export function parseDateKey(key) {
   if (typeof key !== 'string' || !DATE_KEY_RE.test(key)) {
     return null;

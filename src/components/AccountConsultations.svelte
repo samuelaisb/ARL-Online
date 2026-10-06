@@ -6,6 +6,7 @@
     scheduleConsultation,
   } from '../lib/inventory.js';
   import { navigate } from '../lib/router.js';
+  import { isConsultationHeld } from '../lib/reservation-rules.js';
   import { locale, t, translateKey } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import {
@@ -16,8 +17,6 @@
   import MeetingTimePicker from './MeetingTimePicker.svelte';
 
   const STATUS_ORDER = { pending: 0, reserved: 1, cancelled: 2, refused: 3 };
-  /** Matches Zoom `CONSULTATION_DURATION_MINUTES` in `src/lib/zoom.js`. */
-  const MEETING_LENGTH_MS = 60 * 60 * 1000;
 
   let loading = $state(true);
   let loadError = $state('');
@@ -30,21 +29,9 @@
   let showExpertPast = $state(false);
   let showMemberPast = $state(false);
 
+  /** Same held rule as the server, which refuses to cancel a meeting that has already ended. */
   function isEntryClosed(entry, now) {
-    if (entry.status === 'cancelled' || entry.status === 'refused') {
-      return true;
-    }
-
-    if (entry.status !== 'reserved' || !entry.meetingAt) {
-      return false;
-    }
-
-    const start = new Date(entry.meetingAt).getTime();
-    if (Number.isNaN(start)) {
-      return false;
-    }
-
-    return start + MEETING_LENGTH_MS <= now;
+    return entry.status === 'cancelled' || entry.status === 'refused' || isConsultationHeld(entry, now);
   }
 
   function splitEntries(entries, now) {

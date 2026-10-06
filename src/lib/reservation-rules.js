@@ -6,7 +6,8 @@
  * Books: start Tuesday → end four weeks later (+28 days, also a Tuesday).
  * Rooms: any inclusive date range (no weekday or duration rules).
  * Expertise: no calendar — consultation requests store the submission date
- *   as both start and end, so any valid single date/range passes.
+ *   as both start and end, so any valid single date/range passes. A scheduled
+ *   consultation is held once its meeting has ended (`isConsultationHeld`).
  */
 
 const FLEXIBLE_TAGS = ['rooms', 'expertise'];
@@ -83,4 +84,21 @@ export function validateReservationDates(tag, startDate, endDate) {
   }
 
   return { ok: true };
+}
+
+/** Consultation meeting length; matches Zoom `CONSULTATION_DURATION_MINUTES` in `src/lib/zoom.js`. */
+export const CONSULTATION_MEETING_LENGTH_MS = 60 * 60 * 1000;
+
+/**
+ * A scheduled consultation whose meeting has ended (start + 60 min). There is no
+ * `completed` status: the row stays `reserved`, and the server and `/account` both read
+ * it as held (Completed) from `meetingAt`.
+ */
+export function isConsultationHeld(reservation, now = Date.now()) {
+  if (reservation?.status !== 'reserved' || !reservation.meetingAt) {
+    return false;
+  }
+
+  const start = Date.parse(reservation.meetingAt);
+  return !Number.isNaN(start) && start + CONSULTATION_MEETING_LENGTH_MS <= now;
 }

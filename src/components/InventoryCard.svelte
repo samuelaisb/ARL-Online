@@ -119,41 +119,18 @@
   });
 </script>
 
-<article
-  class="inventory-card"
-  class:inventory-card--expert={isExpertise}
-  onmouseenter={handleMouseEnter}
-  onmouseleave={handleMouseLeave}
->
-  {#if isExpertise}
-    <a class="expert-card__link" href={itemToPath(item)} onclick={goToDetail}>
-      <div class="inventory-image-frame">
-        <img
-          class="inventory-image"
-          src={item.image}
-          alt=""
-          width="96"
-          height="96"
-          decoding="async"
-          loading="lazy"
-        />
-      </div>
-      <div class="expert-card__copy">
-        <h3>{item.title}</h3>
-        <p>{expertiseCopy.shortText}</p>
-      </div>
-    </a>
-  {:else}
-    <div class="inventory-image-frame">
-      <img
-        class="inventory-image"
-        src={item.image}
-        alt={$t('inventory.image_alt', { title: item.title })}
-        width="640"
-        height="360"
-        decoding="async"
-        loading="lazy"
-      />
+<article class="inventory-card" onmouseenter={handleMouseEnter} onmouseleave={handleMouseLeave}>
+  <div class="inventory-image-frame">
+    <img
+      class="inventory-image"
+      src={item.image}
+      alt={isExpertise ? '' : $t('inventory.image_alt', { title: item.title })}
+      width="640"
+      height="360"
+      decoding="async"
+      loading="lazy"
+    />
+    {#if !isExpertise}
       <span
         class="availability-badge"
         class:availability-badge--available={!unavailable && !checkAvailability}
@@ -170,34 +147,18 @@
           {$t('calendar.available')}
         {/if}
       </span>
-    </div>
-    <div class="inventory-content">
-      <h3>
-        <a class="inventory-card__title-link" href={itemToPath(item)} onclick={goToDetail}>
-          {item.title}
-        </a>
-      </h3>
-      <p>{item.body}</p>
+    {/if}
+  </div>
+  <div class="inventory-content">
+    <h3>
+      <a class="inventory-card__title-link" href={itemToPath(item)} onclick={goToDetail}>
+        {item.title}
+      </a>
+    </h3>
+    <p>{isExpertise ? expertiseCopy.shortText : item.body}</p>
 
-      <button type="button" class="btn-reserve" onclick={openReserveModal}>
-        {$t('inventory.reserve')}
-      </button>
-      {#if statusMessage}
-        <p
-          class="card-status status {statusType}"
-          class:fade-out={fadeOut}
-          role="status"
-          aria-live="polite"
-        >
-          {statusMessage}
-        </p>
-      {/if}
-    </div>
-  {/if}
-
-  {#if isExpertise}
     <button type="button" class="btn-reserve" onclick={openReserveModal}>
-      {$t('inventory.request_consultation')}
+      {isExpertise ? $t('inventory.request_consultation') : $t('inventory.reserve')}
     </button>
     {#if statusMessage}
       <p
@@ -209,5 +170,5 @@
         {statusMessage}
       </p>
     {/if}
-  {/if}
+  </div>
 </article>

@@ -37,6 +37,8 @@
   let item = $state(null);
   let loading = $state(true);
   let notFound = $state(false);
+  // Network or server error: offer a retry instead of claiming the item doesn't exist.
+  let loadFailed = $state(false);
   let statusMessage = $state('');
   let statusType = $state('');
   let fadeOut = $state(false);
@@ -102,27 +104,33 @@
 
   async function loadItem() {
     const params = routeParams;
+    // Tells App which URL this result is for, so a slow response can't land on the
+    // next item's page tags.
+    const loadedFor = { path: $path };
 
     if (!params) {
       item = null;
       notFound = false;
+      loadFailed = false;
       loading = false;
-      onItemLoaded?.(null);
+      onItemLoaded?.(null, loadedFor);
       return;
     }
 
     loading = true;
     notFound = false;
+    loadFailed = false;
+    onItemLoaded?.(null, loadedFor);
 
     try {
       const loaded = await fetchInventoryItem(params.tag, params.slug);
       item = loaded;
       notFound = !loaded;
-      onItemLoaded?.(loaded);
+      onItemLoaded?.(loaded, { ...loadedFor, notFound: !loaded });
     } catch {
       item = null;
-      notFound = true;
-      onItemLoaded?.(null);
+      loadFailed = true;
+      onItemLoaded?.(null, loadedFor);
     } finally {
       loading = false;
     }
@@ -360,6 +368,13 @@
 
     {#if loading}
       <p class="item-detail-page__loading" aria-busy="true">{$t('inventory.loading')}</p>
+    {:else if loadFailed}
+      <div class="item-detail-page__not-found">
+        <p class="status error" role="alert">{$t('item_detail.load_error')}</p>
+        <button type="button" class="btn-secondary" onclick={loadItem}>
+          {$t('item_detail.try_again')}
+        </button>
+      </div>
     {:else if notFound}
       <div class="item-detail-page__not-found">
         <h1>{$t('item_detail.not_found')}</h1>

@@ -1,23 +1,33 @@
+/* Latin WOFF2 subsets of the TTF/OTF sources kept beside them (Inter: slnt pinned
+   to 0, wght 400–900). Keep unicode-range in step with the subset, and rename the
+   file when regenerating it: /assets/fonts is cached for 7 days (see AGENTS.md). */
 @font-face {
   font-family: 'Inter';
-  src: url("/assets/fonts/inter/Inter-VariableFont_slnt,wght.ttf") format('truetype');
-  font-weight: 100 900;
+  src: url('/assets/fonts/inter/Inter-latin.woff2') format('woff2');
+  font-weight: 400 900;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0000-017F, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122,
+    U+2190-2193, U+2212, U+2215, U+2713, U+FEFF, U+FFFD;
 }
 
 @font-face {
   font-family: 'Ringold Sans';
-  src: url('/assets/fonts/ringold/Ringold-Sans.otf') format('opentype');
+  src: url('/assets/fonts/ringold/Ringold-Sans.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0000-017F, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122,
+    U+2190-2193, U+2212, U+2215, U+2713, U+FEFF, U+FFFD;
 }
 
 :root {
-  --quote-footer-content-height: 4.75rem;
-  --quote-footer-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --quote-footer-height: calc(var(--quote-footer-content-height) + var(--quote-footer-safe-bottom));
+  /* The fixed corner widgets (FES badge bottom-left, Kimchi bottom-right) sit this
+     far above the viewport bottom, clear of the iPhone home indicator. */
+  --corner-widget-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  /* Space kept free below the page content (and below focused controls, through
+     scroll-padding) so nothing stays hidden under the FES badge (about 82px tall). */
+  --corner-widget-clearance: calc(var(--corner-widget-bottom) + 6.75rem);
 
   /* Apathy is Boring brand palette */
   --color-light: #faf9f7;
@@ -49,6 +59,7 @@
 }
 
 html {
+  scroll-padding-bottom: var(--corner-widget-clearance);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -68,68 +79,13 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding-bottom: calc(var(--quote-footer-height) + 4.875rem);
-}
-
-.quote-footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
-  width: 100%;
-  height: var(--quote-footer-height);
-  box-sizing: border-box;
-  padding: 0.75rem 1.25rem;
-  padding-bottom: calc(0.75rem + var(--quote-footer-safe-bottom));
-  background: var(--color-mint);
-  color: var(--color-light);
-  border-top: 1px solid rgba(250, 249, 247, 0.15);
-  text-align: center;
-}
-
-.quote-footer__inner {
-  position: relative;
-  width: 100%;
-  height: calc(var(--quote-footer-content-height) - 1.5rem);
-  overflow: hidden;
-}
-
-.quote-footer__quote {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  width: min(52rem, 100%);
-  margin: 0 auto;
-  padding: 0;
-  border: 0;
-  text-align: center;
-}
-
-.quote-footer__text {
-  margin: 0;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  font-style: italic;
-}
-
-.quote-footer__author {
-  font-size: 0.6875rem;
-  line-height: 1.35;
-  font-style: normal;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  opacity: 0.9;
+  padding-bottom: var(--corner-widget-clearance);
 }
 
 .site-attribution {
   position: fixed;
-  left: 0.75rem;
-  bottom: calc(var(--quote-footer-height) + 0.75rem);
+  left: calc(0.75rem + env(safe-area-inset-left, 0px));
+  bottom: var(--corner-widget-bottom);
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -158,7 +114,7 @@ body {
 }
 
 .site-attribution__logo-link:focus-visible {
-  outline: 2px solid var(--color-lemon);
+  outline: 2px solid var(--color-mint);
   outline-offset: 2px;
   border-radius: 0.125rem;
 }
@@ -459,6 +415,12 @@ h1 {
   font-size: 1.75rem;
 }
 
+/* A page's main heading takes focus from script (tabindex="-1") when the item
+   overlay closes and its card isn't in the grid. It isn't a control: no ring. */
+h1[tabindex='-1']:focus {
+  outline: none;
+}
+
 .subtitle {
   margin: 0 0 1.25rem;
   color: var(--color-text-muted);
@@ -702,7 +664,8 @@ h1 {
 .privacy-page__back-link,
 .how-this-works-page__back-link,
 .account-page__back-link,
-.admin-page__back-link {
+.admin-page__back-link,
+.not-found-page__back-link {
   color: var(--color-mint);
   font-weight: 600;
   text-decoration: none;
@@ -712,7 +675,8 @@ h1 {
 .privacy-page__back-link:hover,
 .how-this-works-page__back-link:hover,
 .account-page__back-link:hover,
-.admin-page__back-link:hover {
+.admin-page__back-link:hover,
+.not-found-page__back-link:hover {
   text-decoration: underline;
 }
 
@@ -958,9 +922,33 @@ h1 {
   text-decoration: none;
 }
 
-.inventory-card__title-link:hover {
+/* Stretched link: the title link covers the whole card so a click anywhere opens the item. */
+.inventory-card__title-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.inventory-card:hover .inventory-card__title-link {
   color: var(--color-mint);
   text-decoration: underline;
+}
+
+.inventory-card__title-link:focus-visible {
+  outline: none;
+}
+
+.inventory-card__title-link:focus-visible::after {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 0.75rem;
+}
+
+.inventory-card .btn-reserve {
+  position: relative;
+  z-index: 2;
 }
 
 .admin-access {
@@ -1064,7 +1052,8 @@ h1 {
   font-weight: 600;
 }
 
-.account-consultations {
+.account-consultations,
+.account-reservations {
   max-width: 48rem;
   margin-top: 1rem;
 }
@@ -1116,7 +1105,8 @@ h1 {
 
 .consultation-status--cancelled,
 .consultation-status--refused,
-.consultation-status--completed {
+.consultation-status--completed,
+.consultation-status--ended {
   background: var(--color-border);
 }
 
@@ -1579,6 +1569,7 @@ h1 {
 }
 
 .inventory-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1679,124 +1670,6 @@ h1 {
   font-size: 0.9rem;
   line-height: 1.5;
   overflow-wrap: break-word;
-}
-
-.expert-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 1rem;
-}
-
-.inventory-card--expert {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.65rem;
-  height: 100%;
-  padding: 0.75rem;
-}
-
-.expert-card__link {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.65rem;
-  min-width: 0;
-  color: inherit;
-  text-decoration: none;
-  border-radius: 0.45rem;
-}
-
-.expert-card__link:hover h3 {
-  color: var(--color-mint);
-}
-
-.expert-card__link:focus-visible {
-  outline: 2px solid var(--color-mint);
-  outline-offset: 2px;
-}
-
-.inventory-card--expert .inventory-image-frame {
-  width: 3.25rem;
-  height: 3.25rem;
-  min-height: 0;
-  aspect-ratio: 1;
-  padding: 0;
-  border-radius: 0.45rem;
-}
-
-.inventory-card--expert .inventory-image {
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.expert-card__copy {
-  min-width: 0;
-}
-
-.expert-card__copy h3 {
-  margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.25;
-}
-
-.expert-card__copy p {
-  margin: 0.15rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.35;
-  overflow-wrap: break-word;
-}
-
-.inventory-card--expert .btn-reserve {
-  width: 100%;
-  max-width: none;
-  margin-top: auto;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.8125rem;
-  line-height: 1.2;
-  white-space: normal;
-  text-align: center;
-}
-
-.inventory-card--expert .card-status {
-  grid-column: 1 / -1;
-}
-
-.expert-skeleton {
-  display: grid;
-  grid-template-columns: 3.25rem minmax(0, 1fr);
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-}
-
-.expert-skeleton__avatar,
-.expert-skeleton__copy .inventory-skeleton-card__line {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 0%,
-    #f0eeea 45%,
-    var(--color-surface) 90%
-  );
-  background-size: 200% 100%;
-  animation: inventory-shimmer 1.4s ease-in-out infinite;
-}
-
-.expert-skeleton__avatar {
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: 0.45rem;
-}
-
-.expert-skeleton__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
 }
 
 .item-calendar {
@@ -2106,7 +1979,10 @@ textarea {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-input:focus,
+/* Text fields show focus through the Grape border. Checkboxes and radios paint no
+   border, so they keep an outline (see .auth-opt-in below). :where() keeps this at
+   input:focus specificity so component rules such as the meeting picker still win. */
+input:where(:not([type='checkbox'], [type='radio'])):focus,
 textarea:focus {
   outline: none;
   border-color: var(--color-grape);
@@ -2338,22 +2214,14 @@ button:disabled {
     padding: 0.75rem 0.85rem 0.95rem;
   }
 
-  .inventory-card--expert .inventory-image-frame,
-  .expert-detail__avatar,
-  .expert-skeleton__avatar {
+  .expert-detail__avatar {
     width: 3.5rem;
     height: 3.5rem;
   }
 
-  .expert-card__copy p,
   .expert-detail__bio {
     font-size: 0.875rem;
     line-height: 1.4;
-  }
-
-  .inventory-card--expert .btn-reserve {
-    padding: 0.6rem 0.75rem;
-    font-size: 0.85rem;
   }
 
   .item-detail--expertise .consultation-form__textarea {
@@ -2441,6 +2309,13 @@ button:disabled {
 
 .consultation-form__actions {
   display: flex;
+}
+
+.consultation-form__note {
+  margin: 0.6rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .consultation-form__status {
@@ -2586,9 +2461,17 @@ button:disabled {
   border-top: 1px solid var(--color-border-strong);
 }
 
-.auth-complete-intro {
+.auth-complete-intro,
+.auth-intro {
   margin: 0 0 0.75rem;
   line-height: 1.5;
+}
+
+/* "Forgot password?" under the login password field; pulled up into the input's margin. */
+.auth-forgot {
+  margin: -0.75rem 0 1rem;
+  font-size: 0.875rem;
+  text-align: right;
 }
 
 .auth-opt-in {
@@ -2608,6 +2491,11 @@ button:disabled {
   margin-top: 0.15rem;
   accent-color: var(--color-mint);
   cursor: pointer;
+}
+
+.auth-opt-in input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--color-grape);
+  outline-offset: 2px;
 }
 
 .btn-sign-contract {
@@ -2728,8 +2616,30 @@ button:disabled {
   color: var(--color-plum);
 }
 
+/* A live region kept in the page between messages (AuthModal, SetPasswordModal) takes no space. */
+.status:empty {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .inventory-load-error {
   margin: 0 0 1rem;
+}
+
+/* PageLoadError: a lazy page's chunk failed (usually a tab open across a deploy). */
+.page-load-error--overlay {
+  position: fixed;
+  top: calc(1rem + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 40;
+  width: min(calc(100% - 2rem), 28rem);
+  padding: 1rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+  box-shadow: 0 16px 48px var(--color-shadow-strong);
 }
 
 @media (min-width: 641px) and (max-width: 960px) {
@@ -2755,34 +2665,12 @@ button:disabled {
   }
 
   .inventory-grid,
-  .inventory-skeleton-grid,
-  .expert-list {
+  .inventory-skeleton-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 640px) {
-  :root {
-    --quote-footer-content-height: 6.5rem;
-  }
-
-  .app {
-    padding-bottom: calc(var(--quote-footer-height) + 8.75rem);
-  }
-
-  .quote-footer {
-    padding: 0.625rem 1rem;
-    padding-bottom: calc(0.625rem + var(--quote-footer-safe-bottom));
-  }
-
-  .quote-footer__text {
-    font-size: 0.6875rem;
-  }
-
-  .quote-footer__author {
-    font-size: 0.625rem;
-  }
-
   .site-attribution {
     max-width: min(8rem, calc(100vw - 1.5rem));
   }
@@ -2796,8 +2684,7 @@ button:disabled {
   }
 
   .inventory-grid,
-  .inventory-skeleton-grid,
-  .expert-list {
+  .inventory-skeleton-grid {
     grid-template-columns: 1fr;
   }
 

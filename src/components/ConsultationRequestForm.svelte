@@ -71,7 +71,7 @@
 
 <form class="consultation-form" novalidate onsubmit={handleSubmit}>
   <h4 class="consultation-form__title">{$t('consultation.heading')}</h4>
-  <p class="consultation-form__intro">{$t('consultation.intro')}</p>
+  <p class="consultation-form__intro">{$t('consultation.intro', { name: item.title })}</p>
 
   <label class="consultation-form__label" for="consultation-time-slots">
     {$t('consultation.time_slots_label')}
@@ -100,7 +100,12 @@
   ></textarea>
 
   <div class="consultation-form__actions">
-    <button type="submit" class="btn-calendar-confirm" disabled={saving}>
+    <button
+      type="submit"
+      class="btn-calendar-confirm"
+      aria-describedby="consultation-sharing-note"
+      disabled={saving}
+    >
       {#if saving}
         {$t('consultation.submitting')}
       {:else}
@@ -108,6 +113,9 @@
       {/if}
     </button>
   </div>
+  <p id="consultation-sharing-note" class="consultation-form__note">
+    {$t('consultation.sharing_note', { name: item.title })}
+  </p>
 
   {#if statusMessage}
     <p class="consultation-form__status status {statusType}" role="status" aria-live="polite">

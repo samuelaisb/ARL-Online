@@ -1,19 +1,22 @@
 import 'dotenv/config';
+import compression from 'compression';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { MemoryStore } from 'express-rate-limit';
 import helmet from 'helmet';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { setTimeout as delay } from 'timers/promises';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
-import { compareDateKeys, parseDateKey, toDateKey } from './src/lib/calendar.js';
+import { compareDateKeys, libraryTodayKey, parseDateKey, toDateKey } from './src/lib/calendar.js';
 import { EXPERT_LONG_TEXT_MAX, EXPERT_NAME_MAX, EXPERT_SHORT_TEXT_MAX } from './src/lib/expertise-fields.js';
-import { validateReservationDates } from './src/lib/reservation-rules.js';
+import { isConsultationHeld, validateReservationDates } from './src/lib/reservation-rules.js';
 import {
   addReservation,
   approveReservation,
   cancelConsultation,
+  cancelReservationForMember,
   checkReservationSchema,
   countPendingReservationsByEmail,
   createInventoryItem,
@@ -24,6 +27,7 @@ import {
   fetchInventoryItems,
   findInventoryItem,
   findInventoryItemBySlug,
+  findInventoryItemImage,
   findMentorProfileByEmail,
   findReservationWithItem,
   isConsultationExpert,
@@ -32,6 +36,7 @@ import {
   isValidInventoryImage,
   isValidTag,
   listConsultationsForUser,
+  listReservationsForMember,
   normalizeInventoryItem,
   reservationSchemaErrorMessage,
   patchReservation,
@@ -48,6 +53,18 @@ import {
   isZoomConfigured,
 } from './src/lib/zoom.js';
 import { assertSupabaseAdminConfigured, getSupabaseAdmin } from './src/lib/supabase-server.js';
+import {
+  ITEM_MEDIA_BASE,
+  isItemMediaUrl,
+  isItemMediaUrlForItem,
+  isOversizedImageDataUrl,
+  isStorableImageDataUrl,
+  itemMediaFileName,
+  parseImageDataUrl,
+  publicItemImageUrl,
+  withPublicItemImage,
+} from './src/lib/item-media.js';
+import { isItemDetailRoute } from './src/lib/item-routes.js';
 import { injectSeoIntoHtml, resolveRequestLocale } from './src/lib/seo-server.js';
 import { normalizeSeoPath, PRODUCTION_SITE_ORIGIN } from './src/lib/seo.js';
 import { orgContact, renderBrandedEmail } from './src/lib/email-brand.js';
@@ -106,6 +123,17 @@ function resolveEmailFrom() {
 }
 
 const FROM = resolveEmailFrom();
+// The contact form's inbox. activistresourcelibrary.com receives no mail, so every other app
+// email sets Reply-To to EMAIL_REPLY_TO (default: this inbox).
+const CONTACT_TO = 'samuel@apathyisboring.com';
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO?.trim() || CONTACT_TO;
+// Routes wait for their emails before responding, so a hung Resend call must not hold the response.
+const EMAIL_SEND_TIMEOUT_MS = 10_000;
+// Resend's default rate limit is 2 requests per second per team. A 429 is retried once after
+// EMAIL_RATE_LIMIT_RETRY_MS; bulk notifications (admin item delete) also leave
+// EMAIL_PACING_MS_PER_EMAIL per email between rounds.
+const EMAIL_RATE_LIMIT_RETRY_MS = 1_000;
+const EMAIL_PACING_MS_PER_EMAIL = 500;
 const SLACK_RESERVATION_WEBHOOK_URL = process.env.SLACK_RESERVATION_WEBHOOK_URL?.trim() || '';
 const SITE_URL = (process.env.SITE_URL || process.env.VITE_SITE_URL || '').replace(/\/$/, '');
 const EMAIL_SITE_ORIGIN = SITE_URL || PRODUCTION_SITE_ORIGIN;
@@ -123,6 +151,25 @@ function loadIndexHtmlTemplate() {
 }
 
 loadIndexHtmlTemplate();
+
+/**
+ * `<link rel="modulepreload">` for the lazy `ItemDetailPage` chunk, added to the
+ * shell on item routes so a deep link fetches the overlay alongside the entry
+ * instead of after it runs. Found by Vite's default `[name]-[hash].js` chunk
+ * name; when no file matches (renamed chunk, no build), the hint is left out.
+ */
+function findItemDetailChunkPreload() {
+  try {
+    const chunk = fs
+      .readdirSync(path.join(__dirname, 'dist', 'assets'))
+      .find((name) => /^ItemDetailPage-[\w-]+\.js$/.test(name));
+    return chunk ? `<link rel="modulepreload" crossorigin href="/assets/${chunk}">` : '';
+  } catch {
+    return '';
+  }
+}
+
+const ITEM_DETAIL_CHUNK_PRELOAD = findItemDetailChunkPreload();
 
 /**
  * CSP `script-src` hashes for the inline scripts in the built `index.html`
@@ -263,8 +310,15 @@ function sanitizeItemForPublic(item) {
   const { expertEmail, ...publicItem } = item;
   return {
     ...publicItem,
+    image: publicItemImageUrl(item),
     reservations: (item.reservations ?? []).map(sanitizeReservationForPublic),
   };
+}
+
+/** Item lookup for the SSR head: og:image, twitter:image and Product JSON-LD get the /media URL. */
+async function findPublicItemBySlug(tag, slug) {
+  const item = await findInventoryItemBySlug(tag, slug);
+  return item ? withPublicItemImage(item) : null;
 }
 
 const reservationCreateLimiter = rateLimit({
@@ -272,10 +326,52 @@ const reservationCreateLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many reservation requests. Please try again later.' },
+  message: {
+    error: 'Too many reservation requests. Please try again later.',
+    code: 'reservation_rate_limited',
+  },
 });
 
-const CONTACT_TO = 'samuel@apathyisboring.com';
+const RESERVATION_CREATES_PER_ACCOUNT_PER_DAY = 10;
+const reservationAccountStore = new MemoryStore();
+const reservationAccountKey = (req) => `user:${req.user.id}`;
+
+// Runs after requireAuth, keyed by account, so a member can't loop request → cancel and email a
+// mentor (and post to Slack) from many IPs. Only saved creates count: the limiter counts every
+// request it lets through and countSavedReservationCreates hands the hit back when the route saves
+// nothing. In-memory: it relies on the single Cloud Run instance and resets on deploy.
+const reservationAccountLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: RESERVATION_CREATES_PER_ACCOUNT_PER_DAY,
+  keyGenerator: reservationAccountKey,
+  store: reservationAccountStore,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: `You can send up to ${RESERVATION_CREATES_PER_ACCOUNT_PER_DAY} requests in 24 hours. Please try again tomorrow.`,
+    code: 'daily_request_limit',
+  },
+});
+
+/**
+ * Wraps the create route so the daily cap keeps a hit only when the route saved a reservation
+ * (`res.locals.reservationSaved`). It decides once the route has finished, not when the response
+ * closes: a client that disconnects while the route awaits Slack and the emails still used one of
+ * its creates (express-rate-limit's skipFailedRequests hands the hit back on any early 'close').
+ */
+function countSavedReservationCreates(handler) {
+  return async (req, res) => {
+    res.locals.reservationSaved = false;
+    try {
+      await handler(req, res);
+    } finally {
+      if (!res.locals.reservationSaved) {
+        await reservationAccountStore.decrement(reservationAccountKey(req));
+      }
+    }
+  };
+}
+
 const CONTACT_NAME_MAX = 120;
 const CONTACT_MESSAGE_MAX = 5000;
 
@@ -306,7 +402,12 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+// Equipment and books only: rooms are booked for any dates and have no Tuesday handover.
 const APPROVAL_PICKUP_NOTICE = `Pickups and drop offs are between 10am and 5pm on Tuesdays at ${orgContact.address}.`;
+
+const ROOM_LOCATION = `Apathy is Boring office, ${orgContact.address}`;
+
+const RESERVATION_CHANGES_NOTICE = 'If anything changes, just reply to this email.';
 
 const WELCOME_EQUIPMENT_PICKUP_NOTICE = `Equipment reservations are typically on Tuesdays at ${orgContact.address}.`;
 
@@ -346,6 +447,32 @@ function formatMeetingDateTime(meetingAt) {
 
 function trimmedOrNull(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+const READABLE_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', { dateStyle: 'full', timeZone: 'UTC' });
+
+/** `YYYY-MM-DD` → "Tuesday, October 13, 2026" (emails are English). Anything else comes back as given. */
+function formatReadableDate(dateKey) {
+  const date = parseDateKey(dateKey);
+  if (!date) {
+    return dateKey ?? '';
+  }
+
+  return READABLE_DATE_FORMAT.format(
+    new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12)),
+  );
+}
+
+/** A reservation's date range for emails and Slack; one date when it starts and ends the same day. */
+function formatReservationDates(reservation) {
+  const start = trimmedOrNull(reservation?.startDate);
+  const end = trimmedOrNull(reservation?.endDate);
+
+  if (start && end && start !== end) {
+    return `${formatReadableDate(start)} to ${formatReadableDate(end)}`;
+  }
+
+  return formatReadableDate(start || end || '');
 }
 
 function consultationTitle(item) {
@@ -389,6 +516,7 @@ function buildConsultationEmail({
 
   return {
     from: FROM,
+    replyTo: EMAIL_REPLY_TO,
     to,
     subject,
     text: rendered.text,
@@ -630,21 +758,91 @@ function buildConsultationDecisionEmailPayload(item, reservation) {
   });
 }
 
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function sendEmailPayload(payload) {
+  return withTimeout(
+    getResend().emails.send(payload),
+    EMAIL_SEND_TIMEOUT_MS,
+    `Resend did not answer within ${EMAIL_SEND_TIMEOUT_MS / 1000}s.`,
+  );
+}
+
+/** Resend refused the email over its rate limit, so it wasn't sent and is safe to try again. */
+function isResendRateLimitError(error) {
+  return error?.name === 'rate_limit_exceeded' || error?.statusCode === 429;
+}
+
+/** Logs failures and never throws. Resolves true only when there was an email and Resend accepted every one. */
 async function sendEmailPayloads(payloads, label) {
+  const toSend = payloads.filter(Boolean);
   const results = await Promise.allSettled(
-    payloads.filter(Boolean).map(async (payload) => {
-      const { error } = await getResend().emails.send(payload);
+    toSend.map(async (payload) => {
+      let { error } = await sendEmailPayload(payload);
+      if (isResendRateLimitError(error)) {
+        await delay(EMAIL_RATE_LIMIT_RETRY_MS);
+        ({ error } = await sendEmailPayload(payload));
+      }
       if (error) {
         throw new Error(error.message || `Failed to send ${label} email.`);
       }
     }),
   );
 
+  let allSent = toSend.length > 0;
   for (const result of results) {
     if (result.status === 'rejected') {
       console.error(`${label} email failed:`, result.reason);
+      allSent = false;
     }
   }
+  return allSent;
+}
+
+/**
+ * Routes await a saved action's emails and Slack post before responding: once the response is
+ * out, Cloud Run can throttle CPU and stall sends still in flight. Never throws, so a failed send
+ * can't turn a saved action into an error. Email senders resolve true/false; the result (the
+ * response's `emailSent`) is false if any of them resolved false or threw. Slack resolves
+ * undefined and doesn't count.
+ */
+async function settleNotifications(label, tasks) {
+  const results = await Promise.allSettled(tasks);
+  let emailSent = true;
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.error(`${label} notifications failed:`, result.reason);
+      emailSent = false;
+    } else if (result.value === false) {
+      emailSent = false;
+    }
+  }
+  return emailSent;
+}
+
+/**
+ * Bulk version of settleNotifications: one round per entry, in order, each round taking at least
+ * `emailsPerRound` × EMAIL_PACING_MS_PER_EMAIL so the batch stays under Resend's rate limit.
+ * Resolves false if any round's email failed, or undefined when there were no entries.
+ */
+async function settleNotificationRounds(label, entries, emailsPerRound, notify) {
+  let emailSent;
+  for (const [index, entry] of entries.entries()) {
+    const startedAt = Date.now();
+    const sent = await settleNotifications(label, [notify(entry)]);
+    emailSent = (emailSent ?? true) && sent;
+    const wait = emailsPerRound * EMAIL_PACING_MS_PER_EMAIL - (Date.now() - startedAt);
+    if (index < entries.length - 1 && wait > 0) {
+      await delay(wait);
+    }
+  }
+  return emailSent;
 }
 
 function buildConsultationRequestEmailPayload(item, reservation) {
@@ -678,12 +876,20 @@ async function sendConsultationRequestEmails(item, reservation) {
     console.warn(`Consultation ${reservation.id}: item ${item.id} has no expert email; only admins can schedule it.`);
   }
 
-  await sendEmailPayloads(
+  return sendEmailPayloads(
     [
       buildConsultationRequestEmailPayload(item, reservation),
       buildExpertRequestEmailPayload(item, reservation),
     ],
     'Consultation request',
+  );
+}
+
+/** Member "confirmed" + expert "scheduled", each with the Zoom link and `.ics`. */
+async function sendConsultationScheduledEmails(item, reservation) {
+  return sendEmailPayloads(
+    buildConsultationScheduledEmailPayloads(item, reservation),
+    'Consultation scheduled',
   );
 }
 
@@ -694,11 +900,7 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
   }
 
   const title = typeof item.title === 'string' ? item.title.trim() : 'Inventory item';
-  const startDate =
-    typeof reservation?.startDate === 'string' ? reservation.startDate.trim() : '';
-  const endDate = typeof reservation?.endDate === 'string' ? reservation.endDate.trim() : '';
-  const dateRange =
-    startDate && endDate ? `${startDate} to ${endDate}` : startDate || endDate || '';
+  const isRoom = item.tag === 'rooms';
   const to =
     typeof reservation?.userEmail === 'string' && reservation.userEmail.trim()
       ? reservation.userEmail.trim()
@@ -715,11 +917,16 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
   const intro = approved
     ? 'Your reservation request has been approved by Apathy is Boring.'
     : 'Unfortunately, the item you requested is not available for those dates.';
-  const closing = approved
-    ? 'We look forward to seeing you at pickup.'
-    : 'Please choose different dates or another item from the library.';
   const itemUrl = itemPageUrl(item);
   const libraryUrl = absoluteSiteUrl('/');
+  let paragraphs = ['Please choose different dates or another item from the library.'];
+
+  if (approved) {
+    // Rooms have no Tuesday pickup: confirm where and when instead.
+    paragraphs = isRoom
+      ? [RESERVATION_CHANGES_NOTICE]
+      : [APPROVAL_PICKUP_NOTICE, 'We look forward to seeing you at pickup.'];
+  }
 
   const rendered = renderBrandedEmail({
     subject,
@@ -727,17 +934,22 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
     headline: approved ? 'Reservation confirmed' : 'Reservation not available',
     intro,
     details: [
-      ['Item', title, itemUrl],
-      ['Dates', dateRange],
+      [isRoom ? 'Room' : 'Item', title, itemUrl],
+      ['Dates', formatReservationDates(reservation)],
+      ['Where', approved && isRoom ? ROOM_LOCATION : ''],
     ],
-    paragraphs: [approved ? APPROVAL_PICKUP_NOTICE : '', closing].filter(Boolean),
-    cta: { label: approved ? 'View your item' : 'Choose different dates', href: itemUrl },
+    paragraphs,
+    cta: {
+      label: approved ? (isRoom ? 'View the room' : 'View your item') : 'Choose different dates',
+      href: itemUrl,
+    },
     links: [['Browse the library', libraryUrl]],
     why: EMAIL_WHY.reservation,
   });
 
   return {
     from: FROM,
+    replyTo: EMAIL_REPLY_TO,
     to,
     subject,
     text: rendered.text,
@@ -746,21 +958,81 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
   };
 }
 
+/** Resolves false when the reservation has no member email or the send failed (logged). */
 async function sendMemberDecisionEmail(item, reservation, decision) {
   const emailPayload = buildMemberDecisionEmailPayload(item, reservation, decision);
 
   if (!emailPayload) {
     console.warn(`Skipping ${decision} email: no member email on reservation ${reservation?.id}.`);
+    return false;
+  }
+
+  return sendEmailPayloads(
+    [emailPayload],
+    decision === 'approved' ? 'Reservation approval' : 'Reservation refusal',
+  );
+}
+
+/**
+ * An equipment, book or room reservation that still matters to the member: pending, or
+ * approved and not yet over (`endDate` on or after `today`, a libraryTodayKey()). Admin
+ * deletes email these members.
+ */
+function isUpcomingMemberReservation(reservation, today) {
+  return (
+    (reservation?.status === 'pending' || reservation?.status === 'reserved') &&
+    compareDateKeys(reservation.endDate ?? '', today) >= 0
+  );
+}
+
+/**
+ * Admin deleted the reservation, or its whole item → the member. `today` (a libraryTodayKey())
+ * tells a booking still ahead of its pickup from a loan already under way.
+ */
+function buildReservationCancelledByTeamEmailPayload(item, reservation, today) {
+  const to = trimmedOrNull(reservation?.userEmail);
+  if (!to) {
     return null;
   }
 
-  const { data, error } = await getResend().emails.send(emailPayload);
-
-  if (error) {
-    throw new Error(error.message || `Failed to send ${decision} email.`);
+  const title = trimmedOrNull(item?.title) ?? 'Inventory item';
+  const tag = trimmedOrNull(item?.tag) ?? 'equipment';
+  const what = reservation.status === 'pending' ? 'reservation request' : 'reservation';
+  const intro = `Your ${what} for ${title} (${formatReservationDates(reservation)}) was cancelled by the Activist Resource Library team.`;
+  let pickupNotice = '';
+  if (reservation.status === 'reserved' && (tag === 'equipment' || tag === 'books')) {
+    // From the first day on, the member may already be holding the item.
+    pickupNotice =
+      compareDateKeys(reservation.startDate ?? '', today) > 0
+        ? 'Please do not come to pickup for this reservation.'
+        : 'If you have already picked up the item, please reply to this email to arrange returning it. Otherwise, please do not come to pickup.';
   }
 
-  return data;
+  return buildConsultationEmail({
+    to,
+    subject: `Reservation cancelled: ${title}`,
+    heading: 'Reservation cancelled',
+    intro,
+    paragraphs: [
+      pickupNotice,
+      'You are welcome to choose other dates or another item from the library. If you have questions, just reply to this email.',
+    ],
+    // The item may be gone (item delete), so link its category instead.
+    cta: { label: 'Browse the library', href: absoluteSiteUrl(`/${tag}`) },
+    why: EMAIL_WHY.reservation,
+  });
+}
+
+/** Resolves false when the reservation has no member email or the send failed (logged). */
+async function sendReservationCancelledByTeamEmail(item, reservation, today) {
+  const emailPayload = buildReservationCancelledByTeamEmailPayload(item, reservation, today);
+
+  if (!emailPayload) {
+    console.warn(`Skipping cancellation email: no member email on reservation ${reservation?.id}.`);
+    return false;
+  }
+
+  return sendEmailPayloads([emailPayload], 'Reservation cancelled');
 }
 
 function isWithinWelcomeEmailSignupWindow(user) {
@@ -809,6 +1081,7 @@ function buildWelcomeEmailPayload(email) {
 
   return {
     from: FROM,
+    replyTo: EMAIL_REPLY_TO,
     to,
     subject,
     text: rendered.text,
@@ -965,16 +1238,19 @@ async function removeZoomMeeting(reservation) {
   }
 }
 
-/** Deletes the Zoom meeting (if any) and emails member + expert about a cancellation. */
+/**
+ * Deletes the Zoom meeting (if any) and emails member + expert about a cancellation.
+ * Resolves true when every email went out (see sendEmailPayloads).
+ */
 async function handleConsultationCancelled(item, reservation, previousStatus) {
   if (previousStatus === 'reserved') {
     await removeZoomMeeting(reservation);
   }
 
-  sendEmailPayloads(
+  return sendEmailPayloads(
     buildConsultationCancelledEmailPayloads(item, reservation, previousStatus),
     'Consultation cancelled',
-  ).catch((error) => console.error('Consultation cancelled emails failed:', error));
+  );
 }
 
 function validateMeetingAt(meetingAt) {
@@ -993,7 +1269,7 @@ function validateMeetingAt(meetingAt) {
 
 /**
  * Shared by the expert account panel and the admin approve route. Returns
- * `{ status, body, result }` so each route can shape its own success payload.
+ * `{ status, body, result, emailSent }` so each route can shape its own success payload.
  */
 async function runScheduleConsultation({ itemId, reservationId, meetingAt }) {
   const meetingError = validateMeetingAt(meetingAt);
@@ -1033,12 +1309,11 @@ async function runScheduleConsultation({ itemId, reservationId, meetingAt }) {
     };
   }
 
-  sendEmailPayloads(
-    buildConsultationScheduledEmailPayloads(result.item, result.reservation),
-    'Consultation scheduled',
-  ).catch((error) => console.error('Consultation scheduled emails failed:', error));
+  const emailSent = await settleNotifications('Consultation scheduled', [
+    sendConsultationScheduledEmails(result.item, result.reservation),
+  ]);
 
-  return { status: 200, result };
+  return { status: 200, result, emailSent };
 }
 
 /** Account-panel view of one consultation; each role only sees the other party's email. */
@@ -1089,26 +1364,14 @@ function reservationItemPayload(item) {
   return { id: sanitized.id, reservations: sanitized.reservations };
 }
 
-async function notifySlackReservation({ item, reservation }) {
+/**
+ * Posts to the Slack workflow trigger. Logs failures and never throws; the 5s timeout bounds
+ * how long the calling route waits.
+ */
+async function postSlackWorkflow(payload) {
   if (!SLACK_RESERVATION_WEBHOOK_URL) {
     return;
   }
-
-  const payload = {
-    item_id: item.id,
-    item_title: item.title,
-    item_body: item.body,
-    item_tag: item.tag,
-    reservation_id: reservation.id,
-    start_date: reservation.startDate,
-    end_date: reservation.endDate,
-    status: reservation.status,
-    user_email: reservation.userEmail ?? '',
-    time_slots: reservation.timeSlots ?? '',
-    request_summary: reservation.requestSummary ?? '',
-    expert_email: item.expertEmail ?? '',
-    admin_url: absoluteSiteUrl('/admin'),
-  };
 
   try {
     const response = await fetch(SLACK_RESERVATION_WEBHOOK_URL, {
@@ -1129,6 +1392,107 @@ async function notifySlackReservation({ item, reservation }) {
   }
 }
 
+async function notifySlackReservation({ item, reservation }) {
+  return postSlackWorkflow({
+    item_id: item.id,
+    item_title: item.title,
+    item_body: item.body,
+    item_tag: item.tag,
+    reservation_id: reservation.id,
+    start_date: reservation.startDate,
+    end_date: reservation.endDate,
+    status: reservation.status,
+    user_email: reservation.userEmail ?? '',
+    time_slots: reservation.timeSlots ?? '',
+    request_summary: reservation.requestSummary ?? '',
+    expert_email: item.expertEmail ?? '',
+    admin_url: absoluteSiteUrl('/admin'),
+  });
+}
+
+/**
+ * A staff alert through the same Slack workflow trigger, so it sends exactly the
+ * notifySlackReservation keys (unused ones ''). `status` names the event (e.g.
+ * 'mentor_profile_published') and `summary`, sent as `request_summary`, is the sentence staff
+ * read. Pass `reservation` when the alert is about one reservation or consultation; its id and
+ * dates fill `reservation_id`, `start_date` and `end_date` (otherwise both dates are today).
+ */
+async function notifySlackAlert({ status, item, userEmail, summary, reservation = null }) {
+  const today = toDateKey(new Date());
+
+  return postSlackWorkflow({
+    item_id: item?.id ?? '',
+    item_title: item?.title ?? '',
+    item_body: item?.body ?? '',
+    item_tag: item?.tag ?? '',
+    reservation_id: reservation?.id ?? '',
+    start_date: reservation?.startDate || today,
+    end_date: reservation?.endDate || today,
+    status,
+    user_email: userEmail ?? '',
+    time_slots: '',
+    request_summary: summary,
+    expert_email: item?.expertEmail ?? '',
+    admin_url: absoluteSiteUrl('/admin'),
+  });
+}
+
+const MENTOR_PROFILE_FIELD_LABELS = [
+  ['title', 'name'],
+  ['body', 'short text'],
+  ['longBody', 'long text'],
+  ['image', 'photo'],
+];
+
+/**
+ * Slack alert after a member publishes or edits their mentor profile, which goes live at once.
+ * An edit that changed nothing sends no alert. Async so a throw can't escape settleNotifications.
+ */
+async function notifyMentorProfileChange(action, email, item, previous = null) {
+  const pageUrl = itemPageUrl(item);
+
+  if (action === 'published') {
+    return notifySlackAlert({
+      status: 'mentor_profile_published',
+      item,
+      userEmail: email,
+      summary: `New mentor profile "${item.title}" published by ${email} (${pageUrl}). Review it in /admin > Mentors.`,
+    });
+  }
+
+  const changed = previous
+    ? MENTOR_PROFILE_FIELD_LABELS.filter(([key]) => (previous[key] ?? '') !== (item[key] ?? '')).map(
+        ([, label]) => label,
+      )
+    : null;
+
+  if (changed?.length === 0) {
+    return undefined;
+  }
+
+  const renamed = previous && previous.title !== item.title ? ` (previously "${previous.title}")` : '';
+  const what = changed ? `, changed: ${changed.join(', ')}` : '';
+  return notifySlackAlert({
+    status: 'mentor_profile_updated',
+    item,
+    userEmail: email,
+    summary: `Mentor profile "${item.title}"${renamed} updated by ${email}${what} (${pageUrl}). Review it in /admin > Mentors.`,
+  });
+}
+
+/** Slack alert when a member cancels an approved equipment, book or room reservation from /account. */
+async function notifyMemberReservationCancelled(item, reservation) {
+  const email = reservation.userEmail ?? '';
+
+  return notifySlackAlert({
+    status: 'reservation_cancelled_by_member',
+    item,
+    userEmail: email,
+    reservation,
+    summary: `${email} cancelled their approved reservation of "${item.title}" (${formatReservationDates(reservation)}) from their account. Those dates are free again (${itemPageUrl(item)}).`,
+  });
+}
+
 const INVENTORY_ASSETS_DIR = path.join(__dirname, 'src', 'assets', 'inventory');
 const INVENTORY_IMAGE_BASE = '/assets/inventory';
 
@@ -1144,6 +1508,30 @@ function getPublicClientConfig() {
     SITE_URL: (process.env.SITE_URL || process.env.VITE_SITE_URL || '').replace(/\/$/, ''),
   };
 }
+
+// www.<site host> → apex, same path and query. The www host needs its own Cloud Run
+// domain mapping + DNS record to reach this; other hosts (localhost, *.run.app) pass.
+function wwwRedirectEntry(origin) {
+  try {
+    const { hostname, origin: apexOrigin } = new URL(origin);
+    return hostname.startsWith('www.') ? null : [`www.${hostname}`, apexOrigin];
+  } catch {
+    return null;
+  }
+}
+
+const WWW_REDIRECT_ORIGINS = new Map(
+  [SITE_URL, PRODUCTION_SITE_ORIGIN].map(wwwRedirectEntry).filter(Boolean),
+);
+
+app.use((req, res, next) => {
+  const apexOrigin = WWW_REDIRECT_ORIGINS.get((req.hostname || '').toLowerCase());
+  if (!apexOrigin) {
+    return next();
+  }
+
+  res.redirect(301, `${apexOrigin}${req.originalUrl}`);
+});
 
 app.get('/config.js', (_req, res) => {
   res.type('application/javascript');
@@ -1193,7 +1581,61 @@ app.use(
   }),
 );
 
-app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, requireAdmin, async (req, res) => {
+// Cloud Run's front end adds no Content-Encoding, so compress here (Brotli or
+// gzip for JSON, HTML, JS, CSS; images and WOFF2 are skipped by type).
+app.use(compression());
+
+// Photo uploads: `code` lets the client show its own EN/FR message.
+const IMAGE_TOO_LARGE_ERROR = {
+  status: 413,
+  body: { error: 'This photo is too large. Please choose a smaller image.', code: 'image_too_large' },
+};
+
+const IMAGE_INVALID_ERROR = {
+  status: 400,
+  body: {
+    error: 'Image must be a JPEG, PNG, WebP, or GIF data URL or a path under /assets/inventory/.',
+    code: 'image_invalid',
+  },
+};
+
+const MEMBER_IMAGE_INVALID_ERROR = {
+  status: 400,
+  body: { error: 'Photo must be a JPEG, PNG, WebP, or GIF image.', code: 'image_invalid' },
+};
+
+/** null when `image` may be stored; otherwise the `{ status, body }` to send. */
+function inventoryImageError(image) {
+  if (isValidInventoryImage(image)) {
+    return null;
+  }
+
+  return isOversizedImageDataUrl(image) ? IMAGE_TOO_LARGE_ERROR : IMAGE_INVALID_ERROR;
+}
+
+/** Same for member uploads, which must be a photo: /assets/inventory/ seed paths are admin-only. */
+function memberImageError(image) {
+  if (isStorableImageDataUrl(image)) {
+    return null;
+  }
+
+  return isOversizedImageDataUrl(image) ? IMAGE_TOO_LARGE_ERROR : MEMBER_IMAGE_INVALID_ERROR;
+}
+
+// Room for one capped data URL plus the text fields. A larger body gets the same
+// JSON 413 as an oversized photo instead of Express's HTML error page.
+const imageUploadJsonParser = express.json({ limit: '3mb' });
+
+function imageUploadJson(req, res, next) {
+  imageUploadJsonParser(req, res, (error) => {
+    if (error?.type === 'entity.too.large') {
+      return res.status(IMAGE_TOO_LARGE_ERROR.status).json(IMAGE_TOO_LARGE_ERROR.body);
+    }
+    next(error);
+  });
+}
+
+app.post('/api/inventory', imageUploadJson, requireAuth, requireAdmin, async (req, res) => {
   const tagProvided =
     req.body?.tag !== undefined && req.body?.tag !== null && String(req.body.tag).trim() !== '';
 
@@ -1202,10 +1644,10 @@ app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, require
   }
 
   const image = typeof req.body?.image === 'string' ? req.body.image.trim() : '';
-  if (!isValidInventoryImage(image)) {
-    return res.status(400).json({
-      error: 'Image must be a JPEG or WebP data URL or a path under /assets/inventory/.',
-    });
+  // A missing image is reported with the other required fields below.
+  const imageError = image ? inventoryImageError(image) : null;
+  if (imageError) {
+    return res.status(imageError.status).json(imageError.body);
   }
 
   const expertEmail =
@@ -1251,7 +1693,7 @@ app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, require
     await ensureInventory();
     const savedItem = await createInventoryItem(item);
     auditAdminAction(req, 'create_inventory_item', { itemId: savedItem.id });
-    res.status(201).json({ item: savedItem });
+    res.status(201).json({ item: withPublicItemImage(savedItem) });
   } catch (error) {
     console.error('Failed to save inventory item:', error);
     const detail = error?.message || '';
@@ -1265,7 +1707,7 @@ app.post('/api/inventory', express.json({ limit: '10mb' }), requireAuth, require
 
 app.patch(
   '/api/inventory/:id',
-  express.json({ limit: '10mb' }),
+  imageUploadJson,
   requireAuth,
   requireAdmin,
   async (req, res) => {
@@ -1280,8 +1722,10 @@ app.patch(
     const longText = typeof req.body?.longBody === 'string' ? req.body.longBody.trim() : '';
     const expertEmail =
       typeof req.body?.expertEmail === 'string' ? req.body.expertEmail.trim() : '';
-    const imageProvided = typeof req.body?.image === 'string' && req.body.image.trim() !== '';
-    const image = imageProvided ? req.body.image.trim() : '';
+    const rawImage = typeof req.body?.image === 'string' ? req.body.image.trim() : '';
+    // The mentor's own /media URL sent back means the photo did not change.
+    const image = isItemMediaUrlForItem(rawImage, id) ? '' : rawImage;
+    const imageProvided = image !== '';
 
     if (!title || !shortText || !longText) {
       return res.status(400).json({
@@ -1305,10 +1749,9 @@ app.patch(
       return res.status(400).json({ error: 'Expert email must be a valid email address.' });
     }
 
-    if (imageProvided && !isValidInventoryImage(image)) {
-      return res.status(400).json({
-        error: 'Image must be a JPEG or WebP data URL or a path under /assets/inventory/.',
-      });
+    const imageError = imageProvided ? inventoryImageError(image) : null;
+    if (imageError) {
+      return res.status(imageError.status).json(imageError.body);
     }
 
     try {
@@ -1329,7 +1772,7 @@ app.patch(
       }
 
       auditAdminAction(req, 'update_expertise_item', { itemId: id });
-      res.json({ item: result.item });
+      res.json({ item: withPublicItemImage(result.item) });
     } catch (error) {
       console.error('Failed to update mentor:', error);
       const detail = error?.message || '';
@@ -1348,7 +1791,7 @@ function serializeMentorProfile(item) {
     title: item.title,
     body: item.body,
     longBody: item.longBody ?? null,
-    image: item.image,
+    image: publicItemImageUrl(item),
     tag: item.tag,
     slug: item.slug ?? null,
     createdAt: item.createdAt,
@@ -1356,7 +1799,11 @@ function serializeMentorProfile(item) {
   };
 }
 
-function readMentorProfileInput(body, { imageRequired }) {
+/**
+ * `allowMediaUrl` (updates only) passes a `/media/items/...` URL through so the
+ * route can check it is the member's own photo, which means "unchanged".
+ */
+function readMentorProfileInput(body, { imageRequired, allowMediaUrl = false }) {
   const title = typeof body?.title === 'string' ? body.title.trim() : '';
   const shortText = typeof body?.body === 'string' ? body.body.trim() : '';
   const longText = typeof body?.longBody === 'string' ? body.longBody.trim() : '';
@@ -1378,10 +1825,10 @@ function readMentorProfileInput(body, { imageRequired }) {
     return { error: `Long text must be ${EXPERT_LONG_TEXT_MAX} characters or fewer.` };
   }
 
-  if (image && !isValidInventoryImage(image)) {
-    return {
-      error: 'Image must be a JPEG or WebP data URL or a path under /assets/inventory/.',
-    };
+  const imageError =
+    image && !(allowMediaUrl && isItemMediaUrl(image)) ? memberImageError(image) : null;
+  if (imageError) {
+    return { status: imageError.status, ...imageError.body };
   }
 
   return {
@@ -1418,8 +1865,6 @@ function sendMentorProfileError(res, error, fallback) {
   });
 }
 
-const mentorProfileJson = express.json({ limit: '10mb' });
-
 const mentorProfileLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -1451,7 +1896,7 @@ app.get('/api/account/mentor-profile', requireAuth, async (req, res) => {
 
 app.post(
   '/api/account/mentor-profile',
-  mentorProfileJson,
+  imageUploadJson,
   mentorProfileLimiter,
   requireAuth,
   async (req, res) => {
@@ -1464,7 +1909,7 @@ app.post(
     const input = readMentorProfileInput(req.body, { imageRequired: true });
 
     if (input.error) {
-      return res.status(400).json({ error: input.error });
+      return res.status(input.status ?? 400).json({ error: input.error, code: input.code });
     }
 
     try {
@@ -1483,6 +1928,9 @@ app.post(
       }
 
       console.log('[mentor-profile]', { action: 'create', email, itemId: result.item.id });
+      await settleNotifications('Mentor profile published', [
+        notifyMentorProfileChange('published', email, result.item),
+      ]);
       res.status(201).json({ profile: serializeMentorProfile(result.item) });
     } catch (error) {
       sendMentorProfileError(res, error, 'Could not save your mentor profile.');
@@ -1492,7 +1940,7 @@ app.post(
 
 app.patch(
   '/api/account/mentor-profile',
-  mentorProfileJson,
+  imageUploadJson,
   mentorProfileLimiter,
   requireAuth,
   async (req, res) => {
@@ -1502,15 +1950,32 @@ app.patch(
       return;
     }
 
-    const input = readMentorProfileInput(req.body, { imageRequired: false });
+    const input = readMentorProfileInput(req.body, { imageRequired: false, allowMediaUrl: true });
 
     if (input.error) {
-      return res.status(400).json({ error: input.error });
+      return res.status(input.status ?? 400).json({ error: input.error, code: input.code });
     }
 
     try {
       await ensureInventory();
-      const result = await updateMentorProfileForEmail(email, input.fields);
+      let fields = input.fields;
+
+      if (isItemMediaUrl(fields.image)) {
+        // Only the member's own photo URL counts as "unchanged"; it is never stored.
+        const existing = await findMentorProfileByEmail(email);
+
+        if (!existing) {
+          return res.status(404).json({ error: 'You do not have a mentor profile yet.' });
+        }
+
+        if (!isItemMediaUrlForItem(fields.image, existing.id)) {
+          return res.status(MEMBER_IMAGE_INVALID_ERROR.status).json(MEMBER_IMAGE_INVALID_ERROR.body);
+        }
+
+        fields = { ...fields, image: '' };
+      }
+
+      const result = await updateMentorProfileForEmail(email, fields);
 
       if (result.invalid) {
         return res.status(400).json({ error: 'Name, short text, and long text are required.' });
@@ -1521,6 +1986,9 @@ app.patch(
       }
 
       console.log('[mentor-profile]', { action: 'update', email, itemId: result.item.id });
+      await settleNotifications('Mentor profile updated', [
+        notifyMentorProfileChange('updated', email, result.item, result.previous),
+      ]);
       res.json({ profile: serializeMentorProfile(result.item) });
     } catch (error) {
       sendMentorProfileError(res, error, 'Could not save your mentor profile.');
@@ -1579,17 +2047,91 @@ app.get('/sitemap.xml', async (_req, res) => {
   }
 });
 
-app.use('/assets/fonts', express.static(path.join(__dirname, 'src', 'assets', 'fonts')));
-app.use('/assets/brand', express.static(path.join(__dirname, 'src', 'assets', 'brand')));
-app.use(INVENTORY_IMAGE_BASE, express.static(INVENTORY_ASSETS_DIR));
-// Hashed JS/CSS and robots.txt only. `index: false` + `redirect: false` keep
+// Fonts, brand images and inventory photos keep stable file names, so they are
+// cached for a week: to change one, give the new file a new name.
+const STABLE_ASSET_STATIC_OPTIONS = { maxAge: '7d' };
+app.use('/assets/fonts', express.static(path.join(__dirname, 'src', 'assets', 'fonts'), STABLE_ASSET_STATIC_OPTIONS));
+app.use('/assets/brand', express.static(path.join(__dirname, 'src', 'assets', 'brand'), STABLE_ASSET_STATIC_OPTIONS));
+app.use(INVENTORY_IMAGE_BASE, express.static(INVENTORY_ASSETS_DIR, STABLE_ASSET_STATIC_OPTIONS));
+
+const DIST_DIR = path.join(__dirname, 'dist');
+// Vite writes content-hashed files directly into dist/assets; subfolders there
+// are copies from public/ with stable names.
+const DIST_HASHED_ASSETS_DIR = path.join(DIST_DIR, 'assets');
+
+// Hashed JS/CSS/images, robots.txt and the site icons only. `index: false` + `redirect: false` keep
 // every HTML route (including `/`) on the catch-all below so it receives
 // per-request SEO injection (locale-aware title/description/canonical/hreflang/
 // JSON-LD) instead of the raw template, and so `/about` is never 301'd to
 // `/about/` (which broke canonical URLs and sitemap entries).
-app.use(express.static(path.join(__dirname, 'dist'), { index: false, redirect: false }));
+app.use(
+  express.static(DIST_DIR, {
+    index: false,
+    redirect: false,
+    setHeaders(res, filePath) {
+      if (path.dirname(filePath) === DIST_HASHED_ASSETS_DIR) {
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith('.html')) {
+        res.set('Cache-Control', 'no-cache');
+      } else {
+        res.set('Cache-Control', 'public, max-age=3600');
+      }
+    },
+  }),
+);
+
+// Unknown /assets/* paths (a chunk from an earlier deploy, a renamed font) must
+// 404 instead of falling through to the SPA shell as HTML 200.
+app.use('/assets', (_req, res) => {
+  res.status(404).type('text/plain').send('Not found.');
+});
+
+// Uploaded photos (stored as data URLs) by content hash. Outside /api/ so crawlers
+// and link previews can fetch og:image. A stale hash redirects to the current photo.
+app.get(`${ITEM_MEDIA_BASE}/:id/:file`, async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+
+  if (!id) {
+    return res.status(404).type('text/plain').send('Not found.');
+  }
+
+  try {
+    const image = await findInventoryItemImage(id);
+    const fileName = itemMediaFileName(image);
+    const parsed = fileName ? parseImageDataUrl(image) : null;
+
+    if (!parsed) {
+      return res.status(404).type('text/plain').send('Not found.');
+    }
+
+    if (req.params.file !== fileName) {
+      res.set('Cache-Control', 'no-cache');
+      return res.redirect(302, publicItemImageUrl({ id, image }));
+    }
+
+    res.set({
+      'Content-Type': parsed.mime,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      // Helmet's default is same-origin; link previews and other sites may embed og:image.
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    res.send(Buffer.from(parsed.base64, 'base64'));
+  } catch (error) {
+    console.error('Failed to serve item image:', error);
+    res.status(500).type('text/plain').send('Could not load image.');
+  }
+});
+
+app.use('/media', (_req, res) => {
+  res.status(404).type('text/plain').send('Not found.');
+});
+
+// robots.txt lets crawlers fetch these two (rendered item and category pages need
+// them); the JSON itself stays out of the index.
+const PUBLIC_INVENTORY_ROBOTS_TAG = 'noindex';
 
 app.get('/api/inventory/by-slug/:tag/:slug', async (req, res) => {
+  res.set('X-Robots-Tag', PUBLIC_INVENTORY_ROBOTS_TAG);
   const tag = typeof req.params.tag === 'string' ? req.params.tag.trim() : '';
   const slug = typeof req.params.slug === 'string' ? req.params.slug.trim() : '';
 
@@ -1618,6 +2160,7 @@ app.get('/api/inventory/by-slug/:tag/:slug', async (req, res) => {
 });
 
 app.get('/api/inventory', async (_req, res) => {
+  res.set('X-Robots-Tag', PUBLIC_INVENTORY_ROBOTS_TAG);
   try {
     const items = await ensureInventory();
     res.set('Cache-Control', 'no-store');
@@ -1632,7 +2175,7 @@ app.get('/api/admin/inventory', requireAuth, requireAdmin, async (_req, res) => 
   try {
     const items = await ensureInventory();
     res.set('Cache-Control', 'no-store');
-    res.json({ items });
+    res.json({ items: items.map(withPublicItemImage) });
   } catch (error) {
     console.error('Failed to read admin inventory:', error);
     res.status(500).json({ error: 'Could not load inventory.' });
@@ -1642,7 +2185,8 @@ app.get('/api/admin/inventory', requireAuth, requireAdmin, async (_req, res) => 
 const CONSULTATION_TIME_SLOTS_MAX = 500;
 const CONSULTATION_SUMMARY_MAX = 2000;
 
-app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAuth, async (req, res) => {
+// IP limiter first (it also shields Supabase auth from token floods), then the per-account cap.
+app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAuth, reservationAccountLimiter, countSavedReservationCreates(async (req, res) => {
   const itemId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
   const userEmail = req.user?.email?.trim() || null;
 
@@ -1718,6 +2262,7 @@ app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAut
     if (pendingCount >= MAX_PENDING_RESERVATIONS_PER_USER) {
       return res.status(429).json({
         error: 'Too many pending reservations. Please wait for admin review before submitting more.',
+        code: 'pending_request_limit',
       });
     }
 
@@ -1737,18 +2282,26 @@ app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAut
       return res.status(409).json({ error: 'Selected dates overlap an existing reservation.' });
     }
 
-    const { item: updatedItem, reservation } = result;
-    notifySlackReservation({ item: updatedItem, reservation });
-
-    if (isExpertise) {
-      sendConsultationRequestEmails(updatedItem, reservation).catch((emailError) => {
-        console.error('Consultation request emails failed:', emailError);
+    if (result.consultationAlreadyOpen) {
+      return res.status(409).json({
+        error:
+          'You already have an open consultation request with this expert. Follow or cancel it from your account page.',
+        code: 'consultation_already_open',
       });
     }
+
+    const { item: updatedItem, reservation } = result;
+    // Counts against the daily cap from here, even if the client leaves before the response.
+    res.locals.reservationSaved = true;
+    const emailSent = await settleNotifications('New reservation', [
+      notifySlackReservation({ item: updatedItem, reservation }),
+      isExpertise ? sendConsultationRequestEmails(updatedItem, reservation) : null,
+    ]);
 
     res.status(201).json({
       reservation: sanitizeReservationForPublic(reservation),
       item: reservationItemPayload(updatedItem),
+      ...(isExpertise ? { emailSent } : {}),
     });
   } catch (error) {
     console.error('Failed to create reservation:', error);
@@ -1759,7 +2312,7 @@ app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAut
         : 'Could not create reservation.',
     });
   }
-});
+}));
 
 app.delete('/api/inventory/:id/reservations/:reservationId', requireAuth, requireAdmin, async (req, res) => {
   const itemId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
@@ -1782,19 +2335,33 @@ app.delete('/api/inventory/:id/reservations/:reservationId', requireAuth, requir
     }
 
     const { removed } = result;
+    const today = libraryTodayKey();
+    let emailSent;
+    // A meeting already held is only a record: removing it deletes no Zoom meeting and emails nobody.
     if (
       result.item.tag === 'expertise' &&
-      (removed.status === 'pending' || removed.status === 'reserved')
+      (removed.status === 'pending' || removed.status === 'reserved') &&
+      !isConsultationHeld(removed)
     ) {
-      await handleConsultationCancelled(
-        result.item,
-        { ...removed, cancelledBy: 'admin' },
-        removed.status,
-      );
+      emailSent = await settleNotifications('Consultation cancelled', [
+        handleConsultationCancelled(result.item, { ...removed, cancelledBy: 'admin' }, removed.status),
+      ]);
+    } else if (
+      result.item.tag !== 'expertise' &&
+      isUpcomingMemberReservation(removed, today)
+    ) {
+      // The member may be counting on this booking (or still waiting on the request).
+      emailSent = await settleNotifications('Reservation cancelled', [
+        sendReservationCancelledByTeamEmail(result.item, removed, today),
+      ]);
     }
 
     auditAdminAction(req, 'delete_reservation', { itemId, reservationId });
-    res.json({ success: true, item: result.item });
+    res.json({
+      success: true,
+      item: withPublicItemImage(result.item),
+      ...(emailSent === undefined ? {} : { emailSent }),
+    });
   } catch (error) {
     console.error('Failed to delete reservation:', error);
     res.status(500).json({ error: 'Could not delete reservation.' });
@@ -1855,7 +2422,7 @@ app.patch('/api/inventory/:id/reservations/:reservationId', requireAuth, require
     }
 
     auditAdminAction(req, 'patch_reservation', { itemId, reservationId, updates });
-    res.json({ item: result.item, reservation: result.reservation });
+    res.json({ item: withPublicItemImage(result.item), reservation: result.reservation });
   } catch (error) {
     console.error('Failed to update reservation:', error);
     res.status(500).json({ error: 'Could not update reservation.' });
@@ -1886,7 +2453,11 @@ app.post('/api/inventory/:id/reservations/:reservationId/approve', requireAuth, 
       }
 
       auditAdminAction(req, 'schedule_consultation', { itemId, reservationId });
-      return res.json({ item: scheduled.result.item, reservation: scheduled.result.reservation });
+      return res.json({
+        item: withPublicItemImage(scheduled.result.item),
+        reservation: scheduled.result.reservation,
+        emailSent: scheduled.emailSent,
+      });
     }
 
     if (result.notFound) {
@@ -1905,12 +2476,12 @@ app.post('/api/inventory/:id/reservations/:reservationId/approve', requireAuth, 
       return res.status(409).json({ error: 'Approved dates overlap an existing reservation.' });
     }
 
-    sendMemberDecisionEmail(result.item, result.reservation, 'approved').catch((emailError) => {
-      console.error('Reservation approval email failed:', emailError);
-    });
+    const emailSent = await settleNotifications('Reservation approval', [
+      sendMemberDecisionEmail(result.item, result.reservation, 'approved'),
+    ]);
 
     auditAdminAction(req, 'approve_reservation', { itemId, reservationId });
-    res.json({ item: result.item, reservation: result.reservation });
+    res.json({ item: withPublicItemImage(result.item), reservation: result.reservation, emailSent });
   } catch (error) {
     console.error('Failed to approve reservation:', error);
     res.status(500).json({ error: 'Could not approve reservation.' });
@@ -1941,12 +2512,12 @@ app.post('/api/inventory/:id/reservations/:reservationId/refuse', requireAuth, r
       return res.status(400).json({ error: 'Only pending reservations can be refused.' });
     }
 
-    sendMemberDecisionEmail(result.item, result.reservation, 'refused').catch((emailError) => {
-      console.error('Reservation refusal email failed:', emailError);
-    });
+    const emailSent = await settleNotifications('Reservation refusal', [
+      sendMemberDecisionEmail(result.item, result.reservation, 'refused'),
+    ]);
 
     auditAdminAction(req, 'refuse_reservation', { itemId, reservationId });
-    res.json({ item: result.item, reservation: result.reservation });
+    res.json({ item: withPublicItemImage(result.item), reservation: result.reservation, emailSent });
   } catch (error) {
     console.error('Failed to refuse reservation:', error);
     res.status(500).json({ error: 'Could not refuse reservation.' });
@@ -1968,21 +2539,35 @@ app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => 
       return res.status(404).json({ error: 'Item not found.' });
     }
 
+    let emailSent;
     if (existingItem?.tag === 'expertise') {
+      // Held meetings are deleted with the item but not cancelled (no Zoom delete, no emails).
       const activeConsultations = existingItem.reservations.filter(
-        (entry) => entry.status === 'pending' || entry.status === 'reserved',
+        (entry) =>
+          (entry.status === 'pending' || entry.status === 'reserved') && !isConsultationHeld(entry),
       );
-      for (const reservation of activeConsultations) {
-        await handleConsultationCancelled(
+      // Paced rounds, so a mentor with many requests doesn't hit Resend's rate limit. Each
+      // cancellation emails the member and the expert.
+      emailSent = await settleNotificationRounds('Consultation cancelled', activeConsultations, 2, (reservation) =>
+        handleConsultationCancelled(
           existingItem,
           { ...reservation, cancelledBy: 'admin' },
           reservation.status,
-        );
-      }
+        ),
+      );
+    } else if (existingItem) {
+      // Equipment, books and rooms: tell each member whose request or booking went with the item.
+      const today = libraryTodayKey();
+      const upcoming = existingItem.reservations.filter((entry) =>
+        isUpcomingMemberReservation(entry, today),
+      );
+      emailSent = await settleNotificationRounds('Reservation cancelled', upcoming, 1, (reservation) =>
+        sendReservationCancelledByTeamEmail(existingItem, reservation, today),
+      );
     }
 
     auditAdminAction(req, 'delete_inventory_item', { itemId: id });
-    res.json({ success: true });
+    res.json({ success: true, ...(emailSent === undefined ? {} : { emailSent }) });
   } catch (error) {
     console.error('Failed to delete inventory item:', error);
     res.status(500).json({ error: 'Could not delete inventory item.' });
@@ -2075,6 +2660,104 @@ app.get('/api/account/consultations', requireAuth, async (req, res) => {
   }
 });
 
+const accountReservationActionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many reservation updates. Please try again later.',
+    code: 'reservation_action_limit',
+  },
+});
+
+/** Account-panel view of one equipment, book or room reservation (whitelisted fields only). */
+function serializeReservationForMember({ item, reservation }) {
+  return {
+    id: reservation.id,
+    itemId: item.id,
+    title: item.title,
+    slug: item.slug ?? null,
+    tag: item.tag,
+    startDate: reservation.startDate,
+    endDate: reservation.endDate,
+    status: reservation.status,
+  };
+}
+
+app.get('/api/account/reservations', requireAuth, async (req, res) => {
+  const email = req.user?.email?.trim() ?? '';
+
+  try {
+    const entries = await listReservationsForMember(email);
+    res.set('Cache-Control', 'no-store');
+    res.json({ reservations: entries.map(serializeReservationForMember) });
+  } catch (error) {
+    console.error('Failed to load account reservations:', error);
+    res.status(500).json({ error: 'Could not load your reservations.' });
+  }
+});
+
+// "Today" is Montréal's date (libraryTodayKey), not the container's UTC one, so the cutoff falls at
+// midnight Montréal time, the same moment the account panel hides its Cancel button.
+app.post(
+  '/api/account/reservations/:reservationId/cancel',
+  accountReservationActionLimiter,
+  requireAuth,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+    const email = req.user?.email?.trim() ?? '';
+
+    try {
+      const result = await cancelReservationForMember(reservationId, email, {
+        today: libraryTodayKey(),
+      });
+
+      if (result.notFound) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      if (result.alreadyStarted) {
+        return res.status(400).json({
+          error:
+            'This reservation has already started, so it can no longer be cancelled here. Reply to your confirmation email if anything changes.',
+          code: 'reservation_already_started',
+        });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json({
+          error: 'This reservation is no longer active.',
+          code: 'reservation_not_active',
+        });
+      }
+
+      // Withdrawing a pending request needs nobody's attention; a freed approved booking does.
+      if (result.previousStatus === 'reserved') {
+        await settleNotifications('Reservation cancelled by member', [
+          notifyMemberReservationCancelled(result.item, result.reservation),
+        ]);
+      }
+
+      console.log('[reservation]', {
+        action: 'member_cancel',
+        reservationId,
+        previousStatus: result.previousStatus,
+      });
+      res.json({ reservation: serializeReservationForMember(result) });
+    } catch (error) {
+      console.error('Failed to cancel reservation:', error);
+      const detail = error?.message || '';
+      res.status(500).json({
+        error: isReservationSchemaError(detail)
+          ? reservationSchemaErrorMessage()
+          : 'Could not cancel the reservation.',
+      });
+    }
+  },
+);
+
 app.post(
   '/api/consultations/:reservationId/schedule',
   consultationActionLimiter,
@@ -2108,6 +2791,7 @@ app.post(
       console.log('[consultation]', { action: 'schedule', reservationId, by: role });
       res.json({
         consultation: serializeConsultationForUser(scheduled.result, 'expert'),
+        emailSent: scheduled.emailSent,
       });
     } catch (error) {
       console.error('Failed to schedule consultation:', error);
@@ -2142,7 +2826,16 @@ app.post(
         return res.status(400).json({ error: 'This consultation is no longer active.' });
       }
 
-      await handleConsultationCancelled(result.item, result.reservation, result.previousStatus);
+      if (result.alreadyHeld) {
+        return res.status(400).json({
+          error: 'This consultation has already taken place, so it can no longer be cancelled.',
+          code: 'consultation_already_held',
+        });
+      }
+
+      const emailSent = await settleNotifications('Consultation cancelled', [
+        handleConsultationCancelled(result.item, result.reservation, result.previousStatus),
+      ]);
 
       console.log('[consultation]', { action: 'cancel', reservationId, by: cancelledBy });
       res.json({
@@ -2150,6 +2843,7 @@ app.post(
           result,
           cancelledBy === 'member' ? 'member' : 'expert',
         ),
+        emailSent,
       });
     } catch (error) {
       console.error('Failed to cancel consultation:', error);
@@ -2170,6 +2864,8 @@ app.all('/api/*', (_req, res) => {
 
 app.get('*', async (req, res) => {
   const pathname = req.path || '/';
+  // The shell names the current hashed bundles, so browsers revalidate it on every load.
+  res.set('Cache-Control', 'no-cache');
 
   if (normalizeSeoPath(pathname) === '/admin' || normalizeSeoPath(pathname) === '/account') {
     res.set('X-Robots-Tag', 'noindex, nofollow');
@@ -2183,7 +2879,7 @@ app.get('*', async (req, res) => {
   const origin = SITE_URL || `${req.protocol}://${req.get('host')}`;
 
   try {
-    const html = await injectSeoIntoHtml(
+    const { html, status } = await injectSeoIntoHtml(
       indexHtmlTemplate,
       pathname,
       localeCode,
@@ -2192,11 +2888,16 @@ app.get('*', async (req, res) => {
       {
         includeJsonLd: !['/admin', '/account'].includes(normalizeSeoPath(pathname)),
         plausibleDomain: PLAUSIBLE_DOMAIN,
-        findItemBySlug: findInventoryItemBySlug,
+        findItemBySlug: findPublicItemBySlug,
       },
     );
 
-    res.type('html').send(html);
+    const body =
+      ITEM_DETAIL_CHUNK_PRELOAD && isItemDetailRoute(pathname)
+        ? html.replace('</head>', `  ${ITEM_DETAIL_CHUNK_PRELOAD}\n  </head>`)
+        : html;
+
+    res.status(status).type('html').send(body);
   } catch (error) {
     console.error('Failed to inject SEO into HTML:', error);
     res.type('html').send(indexHtmlTemplate);
@@ -2219,6 +2920,7 @@ function startServer(port, attempt = 1) {
     }
     if (apiKey) {
       console.log(`Member decision emails from → ${FROM}`);
+      console.log(`Email replies → ${EMAIL_REPLY_TO}`);
       console.log(`Email links → ${EMAIL_SITE_ORIGIN}`);
     }
     if (SLACK_RESERVATION_WEBHOOK_URL) {

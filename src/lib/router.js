@@ -1,6 +1,9 @@
 import { writable } from 'svelte/store';
 import { slugifyTitle } from './slug.js';
 
+// Shared with the server catch-all, which answers 404 for the same paths.
+export { isKnownAppPath } from './item-routes.js';
+
 const DEFAULT_CATEGORY = 'equipment';
 
 function normalizePath(pathname) {
@@ -142,7 +145,9 @@ export function navigateToItem(item) {
 
 // Closes the item overlay and keeps the URL in sync. When we arrived via an
 // in-app push (history.state marker present) we step back so the grid entry is
-// restored; otherwise (deep link / refresh) we push the category path.
+// restored. Otherwise (deep link, refresh, OAuth return) we replace the item entry
+// with the category path: a push would leave the item one Back away, and Android
+// Chrome's system Back (a dialog close request) would then reopen the overlay.
 export function closeItemOverlay(tag) {
   if (typeof window === 'undefined') {
     return;
@@ -153,7 +158,10 @@ export function closeItemOverlay(tag) {
     return;
   }
 
-  navigate(categoryToPath(tag));
+  const url = new URL(categoryToPath(tag), window.location.origin);
+  preserveLangParam(url);
+  window.history.replaceState({}, '', url.pathname + url.search);
+  path.set(url.pathname);
 }
 
 const RESERVE_QUERY = 'reserve';

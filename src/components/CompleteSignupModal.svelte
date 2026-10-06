@@ -1,5 +1,10 @@
 <script>
-  import { completeMemberAgreement, needsMemberAgreement, signOut } from '../lib/auth.js';
+  import {
+    completeMemberAgreement,
+    needsMemberAgreement,
+    passwordPrompt,
+    signOut,
+  } from '../lib/auth.js';
   import { t, translateKey } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
@@ -12,14 +17,18 @@
   let formStatus = $state('');
 
   // Opens whenever the signed-in account came from an OAuth provider without the agreement.
+  // It waits while SetPasswordModal is up (a reset link can sign in such an account), so the
+  // two dialogs never stack; it opens once the new password is saved or skipped.
+  const shouldOpen = $derived($needsMemberAgreement && !$passwordPrompt);
+
   $effect(() => {
     if (!dialog) return;
-    if ($needsMemberAgreement && !dialog.open) {
+    if (shouldOpen && !dialog.open) {
       contractSigned = false;
       emailUpdatesOptIn = false;
       formStatus = '';
       dialog.showModal();
-    } else if (!$needsMemberAgreement && dialog.open) {
+    } else if (!shouldOpen && dialog.open) {
       dialog.close();
     }
   });

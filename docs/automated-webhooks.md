@@ -1,6 +1,6 @@
 # Automated webhooks
 
-The ARL Online server posts to **one optional outbound webhook**: a Slack workflow trigger on new pending reservations. There are no other webhook integrations in the application codebase.
+The ARL Online server posts to **one optional outbound webhook**: a Slack workflow trigger. It fires on new pending reservations and, as **staff alerts** with the same payload keys, when a member publishes or edits a mentor profile or cancels an approved equipment, book or room reservation from `/account`. There are no other webhook integrations in the application codebase.
 
 ---
 
@@ -10,19 +10,20 @@ The ARL Online server posts to **one optional outbound webhook**: a Slack workfl
 |-------|-------|
 | **Env var** | `SLACK_RESERVATION_WEBHOOK_URL` |
 | **Required** | No — omitted or empty string disables the webhook entirely |
-| **Function** | `notifySlackReservation()` in `server.js` |
-| **Trigger** | Successful `POST /api/inventory/:id/reservations` |
+| **Function** | `notifySlackReservation()` and `notifySlackAlert()` in `server.js`, both posting through `postSlackWorkflow()` |
+| **Trigger** | Successful `POST /api/inventory/:id/reservations`; successful `POST /api/account/mentor-profile`; `PATCH /api/account/mentor-profile` that changed a field; `POST /api/account/reservations/:reservationId/cancel` on an approved booking (see [Staff alerts](#staff-alerts)) |
 | **HTTP method** | `POST` |
 | **Content-Type** | `application/json` |
 | **Timeout** | **5 seconds** (`AbortSignal.timeout(5000)`) |
-| **Blocks API response?** | **No** — fire-and-forget; reservation returns 201 even if Slack fails |
+| **Blocks API response?** | **Awaited, but never fails it** — the route waits for the post (at most 5 s) before returning 201, so it finishes while Cloud Run still gives the request CPU. The reservation returns 201 even if Slack fails or times out |
 
 ### When it runs
 
 1. Member submits valid reservation dates, or time slots + summary for an expertise consultation (authenticated JWT).
 2. Reservation is persisted with `status: pending`.
-3. `notifySlackReservation({ item, reservation })` is called without `await`.
+3. `notifySlackReservation({ item, reservation })` runs alongside the consultation emails (expertise only). The route waits for both through `settleNotifications()` before it responds. `notifySlackReservation` logs its own failures and never throws.
 4. If URL is unset, function returns immediately (no network call).
+5. Rejected creates post nothing: 400, 404, 409 (including `consultation_already_open`) and 429 (the IP limiter `reservation_rate_limited`, the 10-per-account daily cap `daily_request_limit`, or the 5-pending cap `pending_request_limit`). The daily cap is what stops a request → cancel loop from posting over and over. It counts a create once the reservation is saved (`countSavedReservationCreates()` in `server.js`), so a client that disconnects while the route waits for this post still uses one.
 
 ### Payload (JSON body)
 
@@ -37,10 +38,10 @@ All values are plain strings suitable for Slack workflow trigger variables:
 | `reservation_id` | `reservation.id` | New reservation UUID |
 | `start_date` | `reservation.startDate` | `YYYY-MM-DD` (submission date for expertise requests) |
 | `end_date` | `reservation.endDate` | `YYYY-MM-DD` (same as start for expertise requests) |
-| `status` | `reservation.status` | `pending` on create |
+| `status` | `reservation.status` | `pending` on create. Staff alerts: `mentor_profile_published`, `mentor_profile_updated` or `reservation_cancelled_by_member` |
 | `user_email` | `reservation.userEmail` | Member email from JWT; empty string if missing |
 | `time_slots` | `reservation.timeSlots` | Member's free-text availability (expertise only; empty string otherwise) |
-| `request_summary` | `reservation.requestSummary` | Member's consultation topic summary (expertise only; empty string otherwise) |
+| `request_summary` | `reservation.requestSummary` | Member's consultation topic summary (expertise only; empty string otherwise). Staff alerts: one sentence describing the event |
 | `expert_email` | `item.expertEmail` | Expert contact from the item (expertise only; empty string otherwise) |
 | `admin_url` | `absoluteSiteUrl('/admin')` | Link to the admin page for reviewing the request |
 
@@ -64,9 +65,31 @@ All values are plain strings suitable for Slack workflow trigger variables:
 }
 ```
 
+### Staff alerts
+
+`notifySlackAlert({ status, item, userEmail, summary, reservation? })` sends an event that is not a new reservation through the **same** workflow trigger, with **exactly the same 13 keys** (unused ones are `''`), so the existing trigger accepts it without new variables. `status` names the event and `request_summary` carries a sentence for staff. Pass `reservation` when an alert is about one reservation or consultation: its id fills `reservation_id` and its dates fill `start_date` / `end_date` (without it, both dates are today's date key).
+
+| `status` | When | Other fields |
+|----------|------|--------------|
+| `mentor_profile_published` | After a successful `POST /api/account/mentor-profile` (the profile is public at once) | `item_*` from the new expertise item; `user_email` and `expert_email` = the account email; `start_date` = `end_date` = today's date key; `reservation_id` and `time_slots` empty; `admin_url` |
+| `mentor_profile_updated` | After a successful `PATCH /api/account/mentor-profile` that changed the name, short text, long text or photo. A save with no changes sends nothing | Same as above, from the updated item |
+| `reservation_cancelled_by_member` | After a member cancels an **approved** (`reserved`) equipment, book or room reservation from `/account` (`POST /api/account/reservations/:reservationId/cancel`). Withdrawing a still-pending request sends nothing | `item_*` from the item; `reservation_id`, `start_date`, `end_date` from the reservation; `user_email` = the member; `time_slots` and `expert_email` empty |
+
+**`request_summary` examples:**
+
+```
+New mentor profile "Jane Doe" published by jane@example.com (https://activistresourcelibrary.com/expertise/jane-doe). Review it in /admin > Mentors.
+Mentor profile "Jane D." (previously "Jane Doe") updated by jane@example.com, changed: name, photo (https://activistresourcelibrary.com/expertise/jane-doe). Review it in /admin > Mentors.
+member@example.com cancelled their approved reservation of "Projector" (Tuesday, October 13, 2026 to Tuesday, October 20, 2026) from their account. Those dates are free again (https://activistresourcelibrary.com/equipment/projector).
+```
+
+Like the reservation post, the route waits for the alert (at most 5 s) inside `settleNotifications()`, and a Slack failure or timeout never fails the save or the cancellation.
+
 ### Slack workflow setup
 
 Configure the Slack workflow trigger URL (typically `https://hooks.slack.com/triggers/...`) to accept the variable names above. The app sends **text-only JSON** — no Slack Block Kit payload, no signing secret verification on the app side.
+
+**The workflow's message must show `{status}` and `{request_summary}`.** Otherwise a staff alert looks like an empty reservation. For example, start the message with `{status}: {request_summary}`.
 
 ### Failure behavior
 
@@ -74,8 +97,8 @@ Configure the Slack workflow trigger URL (typically `https://hooks.slack.com/tri
 |-----------|----------|
 | URL not set | Silent no-op |
 | HTTP non-2xx | `console.error` with status and response body |
-| Network / timeout error | `console.error('Slack reservation webhook error:', error)` |
-| Any failure | Reservation still succeeds normally |
+| Network / timeout error | `console.error('Slack reservation webhook error:', error)`; a timeout delays the 201 by at most 5 s |
+| Any failure | Reservation or mentor profile save still succeeds normally (Slack never affects the response's `emailSent`) |
 
 ### Startup log
 
@@ -92,8 +115,11 @@ Slack reservation webhook → configured
 | Event | Notes |
 |-------|-------|
 | Reservation approve / refuse | No Slack call |
-| Reservation delete / patch | No Slack call |
-| Add / remove inventory item | No Slack call |
+| Reservation delete / patch (admin) | No Slack call |
+| Member withdraws a pending request from `/account` | No Slack call (cancelling an approved booking does send `reservation_cancelled_by_member`) |
+| Consultation schedule / cancel | No Slack call |
+| Add / remove inventory item, admin **Mentors** edits | No Slack call (only member mentor-profile saves send an alert) |
+| Mentor profile `PATCH` that changed nothing | No Slack call |
 | Client-side actions | Kimchi bubbles are in-browser only |
 
 ---
@@ -112,7 +138,7 @@ Slack reservation webhook → configured
 | Gap | Notes |
 |-----|-------|
 | **Single webhook only** | No Discord, Teams, Zapier, or generic webhook abstraction |
-| **Create-only** | Status changes (approve/refuse/delete) do not notify Slack |
+| **Few events** | New reservations, mentor profile saves and member cancellations of approved bookings only. Approve, refuse, admin deletes and consultation schedule/cancel do not notify Slack |
 | **No retry** | Failed POSTs are logged once; no queue or retry |
 | **No authentication headers** | Relies on obscurity of the Slack trigger URL |
 
@@ -122,6 +148,6 @@ Slack reservation webhook → configured
 
 | File | Role |
 |------|------|
-| `server.js` | `notifySlackReservation()`, route hook on reservation create |
+| `server.js` | `postSlackWorkflow()`, `notifySlackReservation()`, `notifySlackAlert()`, `notifyMentorProfileChange()`, `notifyMemberReservationCancelled()`; hooks on reservation create, mentor-profile `POST`/`PATCH` and the member reservation cancel |
 | `.env.example` | Documents optional `SLACK_RESERVATION_WEBHOOK_URL` |
 | `scripts/cloud-build.sh` | Cloud Run runtime env for webhook URL |

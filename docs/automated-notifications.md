@@ -56,6 +56,7 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 | Header **Register** click | `HeaderAuth.svelte` | `kimchi.register_click` | You want to join? Awesome! 🎉 | Tu veux nous rejoindre ? Super ! 🎉 | **5000 ms** (default) | Before opening register modal |
 | Reserve modal **Register** | `ReserveAuthRequiredModal.svelte` | `kimchi.register_click` | (same) | (same) | **5000 ms** (default) | Signed-out user clicks Register in auth-required dialog |
 | Sign out success | `HeaderAuth.svelte`, `AccountPage.svelte` | `kimchi.signed_out` | You've signed out! See you next time 👋 | Tu t'es déconnecté(e) ! À bientôt 👋 | **5000 ms** (default) | After `signOut()` succeeds |
+| New password saved | `SetPasswordModal.svelte` | `kimchi.password_updated` | Meow! Your password is updated. | Miaou ! Ton mot de passe est à jour. | **5000 ms** (default) | After `updatePassword()` succeeds, from a reset link or **Change password** on `/account` |
 
 ### Inventory browsing
 
@@ -70,6 +71,8 @@ When Kimchi is asleep (`setKimchiNotificationsEnabled(false)`):
 | Pending reservation saved | `ItemCalendar.svelte` | `kimchi.reservation_sent` | Meow! Your reservation request is sent, AisB will review it. | Miaou ! Ta demande de réservation est envoyée, AisB va l'examiner. | **5000 ms** | After successful `POST /api/inventory/:id/reservations` when `status === 'pending'` |
 | Consultation request sent | `ConsultationRequestForm.svelte` | `kimchi.consultation_sent` | Meow! Your consultation request is sent to the expert. | Miaou ! Ta demande de consultation est envoyée à l'expert. | **5000 ms** | After successful consultation submit on an expertise item |
 | Consultation scheduled | `AccountConsultations.svelte` | `kimchi.consultation_scheduled` | Meow! Meeting scheduled, Zoom invitations are on their way. | Miaou ! Rencontre planifiée, les invitations Zoom sont en route. | **5000 ms** | Expert schedules from `/account` |
+| Reservation request withdrawn | `AccountReservations.svelte` | `kimchi.reservation_withdrawn` | Meow! Your request is withdrawn. | Miaou ! Ta demande est retirée. | **5000 ms** | Member withdraws a pending equipment/book/room request from `/account` |
+| Reservation cancelled | `AccountReservations.svelte` | `kimchi.reservation_cancelled` | Meow! Reservation cancelled, the team has been told. | Miaou ! Réservation annulée, l'équipe est avisée. | **5000 ms** | Member cancels an approved booking that has not started from `/account` |
 | Consultation cancelled | `AccountConsultations.svelte` | `kimchi.consultation_cancelled` | Meow! Consultation cancelled, everyone has been notified. | Miaou ! Consultation annulée, tout le monde a été avisé. | **5000 ms** | Member or expert cancels from `/account` |
 | Mentor profile published | `AccountShareExpertise.svelte` | `kimchi.mentor_profile_published` | Meow! Your mentor profile is on the Expertise list. | Miaou ! Ton profil de mentor est dans la liste Expertise. | **5000 ms** | After successful `POST /api/account/mentor-profile` |
 | Mentor profile updated | `AccountShareExpertise.svelte` | `kimchi.mentor_profile_updated` | Meow! Your mentor profile is updated. | Miaou ! Ton profil de mentor est à jour. | **5000 ms** | After successful `PATCH /api/account/mentor-profile` |
@@ -135,7 +138,9 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `InventoryCard.svelte` | `inventory.reservation_pending` / `inventory.reservation_complete` | Card status line after reserve success (5 s fade) |
 | `ItemCalendar.svelte` | `calendar.reservation_pending` / `calendar.reservation_saved` | Inline calendar status after confirm |
 | `ConsultationRequestForm.svelte` | `consultation.request_pending` / `consultation.create_error` | Inline form status after consultation submit |
-| `AuthModal.svelte` | Various `auth.*` keys | Login/register errors and “check your email” (Supabase-driven) |
+| `AccountReservations.svelte` | `account_reservations.withdrawn_status` / `cancelled_status` | Visually hidden `role="status"` line after a withdraw / cancel, so screen readers hear it even while Kimchi is asleep |
+| `AuthModal.svelte` | Various `auth.*` keys | Login/register errors and “check your email” (Supabase-driven); reset view: neutral `auth.reset_sent` after **Send reset link**, `auth.rate_limited` / `auth.enter_valid_email` / `auth.reset_send_failed` on real failures, `auth.reset_link_expired` when an expired reset link opens the view |
+| `SetPasswordModal.svelte` | `auth.password_updated` (+ `auth.password_*` errors) | Visually hidden `role="status"` line after a new password is saved, so screen readers hear it even while Kimchi is asleep; errors show inline in the dialog's status line, which (like `AuthModal`'s) stays in the page between messages so each one is announced |
 
 ---
 
@@ -144,8 +149,7 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | Gap | Notes |
 |-----|-------|
 | **Refuse reservation** | Admin refuse succeeds with **no** Kimchi bubble (approve and delete do notify) |
-| **Supabase auth emails** | Sign-up confirmation and password reset are sent by Supabase Auth, not this app |
-| **Quote footer** | Rotating activist quotes (`quotes.items`) are decorative, not notifications |
+| **Supabase auth emails** | Sign-up confirmation and password reset are sent by Supabase Auth, not this app (the app only requests the reset email from the **Forgot password?** view; see `docs/automated-emails.md`) |
 
 ---
 
@@ -159,10 +163,12 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `src/components/InventoryCard.svelte` | Item reaction on hover |
 | `src/components/HeaderAuth.svelte` | Register click, sign-out |
 | `src/components/AccountPage.svelte` | Sign-out |
+| `src/components/SetPasswordModal.svelte` | New password saved |
 | `src/components/ReserveAuthRequiredModal.svelte` | Register from reserve gate |
 | `src/components/ItemCalendar.svelte` | Reservation sent confirmation |
 | `src/components/ConsultationRequestForm.svelte` | Consultation request sent confirmation |
 | `src/components/AccountConsultations.svelte` | Consultation scheduled / cancelled confirmations |
+| `src/components/AccountReservations.svelte` | Reservation withdrawn / cancelled confirmations |
 | `src/components/AccountShareExpertise.svelte` | Mentor profile published / updated confirmations |
 | `src/components/AddItemModal.svelte` | Item added confirmation |
 | `src/components/AdminPanel.svelte` | Admin action confirmations |

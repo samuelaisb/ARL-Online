@@ -6,30 +6,12 @@ const apiTarget = process.env.VITE_API_TARGET || `http://localhost:${process.env
 export default defineConfig({
   envPrefix: ['VITE_', 'SITE_'],
   plugins: [svelte()],
+  // No manualChunks: named chunks pulled shared deps (Svelte runtime, supabase-js)
+  // into page chunks and made the entry import them statically, which defeated
+  // App.svelte's `{#await import(...)}` lazy pages.
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('AdminPage') || id.includes('AdminPanel')) {
-            return 'admin';
-          }
-
-          if (id.includes('ItemCalendar') || id.includes('ItemDetailPage')) {
-            return 'calendar';
-          }
-
-          if (id.includes('HowThisWorksPage')) {
-            return 'how-this-works';
-          }
-
-          if (id.includes('AboutPage')) {
-            return 'about';
-          }
-        },
-      },
-    },
   },
   server: {
     proxy: {
@@ -38,6 +20,7 @@ export default defineConfig({
       '/assets/inventory': apiTarget,
       '/assets/fonts': apiTarget,
       '/assets/brand': apiTarget,
+      '/media': apiTarget,
       '/robots.txt': apiTarget,
       '/sitemap.xml': apiTarget,
     },

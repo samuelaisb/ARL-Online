@@ -1,12 +1,13 @@
 import {
   buildSeoHeadHtml,
   getItemSeoConfig,
+  getNotFoundSeoConfig,
   getProductJsonLd,
   getSeoForRoute,
   normalizeSeoPath,
   ROUTE_SEO_KEYS,
 } from './seo.js';
-import { getItemRouteParams } from './item-routes.js';
+import { getItemRouteParams, isKnownAppPath } from './item-routes.js';
 
 const SUPPORTED_LOCALES = ['en', 'fr'];
 
@@ -53,6 +54,12 @@ export function stripDefaultSeoTags(html) {
     );
 }
 
+/**
+ * Returns `{ html, status }`. The status is 404 for a path the SPA has no page
+ * for, and for `/{tag}/{slug}` when no such item exists; the shell is still sent
+ * (with a noindex "Page not found" head) so the client renders its not-found view.
+ * A failed item lookup keeps 200: the item may exist.
+ */
 export async function injectSeoIntoHtml(
   html,
   pathname,
@@ -61,13 +68,18 @@ export async function injectSeoIntoHtml(
   escapeHtml,
   options = {},
 ) {
+  let status = isKnownAppPath(pathname) ? 200 : 404;
+
   if (!html || typeof html !== 'string') {
-    return html;
+    return { html, status };
   }
 
   const { findItemBySlug, ...headOptions } = options;
   const itemParams = getItemRouteParams(pathname);
-  let seo = getSeoForRoute(pathname, localeCode);
+  let seo =
+    status === 404
+      ? getNotFoundSeoConfig(pathname, localeCode)
+      : getSeoForRoute(pathname, localeCode);
   let productJsonLd = null;
 
   if (itemParams && typeof findItemBySlug === 'function') {
@@ -77,6 +89,9 @@ export async function injectSeoIntoHtml(
       if (item) {
         seo = getItemSeoConfig(item, localeCode, origin);
         productJsonLd = getProductJsonLd(item, origin);
+      } else {
+        status = 404;
+        seo = getNotFoundSeoConfig(pathname, localeCode);
       }
     } catch (error) {
       console.error('Failed to load item SEO metadata:', error);
@@ -89,12 +104,15 @@ export async function injectSeoIntoHtml(
   });
 
   if (!headInjection) {
-    return html;
+    return { html, status };
   }
 
   const lang = SUPPORTED_LOCALES.includes(localeCode) ? localeCode : 'en';
 
-  return stripDefaultSeoTags(html)
-    .replace(/<html\b([^>]*?)\slang=["'][^"']*["']/i, `<html$1 lang="${lang}"`)
-    .replace('</head>', `    ${headInjection}\n  </head>`);
+  return {
+    html: stripDefaultSeoTags(html)
+      .replace(/<html\b([^>]*?)\slang=["'][^"']*["']/i, `<html$1 lang="${lang}"`)
+      .replace('</head>', `    ${headInjection}\n  </head>`),
+    status,
+  };
 }

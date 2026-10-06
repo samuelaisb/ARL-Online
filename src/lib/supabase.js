@@ -34,34 +34,66 @@ export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 const AUTH_ERROR_PARAMS = ['error', 'error_code', 'error_description'];
 
 /**
- * Reads and strips an auth error Supabase appended to the URL (cancelled OAuth consent,
- * provider without an email, expired confirmation link). supabase-js leaves these in the
- * URL and never surfaces them, so capture them before the client initializes.
+ * Query flag on the return URL of a password-reset email (see `requestPasswordReset` in
+ * auth.js). Supabase's error redirect doesn't say which kind of email link failed, so
+ * the flag is what tells an expired reset link apart from an expired sign-up link.
  */
-function takeAuthCallbackError() {
-  if (typeof window === 'undefined') return '';
+export const PASSWORD_RESET_RETURN_PARAM = 'password_reset';
+
+/**
+ * Reads the auth redirect that loaded this page, before the client initializes:
+ * - strips an auth error Supabase appended to the URL (cancelled OAuth consent, provider
+ *   without an email, expired email link); supabase-js leaves these in the URL and never
+ *   surfaces them;
+ * - strips the password-reset flag;
+ * - notes a recovery session in the hash (`type=recovery`), which supabase-js then reads.
+ *   Its PASSWORD_RECOVERY event fires on a timer that can beat the auth listener.
+ */
+function takeAuthCallback() {
+  const result = { error: '', passwordReset: false, recovery: false };
+  if (typeof window === 'undefined') return result;
   const url = new URL(window.location.href);
   const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+  result.recovery = hash.get('type') === 'recovery' && hash.has('access_token');
+  result.passwordReset = url.searchParams.has(PASSWORD_RESET_RETURN_PARAM);
+  url.searchParams.delete(PASSWORD_RESET_RETURN_PARAM);
+
   const source = [hash, url.searchParams].find((params) =>
     AUTH_ERROR_PARAMS.some((key) => params.has(key)),
   );
-  if (!source) return '';
+  if (!source && !result.passwordReset) return result;
 
-  const message = source.get('error_description') || source.get('error') || '';
-  for (const key of AUTH_ERROR_PARAMS) {
-    source.delete(key);
-  }
-  if (source === hash) {
-    const rest = hash.toString();
-    url.hash = rest ? `#${rest}` : '';
+  if (source) {
+    const message = source.get('error_description') || source.get('error') || '';
+    result.error = message.replace(/\+/g, ' ');
+    for (const key of AUTH_ERROR_PARAMS) {
+      source.delete(key);
+    }
+    if (source === hash) {
+      const rest = hash.toString();
+      url.hash = rest ? `#${rest}` : '';
+    }
   }
   window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
-  return message.replace(/\+/g, ' ');
+  return result;
 }
 
-/** Auth error message from the redirect that loaded this page, if any. */
-export const authCallbackError = supabaseConfigured ? takeAuthCallbackError() : '';
+const authCallback = supabaseConfigured
+  ? takeAuthCallback()
+  : { error: '', passwordReset: false, recovery: false };
 
+/** Auth error message from the redirect that loaded this page, if any. */
+export const authCallbackError = authCallback.error;
+
+/** True when this page was opened from a password-reset email (success or error). */
+export const authCallbackPasswordReset = authCallback.passwordReset;
+
+/** True when the URL carries a password-recovery session for supabase-js to read. */
+export const authCallbackRecovery = authCallback.recovery;
+
+// Default options: implicit flow, so email links (confirmation, password reset) return
+// tokens in the URL hash, which takeAuthCallback relies on. Switching to PKCE
+// (`?code=`) means updating it.
 export const supabase = supabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
