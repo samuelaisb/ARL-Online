@@ -4,7 +4,7 @@ Claude Code is taking the lead on ARL Online from here. This is the state of the
 
 ## Where things stand
 
-- **GitHub:** `main` is pushed up to `f4eb05c` (Google and Discord sign-in, the privacy policy page, member agreement updates). The big feature commit before it is `355cc29` (Expertise consultations, Zoom scheduling, Share Expertise, branded emails).
+- **GitHub:** the deep-review fixes are committed on local `main` as `5dd94b5`, plus a docs commit after it. `origin/main` is at `f4eb05c` (Google and Discord sign-in, the privacy policy page, member agreement updates) until those are pushed. The big feature commit before that is `355cc29` (Expertise consultations, Zoom scheduling, Share Expertise, branded emails).
 - **Build:** `npm run build` passes with no Svelte or accessibility warnings. `node --check` passes on `server.js` and the server libs. Every locale key used in `src/` exists in both `en.json` and `fr.json`.
 - **No secrets** in the repo. `.env` is gitignored. `.DS_Store` files are untracked and ignored.
 - **Production (confirmed by the user, 2026-10-05):**
@@ -12,7 +12,7 @@ Claude Code is taking the lead on ARL Online from here. This is the state of the
   - Migrations `005_expertise.sql`, `006_consultation_scheduling.sql`, and `007_expertise_copy.sql` are applied to the production Supabase project.
   - Zoom works in production: consultations create and delete Zoom meetings, so `zoom-client-secret` is in Secret Manager and bound.
   - Future migrations are still applied by hand in the Supabase SQL editor, and the startup schema check only probes migration 002, so a missing migration shows up on the first request that needs it, not at boot.
-- **Deep review, 2026-10-05.** A full review produced 99 verified findings, and the most important were fixed the same day. Those fixes are **uncommitted in the working tree and not deployed** (see **User actions** below). No migration is needed. What changed:
+- **Deep review, 2026-10-05.** A full review produced 99 verified findings, and the most important were fixed the same day. Those fixes are committed (`5dd94b5`) and **deployed** as Cloud Run revision `arl-online-00032-pbh` on 2026-10-05; the live headers, 404s, `/media` images and 11 KB `/api/inventory` were checked after deploy. The dashboard steps under **User actions** below are still to do. No migration is needed. What changed:
   - **Page weight:** compression, long-lived caching for hashed files, WOFF2 font subsets, real lazy page chunks with a reload fallback (`PageLoadError.svelte`), 128 px Kimchi photos. Uploaded photos are now served from `/media/items/...` instead of base64 inside `/api/inventory` (1.1 MB → about 11 KB), with a 2,000,000-character upload cap.
   - **Search:** robots.txt lets Google fetch the two public inventory reads, unknown paths and missing items return real 404s with a not-found view, item load errors no longer say "Item not found", one JSON-LD block of each kind, favicons and an apple-touch-icon, and a www → apex 301 (DNS still to do).
   - **Navigation and accessibility:** Android Back no longer loops on deep-linked items, focus returns to the card when the overlay closes, the rotating quote footer is gone, and focus rings are visible (Mint / Grape).
@@ -22,11 +22,10 @@ Claude Code is taking the lead on ARL Online from here. This is the state of the
 
 ## User actions from the 2026-10-05 fixes
 
-Steps outside the repo for the uncommitted fixes, in order.
+Steps outside the repo for the 2026-10-05 fixes. Commit and deploy are done (`5dd94b5`, revision `arl-online-00032-pbh`); `npm audit --omit=dev` reported 0 before deploy.
 
 **Before deploying**
 
-- Review the working tree and commit it (or ask Claude to). Nothing from the deep review is committed yet.
 - Check that the Ringold Sans licence (Bijou Type through TypeNetwork, licence ID 349110 in the font's name table) allows a self-hosted, subsetted WOFF2. If it doesn't, get TypeNetwork's official WOFF2 and add it under a new file name.
 
 **Deploy**
