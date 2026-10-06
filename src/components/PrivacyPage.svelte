@@ -1,5 +1,5 @@
 <script>
-  import { navigate } from '../lib/router.js';
+  import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { locale, t } from '../lib/i18n.js';
   import { getPrivacyPolicyHtml } from '../lib/privacy-policy.js';
 
@@ -13,9 +13,9 @@
     return () => element?.removeEventListener('click', handleContentClick);
   });
 
-  function goHome(event) {
+  function goToInventory(event) {
     event.preventDefault();
-    navigate('/');
+    navigate(INVENTORY_PATH);
   }
 
   // Keep in-site links in the policy (e.g. /about) on the SPA router.
@@ -34,7 +34,7 @@
 
 <main id="main-content" class="container privacy-page">
   <p class="privacy-page__back">
-    <a href="/" class="privacy-page__back-link" onclick={goHome}>
+    <a href={INVENTORY_PATH} class="privacy-page__back-link" onclick={goToInventory}>
       {$t('privacy.back_to_inventory')}
     </a>
   </p>

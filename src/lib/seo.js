@@ -139,7 +139,7 @@ export function getItemDetailPath(item) {
   const slug = item?.slug;
 
   if (!slug) {
-    return tag === 'equipment' ? '/' : `/${tag}`;
+    return `/${tag}`;
   }
 
   return `/${tag}/${slug}`;

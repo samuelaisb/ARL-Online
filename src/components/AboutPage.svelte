@@ -1,5 +1,5 @@
 <script>
-  import { navigate } from '../lib/router.js';
+  import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import { sendContactMessage } from '../lib/contact.js';
 
@@ -11,9 +11,9 @@
   let formStatus = $state('');
   let formStatusType = $state('');
 
-  function goHome(event) {
+  function goToInventory(event) {
     event.preventDefault();
-    navigate('/');
+    navigate(INVENTORY_PATH);
   }
 
   function goToPrivacy(event) {
@@ -77,7 +77,7 @@
 
 <main id="main-content" class="container about-page">
   <p class="about-page__back">
-    <a href="/" class="about-page__back-link" onclick={goHome}>
+    <a href={INVENTORY_PATH} class="about-page__back-link" onclick={goToInventory}>
       {$t('about.back_to_inventory')}
     </a>
   </p>

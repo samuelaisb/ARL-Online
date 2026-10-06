@@ -1,15 +1,16 @@
 <script>
   import {
+    INVENTORY_PATH,
     isAboutRoute,
+    isCategoryPath,
     isHowThisWorksRoute,
-    isInventoryHomePath,
     navigate,
     path,
   } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
 
   const links = [
-    { href: '/', labelKey: 'site.nav_inventory', isInventory: true },
+    { href: INVENTORY_PATH, labelKey: 'site.nav_inventory', isInventory: true },
     { href: '/howthisworks', labelKey: 'site.nav_how_it_works' },
     { href: '/about', labelKey: 'site.nav_about' },
   ];
@@ -18,7 +19,7 @@
     const current = $path.replace(/\/$/, '') || '/';
 
     if (link.isInventory) {
-      return isInventoryHomePath(current);
+      return isCategoryPath(current);
     }
 
     if (link.href === '/about') {

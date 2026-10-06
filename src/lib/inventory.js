@@ -3,7 +3,8 @@ import { supabase, supabaseConfigured } from './supabase.js';
 
 const LEGACY_STORAGE_KEY = 'arl-inventory-items';
 
-export const INVENTORY_TAGS = ['equipment', 'books', 'rooms', 'expertise'];
+// Display order for the category tabs, the homepage links and the admin tag picker.
+export const INVENTORY_TAGS = ['expertise', 'equipment', 'books', 'rooms'];
 export const DEFAULT_INVENTORY_TAG = 'equipment';
 
 function loadLegacyLocalItems() {

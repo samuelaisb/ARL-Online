@@ -1,7 +1,7 @@
 <script>
   import { authReady, isApathyAdmin, session } from '../lib/auth.js';
   import { supabaseConfigured } from '../lib/supabase.js';
-  import { navigate } from '../lib/router.js';
+  import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import AdminPanel from './AdminPanel.svelte';
 
@@ -16,15 +16,15 @@
     onOpenRegister,
   } = $props();
 
-  function goHome(event) {
+  function goToInventory(event) {
     event.preventDefault();
-    navigate('/');
+    navigate(INVENTORY_PATH);
   }
 </script>
 
 <main id="main-content" class="container admin-page">
   <p class="admin-page__back">
-    <a href="/" class="admin-page__back-link" onclick={goHome}>{$t('admin.back_to_inventory')}</a>
+    <a href={INVENTORY_PATH} class="admin-page__back-link" onclick={goToInventory}>{$t('admin.back_to_inventory')}</a>
   </p>
 
   {#if !supabaseConfigured}

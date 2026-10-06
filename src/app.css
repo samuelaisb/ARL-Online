@@ -11,6 +11,8 @@
     U+2190-2193, U+2212, U+2215, U+2713, U+FEFF, U+FFFD;
 }
 
+/* Only .brand-heading (homepage and inventory h1) uses Ringold; server.js preloads
+   it on those routes. */
 @font-face {
   font-family: 'Ringold Sans';
   src: url('/assets/fonts/ringold/Ringold-Sans.woff2') format('woff2');
@@ -22,12 +24,12 @@
 }
 
 :root {
-  /* The fixed corner widgets (FES badge bottom-left, Kimchi bottom-right) sit this
-     far above the viewport bottom, clear of the iPhone home indicator. */
+  /* The fixed Kimchi widget (bottom-right) sits this far above the viewport bottom,
+     clear of the iPhone home indicator. */
   --corner-widget-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
   /* Space kept free below the page content (and below focused controls, through
-     scroll-padding) so nothing stays hidden under the FES badge (about 82px tall). */
-  --corner-widget-clearance: calc(var(--corner-widget-bottom) + 6.75rem);
+     scroll-padding) so nothing stays hidden under Kimchi's 4rem avatar. */
+  --corner-widget-clearance: calc(var(--corner-widget-bottom) + 4.75rem);
 
   /* Apathy is Boring brand palette */
   --color-light: #faf9f7;
@@ -49,7 +51,9 @@
   --color-shadow-strong: rgba(35, 31, 32, 0.12);
 
   --font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'Ringold Sans', 'Inter', sans-serif;
+  /* Titles: Inter Bold. Rules using --font-display also set font-weight: 700. */
+  --font-display: var(--font-body);
+  --font-brand: 'Ringold Sans', var(--font-body);
 }
 
 *,
@@ -80,50 +84,6 @@ body {
   display: flex;
   flex-direction: column;
   padding-bottom: var(--corner-widget-clearance);
-}
-
-.site-attribution {
-  position: fixed;
-  left: calc(0.75rem + env(safe-area-inset-left, 0px));
-  bottom: var(--corner-widget-bottom);
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.375rem;
-  max-width: min(9rem, calc(100vw - 1.5rem));
-  padding: 0.5625rem 0.75rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 0.46875rem;
-  box-shadow: 0 3px 12px var(--color-shadow);
-}
-
-.site-attribution__text {
-  margin: 0;
-  font-size: 0.5625rem;
-  line-height: 1.45;
-  color: var(--color-text-muted);
-  text-align: left;
-}
-
-.site-attribution__logo-link {
-  display: block;
-  flex-shrink: 0;
-  line-height: 0;
-}
-
-.site-attribution__logo-link:focus-visible {
-  outline: 2px solid var(--color-mint);
-  outline-offset: 2px;
-  border-radius: 0.125rem;
-}
-
-.site-attribution__logo {
-  display: block;
-  flex-shrink: 0;
-  height: 1.875rem;
-  width: auto;
 }
 
 .site-psa-banner {
@@ -405,7 +365,7 @@ h3,
 .modal-header h2,
 .inventory-content h3 {
   font-family: var(--font-display);
-  font-weight: normal;
+  font-weight: 700;
   letter-spacing: -0.02em;
   text-transform: uppercase;
 }
@@ -413,6 +373,13 @@ h3,
 h1 {
   margin: 0 0 0.5rem;
   font-size: 1.75rem;
+}
+
+/* The homepage and inventory headings. Ringold has one weight: normal, so the
+   browser doesn't fake a bold. */
+.brand-heading {
+  font-family: var(--font-brand);
+  font-weight: normal;
 }
 
 /* A page's main heading takes focus from script (tabindex="-1") when the item
@@ -550,6 +517,296 @@ h1[tabindex='-1']:focus {
   margin-bottom: 0;
 }
 
+/* Homepage: one link per category, icon chips in the brand's light/dark pairings. */
+.home-page__header {
+  margin-bottom: 1.5rem;
+}
+
+.home-categories__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-category {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: 100%;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  text-decoration: none;
+  box-shadow: 0 2px 8px var(--color-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.home-category:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--color-shadow-strong);
+}
+
+.home-category:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.home-category__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 0.75rem;
+  background: var(--color-lemon);
+  color: var(--color-dark);
+}
+
+.home-category--books .home-category__icon {
+  background: var(--color-lavender);
+}
+
+.home-category--rooms .home-category__icon {
+  background: var(--color-pear);
+}
+
+.home-category--expertise .home-category__icon {
+  background: var(--color-mint);
+  color: var(--color-lemon);
+}
+
+.home-category__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.home-category__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.home-category:hover .home-category__name {
+  color: var(--color-mint);
+  text-decoration: underline;
+}
+
+.home-category__description {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+/* Wide screens: the four links as one row, icon above the text. */
+@media (min-width: 900px) {
+  .home-categories__list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .home-category {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1.25rem 1.125rem 1.375rem;
+  }
+}
+
+.home-section {
+  margin-top: 2.25rem;
+}
+
+.home-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.home-section__title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.home-section__link {
+  color: var(--color-mint);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.home-section__link:hover {
+  text-decoration: underline;
+}
+
+.home-section__link:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+/* Four random experts (HomePage picks them once per page load). */
+.home-experts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-expert {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  height: 100%;
+  padding: 0.75rem 0.5rem;
+  border-radius: 0.75rem;
+  color: var(--color-text);
+  text-align: center;
+  text-decoration: none;
+}
+
+.home-expert:hover .home-expert__name {
+  color: var(--color-mint);
+  text-decoration: underline;
+}
+
+.home-expert:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.home-expert__photo {
+  display: block;
+  width: 6rem;
+  height: 6rem;
+  margin-bottom: 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  object-fit: cover;
+}
+
+.home-expert__name {
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.home-expert__topics {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.home-expert__line {
+  width: 70%;
+  height: 0.875rem;
+  border-radius: 999px;
+  background: var(--color-surface);
+}
+
+/* Bottom of the card: the two steps, then who made the library. */
+.home-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+  margin-top: 2.25rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.home-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-step {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-weight: 600;
+}
+
+.home-step__number {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--color-lemon);
+  color: var(--color-dark);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.home-partners {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+/* Each label stays on the same line as its logo when the strip wraps. */
+.home-partners__item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.home-partners__label {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.home-partners__link {
+  display: block;
+  line-height: 0;
+}
+
+.home-partners__link:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+.home-partners__logo {
+  display: block;
+  width: auto;
+  height: 2rem;
+}
+
+/* The AisB file is a padded 1024 px square, so it needs more height to match FES. */
+.home-partners__logo--aisb {
+  height: 3.5rem;
+  margin-block: -0.75rem;
+}
+
 .how-this-works-steps {
   display: flex;
   flex-direction: column;
@@ -580,6 +837,7 @@ h1[tabindex='-1']:focus {
   background: var(--color-lavender);
   color: var(--color-dark);
   font-family: var(--font-display);
+  font-weight: 700;
   font-size: 1rem;
   line-height: 1;
 }
@@ -975,33 +1233,37 @@ h1[tabindex='-1']:focus {
   gap: 0.75rem;
 }
 
-.account-panel {
-  max-width: 28rem;
-  padding: 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-}
-
-.account-panel__email {
-  margin: 0 0 1.25rem;
-  font-size: 1rem;
+.account-page__email {
+  margin: 0;
+  color: var(--color-text-muted);
   word-break: break-word;
 }
 
-.account-panel__actions {
+.account-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.account-panel__actions .btn-header[aria-expanded='true'] {
+/* font-weight: the Admin link is an <a>, which doesn't get the buttons' 600. */
+.account-actions .btn-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.account-actions__icon {
+  flex-shrink: 0;
+}
+
+.account-actions .btn-header[aria-expanded='true'] {
   background: var(--color-lemon);
   border-color: transparent;
   color: var(--color-dark);
 }
 
-.account-panel__error {
+.account-actions__error {
   margin: 0.75rem 0 0;
   font-size: 0.875rem;
   color: var(--color-plum);
@@ -1532,11 +1794,13 @@ h1[tabindex='-1']:focus {
     background: var(--color-surface);
   }
 
-  .inventory-card {
+  .inventory-card,
+  .home-category {
     transition: none;
   }
 
-  .inventory-card:hover {
+  .inventory-card:hover,
+  .home-category:hover {
     transform: none;
   }
 }
@@ -2650,10 +2914,6 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
-  .site-attribution {
-    max-width: min(8rem, calc(100vw - 1.5rem));
-  }
-
   .container {
     padding: 1.25rem;
   }
@@ -2678,8 +2938,38 @@ button:disabled {
     padding-inline: 0.75rem;
   }
 
-  .inventory-filter__btn:nth-child(3) {
-    grid-column: 1 / -1;
+  /* Compact rows so most of the list shows below the welcome text on a phone. */
+  .home-categories__list {
+    grid-template-columns: 1fr;
+    gap: 0.625rem;
+  }
+
+  .home-category {
+    gap: 0.875rem;
+    padding: 0.875rem;
+  }
+
+  .home-category__icon {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .home-category__name {
+    font-size: 1.125rem;
+  }
+
+  .home-category__description {
+    font-size: 0.9rem;
+  }
+
+  .home-experts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .home-expert__photo {
+    width: 5rem;
+    height: 5rem;
   }
 
   /* Expert/member consultation cards: stack text above actions so a
@@ -2712,10 +3002,6 @@ button:disabled {
 @media (max-width: 360px) {
   .inventory-filter {
     grid-template-columns: 1fr;
-  }
-
-  .inventory-filter__btn:nth-child(3) {
-    grid-column: auto;
   }
 }
 

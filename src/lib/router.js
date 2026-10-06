@@ -1,67 +1,30 @@
+import { tick } from 'svelte';
 import { writable } from 'svelte/store';
 import { slugifyTitle } from './slug.js';
+import { categoryToPath, normalizePath } from './item-routes.js';
 
-// Shared with the server catch-all, which answers 404 for the same paths.
-export { isKnownAppPath } from './item-routes.js';
+// Also used by the server (SEO injection, catch-all 404s) and auth.js, so one copy.
+export {
+  CATEGORY_ROUTES,
+  ITEM_ROUTE_RE,
+  categoryToPath,
+  getCategoryFromPath,
+  getItemRouteParams,
+  isCategoryPath,
+  isItemDetailRoute,
+  isKnownAppPath,
+} from './item-routes.js';
 
 const DEFAULT_CATEGORY = 'equipment';
 
-function normalizePath(pathname) {
-  const path = pathname.replace(/\/$/, '');
-  return path || '/';
-}
+/** Where the "Inventory" nav link and the "Back to inventory" links go. */
+export const INVENTORY_PATH = categoryToPath(DEFAULT_CATEGORY);
 
 function getPath() {
   return normalizePath(window.location.pathname);
 }
 
 export const path = writable(typeof window !== 'undefined' ? getPath() : '/');
-
-export const CATEGORY_ROUTES = {
-  '/equipment': 'equipment',
-  '/books': 'books',
-  '/rooms': 'rooms',
-  '/expertise': 'expertise',
-};
-
-export const ITEM_ROUTE_RE = /^\/(equipment|books|rooms|expertise)\/([^/]+)$/;
-
-export function getItemRouteParams(pathname) {
-  const normalized = normalizePath(pathname);
-  const match = normalized.match(ITEM_ROUTE_RE);
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    tag: match[1],
-    slug: decodeURIComponent(match[2]),
-  };
-}
-
-export function isItemDetailRoute(pathname) {
-  return getItemRouteParams(pathname) !== null;
-}
-
-export function getCategoryFromPath(pathname) {
-  const normalized = normalizePath(pathname);
-
-  if (isItemDetailRoute(normalized)) {
-    return null;
-  }
-
-  if (normalized === '/') {
-    return DEFAULT_CATEGORY;
-  }
-
-  return CATEGORY_ROUTES[normalized] ?? null;
-}
-
-export function isInventoryHomePath(pathname) {
-  const normalized = normalizePath(pathname);
-  return normalized === '/' || normalized in CATEGORY_ROUTES;
-}
 
 export function itemToPath(item) {
   const tag = item?.tag || DEFAULT_CATEGORY;
@@ -86,26 +49,6 @@ export function resolveItemSlug(item) {
   return slugifyTitle(item?.title);
 }
 
-export function categoryToPath(tag) {
-  if (tag === 'equipment') {
-    return '/';
-  }
-
-  if (tag === 'books') {
-    return '/books';
-  }
-
-  if (tag === 'rooms') {
-    return '/rooms';
-  }
-
-  if (tag === 'expertise') {
-    return '/expertise';
-  }
-
-  return '/';
-}
-
 export function navigate(to) {
   const next = normalizePath(to.startsWith('/') ? to : `/${to}`);
   if (next === getPath()) {
@@ -114,6 +57,23 @@ export function navigate(to) {
   }
   window.history.pushState({}, '', next);
   path.set(next);
+}
+
+/** True for a click the app should route itself: left button, no modifier key (those open a new tab or window). */
+export function isPlainLeftClick(event) {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
+/**
+ * navigate() to another page and start it like a fresh load: scroll to the top and
+ * focus its main heading (pages give it tabindex="-1"), since the clicked link has
+ * usually unmounted and would leave focus on <body>.
+ */
+export async function navigateToPage(to) {
+  navigate(to);
+  await tick();
+  window.scrollTo(0, 0);
+  document.querySelector('#main-content h1')?.focus({ preventScroll: true });
 }
 
 // Marks a history entry as an item-overlay push, so closeItemOverlay can decide
@@ -246,6 +206,10 @@ export function navigateToItemWithReserve(item) {
 
   window.history.pushState(ITEM_OVERLAY_STATE, '', target);
   path.set(pathOnly);
+}
+
+export function isHomeRoute(pathname) {
+  return normalizePath(pathname) === '/';
 }
 
 export function isAdminRoute(pathname) {

@@ -64,7 +64,7 @@ import {
   publicItemImageUrl,
   withPublicItemImage,
 } from './src/lib/item-media.js';
-import { isItemDetailRoute } from './src/lib/item-routes.js';
+import { isCategoryPath, isItemDetailRoute } from './src/lib/item-routes.js';
 import { injectSeoIntoHtml, resolveRequestLocale } from './src/lib/seo-server.js';
 import { normalizeSeoPath, PRODUCTION_SITE_ORIGIN } from './src/lib/seo.js';
 import { orgContact, renderBrandedEmail } from './src/lib/email-brand.js';
@@ -170,6 +170,13 @@ function findItemDetailChunkPreload() {
 }
 
 const ITEM_DETAIL_CHUNK_PRELOAD = findItemDetailChunkPreload();
+
+/**
+ * Ringold is used only by the homepage and inventory headings (`.brand-heading`),
+ * so the font is preloaded on `/`, the category grids and item routes alone.
+ */
+const BRAND_FONT_PRELOAD =
+  '<link rel="preload" href="/assets/fonts/ringold/Ringold-Sans.woff2" as="font" type="font/woff2" crossorigin>';
 
 /**
  * CSP `script-src` hashes for the inline scripts in the built `index.html`
@@ -2892,10 +2899,17 @@ app.get('*', async (req, res) => {
       },
     );
 
-    const body =
-      ITEM_DETAIL_CHUNK_PRELOAD && isItemDetailRoute(pathname)
-        ? html.replace('</head>', `  ${ITEM_DETAIL_CHUNK_PRELOAD}\n  </head>`)
-        : html;
+    const onItemRoute = isItemDetailRoute(pathname);
+    const routePreloads = [];
+    if (normalizeSeoPath(pathname) === '/' || isCategoryPath(pathname) || onItemRoute) {
+      routePreloads.push(BRAND_FONT_PRELOAD);
+    }
+    if (ITEM_DETAIL_CHUNK_PRELOAD && onItemRoute) {
+      routePreloads.push(ITEM_DETAIL_CHUNK_PRELOAD);
+    }
+    const body = routePreloads.length
+      ? html.replace('</head>', `  ${routePreloads.join('\n    ')}\n  </head>`)
+      : html;
 
     res.status(status).type('html').send(body);
   } catch (error) {

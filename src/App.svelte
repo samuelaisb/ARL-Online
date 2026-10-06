@@ -6,12 +6,14 @@
     isAboutRoute,
     isAccountRoute,
     isAdminRoute,
+    isCategoryPath,
+    isHomeRoute,
     isHowThisWorksRoute,
-    isInventoryHomePath,
     isItemDetailRoute,
     isKnownAppPath,
+    isPlainLeftClick,
     isPrivacyRoute,
-    navigate,
+    navigateToPage,
     path,
   } from './lib/router.js';
   import {
@@ -29,6 +31,7 @@
     setRobotsMeta,
     upsertJsonLd,
   } from './lib/seo.js';
+  import HomePage from './components/HomePage.svelte';
   import InventoryPanel from './components/InventoryPanel.svelte';
   import SiteNav from './components/SiteNav.svelte';
   import HeaderAuth from './components/HeaderAuth.svelte';
@@ -61,7 +64,8 @@
   const onAccountPage = $derived(isAccountRoute($path));
   const onPrivacyPage = $derived(isPrivacyRoute($path));
   const onItemDetailPage = $derived(isItemDetailRoute($path));
-  const onInventoryPage = $derived(isInventoryHomePath($path));
+  const onHomePage = $derived(isHomeRoute($path));
+  const onInventoryPage = $derived(isCategoryPath($path));
   const onUnknownPage = $derived(!isKnownAppPath($path));
 
   async function refreshInventory() {
@@ -139,9 +143,14 @@
     }
   }
 
+  // Logo and not-found link. A full reload here would also wake Kimchi and replay the greeting.
   function goHome(event) {
+    if (!isPlainLeftClick(event)) {
+      return;
+    }
+
     event.preventDefault();
-    navigate('/');
+    navigateToPage('/');
   }
 
   function openAddItemModal() {
@@ -252,7 +261,9 @@
   });
 
   function findOverlayReturnTarget(itemPath) {
-    const cardLink = Array.from(document.querySelectorAll('.inventory-card__title-link')).find(
+    const cardLink = Array.from(
+      document.querySelectorAll('.inventory-card__title-link, .home-expert'),
+    ).find(
       (link) => link.pathname === itemPath,
     );
     if (cardLink) {
@@ -330,7 +341,7 @@
   </div>
 
   <header class="site-header">
-    <a class="site-header__brand" href="/" aria-label={$t('site.brand_home_aria')}>
+    <a class="site-header__brand" href="/" aria-label={$t('site.brand_home_aria')} onclick={goHome}>
       <img
         class="site-header__logo"
         src="/assets/brand/apathy-is-boring-logo.png"
@@ -390,14 +401,13 @@
       {:catch}
         <PageLoadError />
       {/await}
+    {:else if onHomePage}
+      <HomePage {items} {loading} />
     {:else if onInventoryPage || onItemDetailPage}
       <main id="main-content" class="container">
         <header class="page-header">
-          <h1 tabindex="-1">{$t('site.title')}</h1>
-          <p class="subtitle">{$t('site.subtitle')}</p>
+          <h1 class="brand-heading" tabindex="-1">{$t('site.title')}</h1>
           <p class="page-intro">{$t('site.intro')}</p>
-          <p class="page-intro page-intro--extended">{$t('site.intro_extended')}</p>
-          <p class="page-intro page-intro--extended">{$t('site.intro_support')}</p>
         </header>
 
         <InventoryPanel
@@ -436,27 +446,6 @@
     <PageLoadError overlay />
   {/await}
 {/if}
-
-<aside class="site-attribution" aria-label={$t('site.attribution_aria')}>
-  <p class="site-attribution__text">
-    {$t('site.attribution_text')}
-  </p>
-  <a
-    class="site-attribution__logo-link"
-    href="https://www.fesplanet.org"
-    target="_blank"
-    rel="noopener noreferrer"
-    aria-label={$t('site.attribution_link_aria')}
-  >
-    <img
-      class="site-attribution__logo"
-      src="/assets/brand/fes-logo.webp"
-      alt={$t('site.fes_name')}
-      width="120"
-      height="40"
-    />
-  </a>
-</aside>
 
 {#if onAdminPage}
   {#await import('./components/AddItemModal.svelte') then { default: AddItemModal }}

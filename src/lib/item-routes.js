@@ -1,7 +1,5 @@
 /** Path parsing for inventory and item detail URLs (no browser / Svelte deps). */
 
-const DEFAULT_CATEGORY = 'equipment';
-
 export function normalizePath(pathname) {
   const path = pathname.replace(/\/$/, '');
   return path || '/';
@@ -35,22 +33,12 @@ export function isItemDetailRoute(pathname) {
 }
 
 export function getCategoryFromPath(pathname) {
-  const normalized = normalizePath(pathname);
-
-  if (isItemDetailRoute(normalized)) {
-    return null;
-  }
-
-  if (normalized === '/') {
-    return DEFAULT_CATEGORY;
-  }
-
-  return CATEGORY_ROUTES[normalized] ?? null;
+  return CATEGORY_ROUTES[normalizePath(pathname)] ?? null;
 }
 
-export function isInventoryHomePath(pathname) {
-  const normalized = normalizePath(pathname);
-  return normalized === '/' || normalized in CATEGORY_ROUTES;
+/** True for a category grid (`/equipment`, `/books`, ...). `/` is the homepage. */
+export function isCategoryPath(pathname) {
+  return normalizePath(pathname) in CATEGORY_ROUTES;
 }
 
 /** Non-item paths App.svelte renders a page for (see the route checks in router.js). */
@@ -74,22 +62,8 @@ export function isKnownAppPath(pathname) {
   return APP_PAGE_PATHS.includes(normalized) || isItemDetailRoute(normalized);
 }
 
+/** The category grid for a tag, or the homepage for an unknown tag. */
 export function categoryToPath(tag) {
-  if (tag === 'equipment') {
-    return '/';
-  }
-
-  if (tag === 'books') {
-    return '/books';
-  }
-
-  if (tag === 'rooms') {
-    return '/rooms';
-  }
-
-  if (tag === 'expertise') {
-    return '/expertise';
-  }
-
-  return '/';
+  const categoryPath = `/${tag}`;
+  return categoryPath in CATEGORY_ROUTES ? categoryPath : '/';
 }

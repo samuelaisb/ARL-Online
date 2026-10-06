@@ -1,5 +1,5 @@
 <script>
-  import { navigate } from '../lib/router.js';
+  import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { faq, t } from '../lib/i18n.js';
 
   const steps = [
@@ -10,15 +10,15 @@
     'pickup',
   ];
 
-  function goHome(event) {
+  function goToInventory(event) {
     event.preventDefault();
-    navigate('/');
+    navigate(INVENTORY_PATH);
   }
 </script>
 
 <main id="main-content" class="container how-this-works-page">
   <p class="how-this-works-page__back">
-    <a href="/" class="how-this-works-page__back-link" onclick={goHome}>
+    <a href={INVENTORY_PATH} class="how-this-works-page__back-link" onclick={goToInventory}>
       {$t('how_this_works.back_to_inventory')}
     </a>
   </p>

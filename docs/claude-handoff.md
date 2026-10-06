@@ -4,6 +4,7 @@ Claude Code is taking the lead on ARL Online from here. This is the state of the
 
 ## Where things stand
 
+- **Homepage and account layout (2026-10-06, not committed or deployed yet).** `/` is now a homepage (`HomePage.svelte`: welcome copy, four icon links with Expertise first, four random experts, two steps and a Created by FES / Run by AisB strip) and Equipment lives only at `/equipment`. The floating FES badge is gone from every page. `/account` shows the email under the heading and the action buttons, each with a small icon, outside the old grey box. Details are in the `AGENTS.md` changelog. No migration or env var. After deploying: on a phone, check that `/` shows the four links, that a link lower down opens its category at the top, and that the logo goes home without reloading; sign in and check `/account`.
 - **GitHub:** the deep-review fixes are committed on local `main` as `5dd94b5`, plus a docs commit after it. `origin/main` is at `f4eb05c` (Google and Discord sign-in, the privacy policy page, member agreement updates) until those are pushed. The big feature commit before that is `355cc29` (Expertise consultations, Zoom scheduling, Share Expertise, branded emails).
 - **Build:** `npm run build` passes with no Svelte or accessibility warnings. `node --check` passes on `server.js` and the server libs. Every locale key used in `src/` exists in both `en.json` and `fr.json`.
 - **No secrets** in the repo. `.env` is gitignored. `.DS_Store` files are untracked and ignored.
@@ -26,7 +27,7 @@ Steps outside the repo for the 2026-10-05 fixes. Commit and deploy are done (`5d
 
 **Before deploying**
 
-- Check that the Ringold Sans licence (Bijou Type through TypeNetwork, licence ID 349110 in the font's name table) allows a self-hosted, subsetted WOFF2. If it doesn't, get TypeNetwork's official WOFF2 and add it under a new file name.
+- Check that the Ringold Sans licence (Bijou Type through TypeNetwork, licence ID 349110 in the font's name table) allows a self-hosted, subsetted WOFF2. Since 2026-10-06 it is used only for the homepage and inventory headings. If the licence doesn't allow it, get TypeNetwork's official WOFF2 and add it under a new file name.
 
 **Deploy**
 
@@ -57,7 +58,7 @@ Steps outside the repo for the 2026-10-05 fixes. Commit and deploy are done (`5d
   - Approve a test reservation or send a consultation email to yourself and press Reply: it should be addressed to `samuel@apathyisboring.com`. Optional: `npm run send-email` sends one test email through the live Resend key.
   - Open `/books` and check the photos load from `/media/items/...`. Edit a mentor's text in `/admin` without choosing a new photo and check the photo is kept.
   - Optional on an Android phone in Chrome: open an item link directly (from WhatsApp, Discord or a search result), press Back twice. The second Back should leave the site.
-  - Optional on an iPhone with a home indicator: the FES badge and Kimchi sit just above it and don't cover the last card's Reserve button.
+  - Optional on an iPhone with a home indicator: Kimchi sits just above it and doesn't cover the last card's Reserve button.
 
 **Ongoing**
 
@@ -94,7 +95,7 @@ None open. The meeting-time picker was rebuilt on 2026-10-05 after the user conf
 #### Accessibility
 
 - **Calendar days are bare ISO dates in a broken grid.** Where: `ItemCalendar.svelte`; `calendar.selected_range` in both locales. Problem: day buttons are named "2026-10-13" with no weekday or reason when unavailable, inside `role="grid"` with no rows, and the selection line shows raw ISO dates outside a live region. The FR string is missing "du". Fix: use `role="group"` (or a real table), name days with `Intl.DateTimeFormat` plus a state key, format the selection as "Pickup {start} · Return {end}" in an `aria-live="polite"` wrapper, and add a legend swatch for unavailable days.
-- **Page-to-page navigation doesn't reset scroll or move focus.** Where: `navigate()` in `router.js`; `App.svelte`; each lazy page's `onMount`. Problem: only closing the item overlay moves focus (since 2026-10-05). In-content links (Kimchi's `/howthisworks` link, the privacy policy's `/about` link, About's privacy link) can open the next page part-way down, with focus left on `<body>` and nothing announced. Fix: `window.scrollTo(0, 0)` when the page kind changes (not for overlay open/close or category filters). Focus `<main id="main-content" tabindex="-1">` from each lazy page's `onMount` after an in-app navigation (not on first load).
+- **Page-to-page navigation doesn't reset scroll or move focus.** Where: `navigate()` in `router.js`; `App.svelte`; each lazy page's `onMount`. Problem: only closing the item overlay, the homepage category links and the logo (`navigateToPage()` in `router.js`, since 2026-10-06) handle this. Other in-content links (Kimchi's `/howthisworks` link, the privacy policy's `/about` link, About's privacy link) can open the next page part-way down, with focus left on `<body>` and nothing announced. Fix: `window.scrollTo(0, 0)` when the page kind changes (not for overlay open/close or category filters). Focus `<main id="main-content" tabindex="-1">` from each lazy page's `onMount` after an in-app navigation (not on first load).
 
 #### Consultations
 
@@ -181,7 +182,7 @@ None open. The meeting-time picker was rebuilt on 2026-10-05 after the user conf
 - **Kimchi bubbles.** Where: `KimchiBubble.svelte`, `KimchiNotification.svelte`, `InventoryCard.svelte` (hover reactions). Problem: the name, link (2.35:1) and close × (2.05:1) fail contrast, and the 8 s timer removes a bubble that has focus. The sleep dot's target overlaps the avatar and its state isn't remembered, and bubbles fired from the item dialog land behind its backdrop. Fix: `#6b5b00` and `#767676`; pause the timer on hover/focus and move focus to the avatar before dismissing. Remember awake/asleep in `localStorage`, give the dot a 24 px target off the avatar, and start card reactions on mouse pointers only.
 - **English agreement read with a French voice.** Where: `getMemberAgreementHtml` in `member-agreement.js`; `MemberAgreementModal.svelte`. Fix: return the source language and set `lang` on the agreement container. Polish: `lang` and `aria-label` on the EN/FR switcher buttons.
 - **Modals don't contain scroll.** Where: `.modal` in `app.css`. Problem: the page behind scrolls, and on Android pulling down can plausibly trigger pull-to-refresh and lose a draft. Fix: `overscroll-behavior: contain` on `.modal` and `html:has(dialog.modal[open]) { overflow: hidden; }`.
-- **Fixed corner widgets on short viewports.** Where: `.site-attribution` in `app.css`; `.kimchi-widget` in `KimchiNotification.svelte`. Problem: on landscape phones and at 400% zoom the ~82 px FES badge and Kimchi still cover the bottom corners. Fix: under `@media (max-height: 500px)` put the badge in normal flow and hide or shrink Kimchi.
+- **Kimchi on short viewports.** Where: `.kimchi-widget` in `KimchiNotification.svelte`. Problem: on landscape phones and at 400% zoom Kimchi still covers the bottom-right corner. (The FES badge is gone since 2026-10-06.) Fix: under `@media (max-height: 500px)` hide or shrink Kimchi.
 
 #### Search, brand and page weight
 
@@ -206,12 +207,11 @@ None open. The meeting-time picker was rebuilt on 2026-10-05 after the user conf
 
 ### Polish
 
-- **Email copy.** Where: `buildMemberDecisionEmailPayload` and the consultation email builders in `server.js`. Problem: reservation dates aren't labelled pickup/return, the consultation-confirmed intro names the mentor by email, cancel/refuse CTAs open the Equipment tab, and the 60-minute length isn't stated. Fix: "Pick up" / "Return by" rows (rooms: "From" / "To"), "with {title}" plus an Expert row, a Length row, and CTAs to the item or `/expertise`. Give the sender a display name (`Activist Resource Library <noreply@activistresourcelibrary.com>` in `DEFAULT_EMAIL_FROM` and the `cloud-build.sh` fallback).
+- **Email copy.** Where: `buildMemberDecisionEmailPayload` and the consultation email builders in `server.js`. Problem: reservation dates aren't labelled pickup/return, the consultation-confirmed intro names the mentor by email, cancel/refuse CTAs go to the homepage `/` rather than the item or category, and the 60-minute length isn't stated. Fix: "Pick up" / "Return by" rows (rooms: "From" / "To"), "with {title}" plus an Expert row, a Length row, and CTAs to the item or `/expertise`. Give the sender a display name (`Activist Resource Library <noreply@activistresourcelibrary.com>` in `DEFAULT_EMAIL_FROM` and the `cloud-build.sh` fallback).
 - **Room calendar never says a second tap sets the end.** Where: `ItemCalendar.svelte`. Problem: the `calendar.select_end_date` branch is unreachable. Fix: show "Tap an end date, or reserve this day only" after the first tap (new EN/FR key), or delete the dead branch.
 - **Email-updates choice can't be changed.** Where: `AccountPage.svelte`; `auth.js`. Problem: `email_updates_opt_in` is collected but never shown or used. Fix: an **Email updates** checkbox on `/account` saved through `supabase.auth.updateUser` (EN/FR keys).
 - **Filter count says "items" for mentors and isn't pluralized.** Where: `filter_with_count` (EN/FR); `InventoryPanel.svelte`; `i18n.js`. Fix: an `Intl.PluralRules` helper with `_one` / `_other` keys and a mentor-specific key.
-- **Lopsided category filter on phones.** Where: `.inventory-filter__btn:nth-child(3)` in `app.css` (≤640 px block and its ≤360 px reset). Fix: delete both rules to get a 2×2 grid.
-- **Sitemap duplicates and lastmod.** Where: `SITEMAP_STATIC_PATHS` and the sitemap route in `server.js`; `buildCanonicalUrl`. Problem: `/` and `/equipment` are both self-canonical with the same content, and `lastmod` is the creation date. Fix: drop `/equipment` from the sitemap and canonicalize it to `/` (or 301). Add `updated_at` for lastmod, or omit lastmod.
+- **Sitemap lastmod.** Where: the sitemap route in `server.js`. Problem: `lastmod` is the item's creation date. Fix: add `updated_at` for lastmod, or omit lastmod. (`/` and `/equipment` stopped being duplicates on 2026-10-06: `/` is the homepage and Equipment lives only at `/equipment`, so keep both in the sitemap and don't redirect one to the other.)
 - **English copy.** Where: `how_this_works.steps.account` and `faq[0]` (EN/FR); production data. Problem: sign-up copy mentions email/password only, and two equipment items share the same Pyle microphone title. Fix: mention Google and Discord, and rename or merge one Pyle item in admin.
 - **Member emails in mentor-profile logs.** Where: the two `[mentor-profile]` `console.log` calls in `server.js`. Fix: log `userId: req.user?.id` instead of `email`.
 
