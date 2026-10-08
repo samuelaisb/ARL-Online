@@ -1,13 +1,13 @@
 <script module>
-  // A random rank per expert, kept for the whole page load. HomePage remounts on every
-  // visit, so this keeps the same four experts when someone opens one and comes back.
-  const expertRanks = new Map();
+  // A random rank per item, kept for the whole page load. HomePage remounts on every
+  // visit, so this keeps the same picks when someone opens one and comes back.
+  const itemRanks = new Map();
 
-  function expertRank(id) {
-    if (!expertRanks.has(id)) {
-      expertRanks.set(id, Math.random());
+  function itemRank(id) {
+    if (!itemRanks.has(id)) {
+      itemRanks.set(id, Math.random());
     }
-    return expertRanks.get(id);
+    return itemRanks.get(id);
   }
 </script>
 
@@ -28,12 +28,40 @@
   let { items, loading, loadError = '' } = $props();
 
   const FEATURED_EXPERT_COUNT = 4;
+  // When the inventory lands, the sections fade in one after another down the page:
+  // experts, then each shelf this much later. (in:reveal plays only on that flip, not
+  // when HomePage remounts with the inventory already loaded.)
+  const SECTION_REVEAL_STAGGER_MS = 150;
 
-  const featuredExperts = $derived(
-    items
-      .filter((item) => item.tag === 'expertise')
-      .sort((a, b) => expertRank(a.id) - expertRank(b.id))
-      .slice(0, FEATURED_EXPERT_COUNT),
+  // The sections under the experts, in INVENTORY_TAGS order. There are only a couple of
+  // rooms, so they get two wide photos instead of four tiles.
+  const SHELVES = [
+    { tag: 'equipment', count: 4 },
+    { tag: 'books', count: 4 },
+    { tag: 'rooms', count: 2 },
+  ];
+
+  /** `count` items of `tag` in this page load's random order, one per title (the
+   *  catalogue has a few copies of the same thing). */
+  function pickFeatured(tag, count) {
+    const titles = new Set();
+    return items
+      .filter((item) => item.tag === tag)
+      .sort((a, b) => itemRank(a.id) - itemRank(b.id))
+      .filter((item) => {
+        const title = item.title?.trim().toLowerCase() || item.id;
+        if (titles.has(title)) {
+          return false;
+        }
+        titles.add(title);
+        return true;
+      })
+      .slice(0, count);
+  }
+
+  const featuredExperts = $derived(pickFeatured('expertise', FEATURED_EXPERT_COUNT));
+  const shelves = $derived(
+    SHELVES.map((shelf) => ({ ...shelf, items: pickFeatured(shelf.tag, shelf.count) })),
   );
 
   const nameKeys = {
@@ -52,13 +80,13 @@
     navigateToPage(categoryToPath(tag));
   }
 
-  function openExpert(event, expert) {
+  function openItem(event, item) {
     if (!isPlainLeftClick(event)) {
       return;
     }
 
     event.preventDefault();
-    navigateToItem(expert);
+    navigateToItem(item);
   }
 </script>
 
@@ -70,7 +98,7 @@
   </header>
 
   {#if loadError}
-    <!-- The inventory didn't load, so the experts below can't show. Kimchi says so too,
+    <!-- The inventory didn't load, so the sections below can't show. Kimchi says so too,
          unless she's asleep. -->
     <p class="status error" role="alert">{$t('home.load_error')}</p>
   {/if}
@@ -154,12 +182,11 @@
             </li>
           {/each}
         </ul>
-        <LoadingStatus text={$t('home.experts_loading')} />
       {:else}
         <ul class="home-experts" in:reveal>
           {#each featuredExperts as expert (expert.id)}
             <li>
-              <a class="home-expert" href={itemToPath(expert)} onclick={(event) => openExpert(event, expert)}>
+              <a class="home-expert" href={itemToPath(expert)} onclick={(event) => openItem(event, expert)}>
                 {#if expert.image}
                   <img
                     {@attach revealOnLoad}
@@ -182,6 +209,67 @@
         </ul>
       {/if}
     </section>
+  {/if}
+
+  {#each shelves as shelf, shelfIndex (shelf.tag)}
+    {#if loading || shelf.items.length > 0}
+      <section class="home-section home-shelf home-shelf--{shelf.tag}" aria-labelledby="home-{shelf.tag}-heading">
+        <div class="home-section__header">
+          <h2 id="home-{shelf.tag}-heading" class="home-section__title">{$t(`home.${shelf.tag}_heading`)}</h2>
+          <a
+            href={categoryToPath(shelf.tag)}
+            class="home-section__link"
+            onclick={(event) => openCategory(event, shelf.tag)}
+          >
+            {$t(`home.${shelf.tag}_all`)}
+          </a>
+        </div>
+
+        {#if loading}
+          <ul class="home-shelf__list skeleton" aria-hidden="true">
+            {#each Array(shelf.count) as _, index (index)}
+              <li class="home-item home-item--placeholder skeleton-sheen">
+                <span class="home-item__frame"></span>
+                <span class="bone bone--title home-item__title-bone"></span>
+                {#if shelf.tag !== 'equipment'}
+                  <span class="bone bone--line home-item__body-bone"></span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <ul class="home-shelf__list" in:reveal={{ delay: (shelfIndex + 1) * SECTION_REVEAL_STAGGER_MS }}>
+            {#each shelf.items as item (item.id)}
+              <li>
+                <a class="home-item" href={itemToPath(item)} onclick={(event) => openItem(event, item)}>
+                  <span class="home-item__frame">
+                    {#if item.image}
+                      <img
+                        {@attach revealOnLoad}
+                        class="home-item__image"
+                        src={item.image}
+                        alt=""
+                        decoding="async"
+                        loading="lazy"
+                      />
+                    {/if}
+                  </span>
+                  <span class="home-item__title">{item.title}</span>
+                  <!-- Equipment descriptions mostly repeat the product name. -->
+                  {#if shelf.tag !== 'equipment' && item.body}
+                    <span class="home-item__body">{item.body}</span>
+                  {/if}
+                </a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
+  {/each}
+
+  {#if loading}
+    <LoadingStatus text={$t('home.loading')} />
   {/if}
 
   <footer class="home-footer">

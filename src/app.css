@@ -719,6 +719,106 @@ h1[tabindex='-1']:focus {
   line-clamp: 2;
 }
 
+/* Equipment, books and rooms under the experts (random picks, same as the experts).
+   Each shelf's frame follows its photos: product shots contained on white, 3:4 book
+   covers, 4:3 room photos. Rooms are two wide tiles. */
+.home-shelf__list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-shelf--rooms .home-shelf__list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.home-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  height: 100%;
+  border-radius: 0.75rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.home-item:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.home-item__frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  margin-bottom: 0.375rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+  box-shadow: 0 2px 8px var(--color-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.home-shelf--books .home-item__frame {
+  aspect-ratio: 3 / 4;
+  background: var(--color-surface);
+}
+
+.home-shelf--rooms .home-item__frame {
+  aspect-ratio: 4 / 3;
+  background: var(--color-surface);
+}
+
+.home-item:hover .home-item__frame {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--color-shadow-strong);
+}
+
+.home-item__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-shelf--equipment .home-item__image {
+  inset: 0.75rem;
+  width: calc(100% - 1.5rem);
+  height: calc(100% - 1.5rem);
+  object-fit: contain;
+}
+
+.home-item__title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-weight: 700;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.home-item:hover .home-item__title {
+  color: var(--color-mint);
+  text-decoration: underline;
+}
+
+.home-item__body {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
 /* Bottom of the card: the two steps, then who made the library. */
 .home-footer {
   display: flex;
@@ -2967,6 +3067,17 @@ button:disabled {
     height: 5rem;
   }
 
+  .home-shelf__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 0.75rem;
+  }
+
+  .home-shelf--equipment .home-item__image {
+    inset: 0.5rem;
+    width: calc(100% - 1rem);
+    height: calc(100% - 1rem);
+  }
+
   /* Expert/member consultation cards: stack text above actions so a
      non-shrinking button row cannot crush the copy into a thin column. */
   .consultation-row {
@@ -3514,6 +3625,24 @@ button:disabled {
   width: 60%;
 }
 
+/* Homepage shelf placeholder: the shelf's frame, a title line, and a body line
+   for books and rooms. */
+.home-item--placeholder .home-item__frame {
+  border-color: transparent;
+  background: var(--color-skeleton);
+  box-shadow: none;
+}
+
+.home-item__title-bone {
+  width: 80%;
+  margin: 0.15rem 0;
+}
+
+.home-item__body-bone {
+  width: 55%;
+  margin: 0.3rem 0;
+}
+
 /* Header auth placeholder: two pills the size of .btn-header, no sheen. */
 .header-auth__skeleton {
   display: flex;
@@ -3698,6 +3827,21 @@ img.img-pending {
   opacity: 1;
 }
 
+/* Homepage shelf tiles: the whole frame is the fill. */
+.home-item__frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-skeleton);
+  opacity: 0;
+  transition: opacity 280ms ease-out;
+  pointer-events: none;
+}
+
+.home-item__frame:has(> img.img-pending)::before {
+  opacity: 1;
+}
+
 /* Paint the in-flow detail image above the frame's fill. */
 .item-detail__image {
   position: relative;
@@ -3845,12 +3989,14 @@ img.expert-detail__avatar {
   }
 
   .inventory-card,
-  .home-category {
+  .home-category,
+  .home-item__frame {
     transition: none;
   }
 
   .inventory-card:hover,
-  .home-category:hover {
+  .home-category:hover,
+  .home-item:hover .home-item__frame {
     transform: none;
   }
 }

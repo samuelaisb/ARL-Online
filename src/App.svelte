@@ -348,7 +348,7 @@
 
   function findOverlayReturnTarget(itemPath) {
     const cardLink = Array.from(
-      document.querySelectorAll('.inventory-card__title-link, .home-expert'),
+      document.querySelectorAll('.inventory-card__title-link, .home-expert, .home-item'),
     ).find(
       (link) => link.pathname === itemPath,
     );
