@@ -3625,12 +3625,14 @@ button:disabled {
   width: 60%;
 }
 
-/* Homepage shelf placeholder: the shelf's frame, a title line, and a body line
-   for books and rooms. */
-.home-item--placeholder .home-item__frame {
+/* Homepage shelf placeholder: the shelf's frame, a title line, and for books and
+   rooms two body lines the height of the two-line clamp. No hover lift. */
+.home-item--placeholder .home-item__frame,
+.home-item--placeholder:hover .home-item__frame {
   border-color: transparent;
   background: var(--color-skeleton);
   box-shadow: none;
+  transform: none;
 }
 
 .home-item__title-bone {
@@ -3638,9 +3640,15 @@ button:disabled {
   margin: 0.15rem 0;
 }
 
-.home-item__body-bone {
-  width: 55%;
-  margin: 0.3rem 0;
+.home-item__body-bones {
+  display: flex;
+  flex-direction: column;
+  gap: 0.475rem;
+  padding: 0.2375rem 0;
+}
+
+.home-item__body-bones .bone:last-child {
+  width: 60%;
 }
 
 /* Header auth placeholder: two pills the size of .btn-header, no sheen. */

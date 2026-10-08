@@ -13,6 +13,7 @@
     getItemRouteParams,
     hasReserveIntent,
     navigate,
+    navigateToPage,
     path,
     setReserveIntent,
   } from '../lib/router.js';
@@ -138,9 +139,11 @@
     }
   }
 
+  // The homepage opens at the top with focus on its heading, like the header logo.
+  // A plain navigate would let App's focus return jump to this item's homepage tile.
   function goHome(event) {
     event.preventDefault();
-    navigate('/');
+    navigateToPage('/');
   }
 
   function goCategory(event) {

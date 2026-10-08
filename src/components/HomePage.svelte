@@ -232,7 +232,10 @@
                 <span class="home-item__frame"></span>
                 <span class="bone bone--title home-item__title-bone"></span>
                 {#if shelf.tag !== 'equipment'}
-                  <span class="bone bone--line home-item__body-bone"></span>
+                  <span class="home-item__body-bones">
+                    <span class="bone bone--line"></span>
+                    <span class="bone bone--line"></span>
+                  </span>
                 {/if}
               </li>
             {/each}
@@ -255,9 +258,11 @@
                     {/if}
                   </span>
                   <span class="home-item__title">{item.title}</span>
-                  <!-- Equipment descriptions mostly repeat the product name. -->
+                  <!-- Equipment descriptions mostly repeat the product name. The
+                       description is hidden from screen readers so the link is named by
+                       its title (the clamp only hides it visually); the overlay has it. -->
                   {#if shelf.tag !== 'equipment' && item.body}
-                    <span class="home-item__body">{item.body}</span>
+                    <span class="home-item__body" aria-hidden="true">{item.body}</span>
                   {/if}
                 </a>
               </li>
