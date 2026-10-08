@@ -116,36 +116,57 @@ function shouldMorph(from, to) {
   );
 }
 
-/** Takes a band that is out of view out of the morph, so it doesn't fly in from (or off to) above. */
-function unnameOffscreenBand() {
-  const band = document.querySelector('.page-header');
-  if (!band) {
+/**
+ * The band's colour when it can morph: it carries its view-transition-name (none with
+ * reduced motion) and is on screen. A band out of view loses its name for this
+ * transition, so it fades where it is instead of flying in from (or off to) above.
+ */
+function morphableBand(band) {
+  if (!band || getComputedStyle(band).viewTransitionName === 'none') {
     return null;
   }
 
   const rect = band.getBoundingClientRect();
-  if (rect.bottom > 0 && rect.top < window.innerHeight) {
+  if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+    band.style.viewTransitionName = 'none';
     return null;
   }
-  band.style.viewTransitionName = 'none';
-  return band;
+  return getComputedStyle(band).getPropertyValue('--band').trim() || null;
 }
+
+// Bumped by every morph, so a transition that a newer one skipped leaves its classes alone.
+let morphCount = 0;
+// The page change animating now, which a press ends (see the pointerdown listener below).
+let activeMorph = null;
 
 /**
  * Runs `update` as a view transition: the title band (`view-transition-name: page-band`
- * in app.css) morphs from the old page's colour, height and title into the new one's,
- * and the rest of the page cross-fades. A band scrolled out of view (a footer link)
- * just fades instead. Browsers without view transitions never get here.
+ * in app.css) moves and resizes from the old page's band to the new one's while the
+ * rest of the page cross-fades. When both bands are on screen, `.band-morph` on <html>
+ * has the transition paint the band itself, its colour going from --band-morph-from
+ * to --band-morph-to, instead of from the bands' snapshots (Safari flickered on those).
+ * Browsers without view transitions never get here.
  */
 async function morphPage(update) {
-  const oldBand = unnameOffscreenBand();
+  const root = document.documentElement;
+  const morph = ++morphCount;
+  const oldBand = document.querySelector('.page-header');
+  const from = morphableBand(oldBand);
   let applied = false;
   let newBand = null;
   const transition = document.startViewTransition(async () => {
     applied = update();
     await tick();
-    newBand = unnameOffscreenBand();
+    newBand = document.querySelector('.page-header');
+    const to = morphableBand(newBand);
+    if (from && to) {
+      root.style.setProperty('--band-morph-from', from);
+      root.style.setProperty('--band-morph-to', to);
+      root.classList.add('band-morph');
+    }
   });
+
+  activeMorph = transition;
 
   // `ready` rejects when the transition is skipped (a newer one started); the update
   // still runs. `finished` rejects only along with updateCallbackDone, awaited below.
@@ -155,6 +176,14 @@ async function morphPage(update) {
     .then(() => {
       oldBand?.style.removeProperty('view-transition-name');
       newBand?.style.removeProperty('view-transition-name');
+      if (activeMorph === transition) {
+        activeMorph = null;
+      }
+      if (morph === morphCount) {
+        root.classList.remove('band-morph');
+        root.style.removeProperty('--band-morph-from');
+        root.style.removeProperty('--band-morph-to');
+      }
     });
 
   await transition.updateCallbackDone;
@@ -405,4 +434,52 @@ if (typeof window !== 'undefined') {
     const next = getPath();
     changeRoute(next, () => path.set(next), { morph: false });
   });
+
+  // While a view transition runs, every press lands on <html> (its overlay), whatever
+  // pointer-events says, in Chrome and Safari alike: a quick click on the logo or a nav
+  // link started a text selection instead. A primary press now ends the transition,
+  // and its click goes to whatever is under the pointer on the new page.
+  let pressDuringMorph = null;
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (!activeMorph || event.target !== document.documentElement || event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      activeMorph.skipTransition();
+      pressDuringMorph = { x: event.clientX, y: event.clientY };
+    },
+    true,
+  );
+  document.addEventListener(
+    'click',
+    (event) => {
+      const press = pressDuringMorph;
+      pressDuringMorph = null;
+      if (!press || event.target !== document.documentElement) {
+        return;
+      }
+
+      const target = document.elementFromPoint(press.x, press.y);
+      if (!target || target === document.documentElement) {
+        return;
+      }
+      event.stopPropagation();
+      target.dispatchEvent(
+        new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: press.x,
+          clientY: press.y,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+        }),
+      );
+    },
+    true,
+  );
 }

@@ -3904,31 +3904,50 @@ button:disabled {
 }
 
 /* Page change (router.js morphPage, a view transition): the band's group moves and
-   resizes from the old page's band to the new one's while the two cross-fade, so its
-   colour, height and title morph across; the rest of the page cross-fades. The old
-   page stays up (hairline above) until the new one has loaded. */
+   resizes from the old page's band to the new one's while the rest of the page
+   cross-fades. The old page stays up (hairline above) until the new one has loaded.
+   A press during the transition ends it (router.js), since every press lands on its
+   overlay whatever pointer-events says. */
 ::view-transition-group(*) {
   animation-duration: 280ms;
   animation-timing-function: var(--ease-reveal);
 }
 
 /* Where each element can get its own snapshot, the band's text fades out and in where
-   it stands (titles sit at the same height on every page), leaving the band a plain
-   block of colour that stretches to the new height instead of two bands cross-fading.
-   The old text goes in half the time, before a shrinking band slides out from under it. */
+   it stands (titles sit at the same height on every page), and the old text goes in
+   half the time, before a shrinking band slides out from under it. With both bands on
+   screen (.band-morph), the transition paints the band itself as one block of colour,
+   full width, going from the old band's colour to the new one's as it resizes. The
+   bands' own snapshots stay hidden: Safari flickered drawing them (their 100vmax
+   border-image sides are ink overflow). Elsewhere the two bands cross-fade whole. */
 @supports (view-transition-name: match-element) {
   .page-header > * {
     view-transition-name: match-element;
     view-transition-class: band-text;
   }
 
-  ::view-transition-old(page-band),
-  ::view-transition-new(page-band) {
-    height: 100%;
-  }
-
   ::view-transition-old(*.band-text) {
     animation-duration: 140ms;
+  }
+
+  :root.band-morph::view-transition-old(page-band),
+  :root.band-morph::view-transition-new(page-band) {
+    display: none;
+  }
+
+  :root.band-morph::view-transition-image-pair(page-band) {
+    inset: 0 -100vmax;
+    animation: arl-band-morph 280ms var(--ease-reveal) both;
+  }
+}
+
+@keyframes arl-band-morph {
+  from {
+    background-color: var(--band-morph-from);
+  }
+
+  to {
+    background-color: var(--band-morph-to);
   }
 }
 

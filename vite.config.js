@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [svelte()],
   // No manualChunks: named chunks pulled shared deps (Svelte runtime, supabase-js)
   // into page chunks and made the entry import them statically, which defeated
-  // App.svelte's `{#await import(...)}` lazy pages.
+  // App.svelte's lazy pages (dynamic imports behind `lazyPage(load…)`).
   build: {
     outDir: 'dist',
     emptyOutDir: true,
