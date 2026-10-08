@@ -102,3 +102,28 @@ export function isConsultationHeld(reservation, now = Date.now()) {
   const start = Date.parse(reservation.meetingAt);
   return !Number.isNaN(start) && start + CONSULTATION_MEETING_LENGTH_MS <= now;
 }
+
+/**
+ * Whether the account and admin lists offer **Book a follow-up** on a consultation: it is
+ * scheduled and its meeting has started, it is the member's latest meeting with that expert,
+ * and nothing else between them is open. `others` are the same member's other consultations
+ * on the same item. The server only enforces the "nothing else open" part.
+ */
+export function canBookFollowUp(source, others, now = Date.now()) {
+  if (source?.status !== 'reserved') {
+    return false;
+  }
+
+  const start = Date.parse(source.meetingAt ?? '');
+  if (Number.isNaN(start) || start > now) {
+    return false;
+  }
+
+  return !others.some(
+    (other) =>
+      other.id !== source.id &&
+      (other.status === 'pending' ||
+        (other.status === 'reserved' &&
+          (!isConsultationHeld(other, now) || Date.parse(other.meetingAt ?? '') > start))),
+  );
+}

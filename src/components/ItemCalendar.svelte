@@ -1,7 +1,7 @@
 <script>
   import { createReservation } from '../lib/inventory.js';
   import { availabilityNow } from '../lib/availability-clock.js';
-  import { locale, t, translateKey } from '../lib/i18n.js';
+  import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import {
     compareDateKeys,
@@ -18,6 +18,7 @@
     isFixedBlockTag,
     isTuesday,
   } from '../lib/reservation-rules.js';
+  import BusyLabel from './BusyLabel.svelte';
 
   let { item, onupdated, onconfirmed, onbeforeconfirm, hideHeading = false } = $props();
 
@@ -206,7 +207,7 @@
       onupdated?.(updatedItem);
       onconfirmed?.({ item: updatedItem, reservation: result.reservation });
       if (result.reservation?.status === 'pending') {
-        notify(translateKey('kimchi.reservation_sent'), DEFAULT_NOTIFICATION_DURATION);
+        notify({ textKey: 'kimchi.reservation_sent' }, DEFAULT_NOTIFICATION_DURATION);
       }
       rangeStart = null;
       rangeEnd = null;
@@ -331,11 +332,11 @@
       disabled={!canConfirm || saving}
       onclick={handleConfirm}
     >
-      {#if saving}
-        {$t('calendar.saving')}
-      {:else}
-        {$t('calendar.confirm_reservation')}
-      {/if}
+      <BusyLabel
+        label={$t('calendar.confirm_reservation')}
+        busyLabel={$t('calendar.saving')}
+        busy={saving}
+      />
     </button>
     {#if rangeStart}
       <button type="button" class="btn-calendar-clear" onclick={clearSelection}>

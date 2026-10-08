@@ -137,9 +137,10 @@ body {
   text-decoration: none;
 }
 
+/* Trimmed wordmark (830×385), so the height is the glyph height. */
 .site-header__logo {
   display: block;
-  height: 4rem;
+  height: 3.5rem;
   width: auto;
 }
 
@@ -234,9 +235,21 @@ body {
   gap: 0.5rem;
 }
 
-.header-auth__loading {
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
+/* Header sign-out failed (HeaderAuth, C3): the alert wraps under the buttons. `contain`
+   keeps its text out of the header column's max-content width, so the nav doesn't shift. */
+.header-auth--has-error {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+
+.header-auth__error {
+  flex: 0 0 100%;
+  contain: inline-size;
+  margin: 0;
+  color: var(--color-plum);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  text-align: end;
 }
 
 .visually-hidden {
@@ -430,16 +443,6 @@ h1[tabindex='-1']:focus {
 .panel-title {
   margin: 0 0 1rem;
   font-size: 1.125rem;
-}
-
-@keyframes inventory-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-
-  100% {
-    background-position: -200% 0;
-  }
 }
 
 .inventory-filter {
@@ -716,13 +719,6 @@ h1[tabindex='-1']:focus {
   line-clamp: 2;
 }
 
-.home-expert__line {
-  width: 70%;
-  height: 0.875rem;
-  border-radius: 999px;
-  background: var(--color-surface);
-}
-
 /* Bottom of the card: the two steps, then who made the library. */
 .home-footer {
   display: flex;
@@ -799,12 +795,6 @@ h1[tabindex='-1']:focus {
   display: block;
   width: auto;
   height: 2rem;
-}
-
-/* The AisB file is a padded 1024 px square, so it needs more height to match FES. */
-.home-partners__logo--aisb {
-  height: 3.5rem;
-  margin-block: -0.75rem;
 }
 
 .how-this-works-steps {
@@ -938,8 +928,15 @@ h1[tabindex='-1']:focus {
   text-decoration: underline;
 }
 
+/* scroll-margin-top: /about#contact scrolls the contact section into view with a little room above. */
 .about-section {
   margin-bottom: 2rem;
+  scroll-margin-top: 1rem;
+}
+
+/* /about#contact focuses the contact section (tabindex="-1"). It isn't a control: no ring. */
+.about-section[tabindex='-1']:focus {
+  outline: none;
 }
 
 .about-section__title {
@@ -1111,7 +1108,6 @@ h1[tabindex='-1']:focus {
 }
 
 
-.item-detail-page__loading,
 .item-detail-page__not-found {
   padding: 2rem 0;
 }
@@ -1365,11 +1361,54 @@ h1[tabindex='-1']:focus {
   color: var(--color-light);
 }
 
+.consultation-status--follow-up {
+  background: var(--color-lemon);
+}
+
 .consultation-status--cancelled,
 .consultation-status--refused,
 .consultation-status--completed,
 .consultation-status--ended {
   background: var(--color-border);
+}
+
+/* B6: "Starts in N min" / "Happening now" chip on a scheduled consultation row.
+   Dark on lemon is 12.1:1; light on grape is 9.2:1. */
+.consultation-status--soon {
+  background: var(--color-lemon);
+}
+
+.consultation-status--live {
+  background: var(--color-grape);
+  color: var(--color-light);
+}
+
+/* B4: rows someone else cancelled or declined since the last visit, kept out of the collapsed Past list. */
+.consultation-recent__heading {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* AdminPanel's pending rows flag what Kimchi's arrival note (B2) counts: "Starts today" /
+   "Overdue" on equipment, book and room requests. The "No mentor email" pill (pending and
+   scheduled consultations) uses the default lavender `.consultation-status`. These pills sit
+   inside a line of dates that wraps on phones, so each one wraps as a whole. */
+.consultation-status--starts-today,
+.consultation-status--overdue,
+.consultation-status--no-email {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.consultation-status--starts-today {
+  background: var(--color-lemon);
+}
+
+.consultation-status--overdue {
+  background: var(--color-plum);
+  color: var(--color-light);
 }
 
 .admin-actions {
@@ -1448,6 +1487,34 @@ h1[tabindex='-1']:focus {
   font-weight: 600;
   line-height: 1.45;
   overflow-wrap: break-word;
+}
+
+.consultation-follow-up__toggle {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  white-space: normal;
+}
+
+.consultation-follow-up {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.65rem;
+}
+
+.consultation-follow-up .admin-consultation-detail {
+  margin: 0;
+}
+
+.consultation-follow-up__note {
+  width: 100%;
+  min-height: 4.5rem;
+  font-size: 0.9rem;
 }
 
 .meeting-time-picker {
@@ -1602,6 +1669,13 @@ h1[tabindex='-1']:focus {
   border-bottom: none;
 }
 
+/* Admin rows take focus from script (tabindex="-1") when the row above was approved, refused,
+   deleted or removed. The ring sits inside the row: `.admin-item-list` clips with overflow: hidden. */
+.admin-item-row:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: -2px;
+}
+
 .admin-item-title {
   min-width: 0;
   font-weight: 600;
@@ -1726,83 +1800,6 @@ h1[tabindex='-1']:focus {
   border: 1px dashed var(--color-border-strong);
   border-radius: 0.75rem;
   background: var(--color-surface);
-}
-
-.inventory-skeleton-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 1rem;
-}
-
-.inventory-skeleton-card {
-  min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  background: var(--color-bg);
-  overflow: hidden;
-}
-
-.inventory-skeleton-card__image,
-.inventory-skeleton-card__line,
-.inventory-skeleton-card__button {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 0%,
-    #f0eeea 45%,
-    var(--color-surface) 90%
-  );
-  background-size: 200% 100%;
-  animation: inventory-shimmer 1.4s ease-in-out infinite;
-}
-
-.inventory-skeleton-card__image {
-  height: 11rem;
-}
-
-.inventory-skeleton-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 1rem;
-}
-
-.inventory-skeleton-card__line {
-  height: 0.75rem;
-  border-radius: 0.25rem;
-}
-
-.inventory-skeleton-card__line--title {
-  width: 72%;
-  height: 0.9rem;
-}
-
-.inventory-skeleton-card__line--short {
-  width: 55%;
-}
-
-.inventory-skeleton-card__button {
-  height: 2.5rem;
-  margin-top: 0.5rem;
-  border-radius: 0.5rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .inventory-skeleton-card__image,
-  .inventory-skeleton-card__line,
-  .inventory-skeleton-card__button {
-    animation: none;
-    background: var(--color-surface);
-  }
-
-  .inventory-card,
-  .home-category {
-    transition: none;
-  }
-
-  .inventory-card:hover,
-  .home-category:hover {
-    transform: none;
-  }
 }
 
 .inventory-grid {
@@ -2878,7 +2875,7 @@ button:disabled {
   z-index: 40;
   width: min(calc(100% - 2rem), 28rem);
   padding: 1rem;
-  transform: translateX(-50%);
+  translate: -50% 0;
   border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   background: var(--color-bg);
@@ -2892,7 +2889,7 @@ button:disabled {
   }
 
   .site-header__logo {
-    height: 3.25rem;
+    height: 3rem;
   }
 
   .site-nav__link,
@@ -2907,8 +2904,7 @@ button:disabled {
     max-width: 56rem;
   }
 
-  .inventory-grid,
-  .inventory-skeleton-grid {
+  .inventory-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -2922,8 +2918,7 @@ button:disabled {
     padding: 1rem;
   }
 
-  .inventory-grid,
-  .inventory-skeleton-grid {
+  .inventory-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2980,6 +2975,15 @@ button:disabled {
     gap: 0.75rem;
   }
 
+  /* Equipment, book and room requests in Pending carry a "Starts today" / "Overdue" pill;
+     beside the non-shrinking Approve / Refuse pair the details were crushed into a ~60 px
+     column on phones, so these rows stack too. */
+  .admin-item-row--pending {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
   .consultation-row .admin-reservation-details,
   .consultation-row .consultation-row__actions,
   .consultation-row .admin-pending-actions,
@@ -3028,7 +3032,7 @@ button:disabled {
 
   .site-header__logo {
     height: auto;
-    max-height: 2.75rem;
+    max-height: 2.5rem;
     max-width: 100%;
   }
 
@@ -3072,6 +3076,10 @@ button:disabled {
     text-align: center;
   }
 
+  .header-auth__error {
+    text-align: start;
+  }
+
   .site-nav__link {
     font-size: 0.8125rem;
     padding: 0.4375rem 0.625rem;
@@ -3080,5 +3088,769 @@ button:disabled {
   .btn-header {
     padding: 0.4375rem 0.75rem;
     font-size: 0.8125rem;
+  }
+}
+
+/* Loading & motion
+   Every loader, busy state and reveal lives here ("Warm Shelf"). Placeholders are
+   in the DOM from the start at opacity 0 and fade in after --loader-delay, so fast
+   waits paint nothing; they leave instantly when content arrives. Components:
+   Skeleton, LoadingStatus, BusyLabel, RouteProgress and src/lib/motion.js. */
+:root {
+  --color-skeleton: #efebe4;
+  --skeleton-sheen: rgba(255, 255, 255, 0.7);
+  --loader-delay: 300ms;
+  --loader-delay-gate: 350ms;
+  --loader-fade: 200ms;
+  --ease-reveal: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-hop: cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+@keyframes arl-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* The sweep takes the first 60% of the loop; the band then rests off-screen. */
+@keyframes arl-sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  60%,
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes arl-hairline {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(0.92);
+  }
+}
+
+@keyframes arl-refresh {
+  from {
+    transform: translateX(-100%);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(250%);
+    opacity: 1;
+  }
+}
+
+/* Reduced motion: the hairline and refresh segment breathe in place instead. */
+@keyframes arl-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes busy-hop {
+  0%,
+  55%,
+  100% {
+    transform: none;
+    opacity: 0.5;
+  }
+
+  22% {
+    transform: translateY(-0.25em);
+    opacity: 1;
+  }
+}
+
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes content-in-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Skeleton wrapper: always aria-hidden; fades in only if the wait passes the delay. */
+.skeleton {
+  animation: arl-fade-in var(--loader-fade) ease-out var(--loader-delay) both;
+}
+
+.skeleton--gate {
+  animation-delay: var(--loader-delay-gate);
+}
+
+.bone {
+  display: block;
+  height: 0.75rem;
+  border-radius: 0.375rem;
+  background: var(--color-skeleton);
+}
+
+.bone--line {
+  height: 0.75rem;
+}
+
+.bone--title {
+  height: 1rem;
+}
+
+.bone--pill {
+  height: 2.25rem;
+  border-radius: 0.5rem;
+}
+
+.bone--circle {
+  border-radius: 50%;
+}
+
+.bone--media {
+  border-radius: 0.75rem;
+}
+
+.bone--input {
+  height: 2.75rem;
+  border-radius: 0.5rem;
+}
+
+.bone--textarea {
+  height: 6rem;
+  border-radius: 0.5rem;
+}
+
+/* One resting sheen per row or card; siblings roll down the list 90ms apart. */
+.skeleton-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-sheen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--skeleton-sheen), transparent);
+  transform: translateX(-100%);
+  animation: arl-sheen 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+.skeleton-sheen:nth-child(2)::after {
+  animation-delay: 90ms;
+}
+
+.skeleton-sheen:nth-child(3)::after {
+  animation-delay: 180ms;
+}
+
+.skeleton-sheen:nth-child(4)::after {
+  animation-delay: 270ms;
+}
+
+.skeleton-sheen:nth-child(5)::after {
+  animation-delay: 360ms;
+}
+
+.skeleton-sheen:nth-child(6)::after {
+  animation-delay: 450ms;
+}
+
+/* Content arriving after a loader (CSS twin of motion.js reveal). */
+.reveal-in {
+  animation: content-in 220ms var(--ease-reveal) backwards;
+}
+
+/* Skeleton rows: a real .admin-item-list with .admin-item-row children. */
+.skeleton-subheading {
+  display: flex;
+  align-items: center;
+  height: 1.25rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.skeleton-subheading .bone {
+  width: 7rem;
+  height: 0.8rem;
+}
+
+.skeleton-row__main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.skeleton-row__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.skeleton-row__avatar {
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+}
+
+.skeleton-row__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.skeleton-row__actions .bone--pill {
+  width: 6rem;
+}
+
+.skeleton-row__actions .bone--pill:first-child:not(:only-child) {
+  width: 5.5rem;
+}
+
+.skeleton-row__actions .bone--pill:nth-child(2) {
+  width: 4.75rem;
+}
+
+/* Skeleton form (share expertise): intro, label + field pairs, submit. */
+.skeleton-form__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding: 0.375rem 0;
+}
+
+.skeleton-form__label {
+  width: 30%;
+  height: 0.7rem;
+  margin: 0.18rem 0 0.58rem;
+}
+
+.skeleton-form .bone--input,
+.skeleton-form .bone--textarea {
+  margin-bottom: 1.25rem;
+}
+
+.skeleton-form__submit {
+  height: 3rem;
+  border-radius: 0.5rem;
+}
+
+/* Skeleton page header (account and admin auth gates). */
+.skeleton-page {
+  margin-bottom: 1.75rem;
+}
+
+.skeleton-page__title {
+  width: min(18rem, 60%);
+  height: 2rem;
+  margin: 0.06rem 0 0.56rem;
+}
+
+.skeleton-page__line {
+  width: 55%;
+  margin: 0.23rem 0;
+}
+
+/* Skeleton item detail, inside the real .item-detail grid. */
+.skeleton-detail__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+}
+
+.skeleton-detail__media::before {
+  content: '';
+  position: absolute;
+  inset: 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-skeleton);
+}
+
+.skeleton-detail__title {
+  width: 70%;
+  height: 1.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.skeleton-detail__badge {
+  width: 5rem;
+  height: 1.25rem;
+  border-radius: 999px;
+}
+
+.skeleton-detail__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.425rem 0;
+}
+
+.skeleton-detail__lines--bio {
+  gap: 0.55rem;
+  padding: 0.275rem 0;
+}
+
+.skeleton-detail__calendar {
+  height: 22rem;
+  border-radius: 0.5rem;
+}
+
+/* The expertise column is `align-items: start` on desktop, which would shrink
+   the empty bones to zero width. */
+.skeleton .item-detail--expertise > * {
+  align-self: stretch;
+}
+
+.skeleton-detail__avatar {
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.45rem;
+}
+
+.skeleton-detail__name {
+  width: 50%;
+  height: 1.15rem;
+}
+
+.skeleton-detail__form {
+  height: 15rem;
+  border-radius: 0.5rem;
+}
+
+.item-detail-breadcrumb__bone {
+  width: 8rem;
+  height: 0.875rem;
+}
+
+/* Skeleton inventory cards on the real .inventory-card / .inventory-image-frame. */
+.skeleton-card,
+.skeleton-card:hover {
+  transform: none;
+  box-shadow: 0 2px 8px var(--color-shadow);
+  cursor: default;
+}
+
+.skeleton-card__media {
+  position: absolute;
+  inset: 0.75rem;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.skeleton-card__title {
+  width: 72%;
+  height: 1rem;
+  margin: 0.175rem 0 0.675rem;
+}
+
+.skeleton-card__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.3rem 0;
+}
+
+.skeleton-card__lines .bone:last-child {
+  width: 55%;
+}
+
+.skeleton-card__button {
+  height: 2.65rem;
+  margin-top: auto;
+  border-radius: 0.5rem;
+}
+
+/* Homepage experts placeholder: photo circle, name, two topic lines. */
+.home-expert--placeholder .home-expert__photo {
+  border-color: transparent;
+  background: var(--color-skeleton);
+}
+
+.home-expert__name-bone {
+  width: 60%;
+  height: 1rem;
+  margin: 0.15rem 0;
+}
+
+.home-expert__topics-bones {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.475rem;
+  width: 100%;
+  padding: 0.2375rem 0;
+}
+
+.home-expert__topics-bones .bone:first-child {
+  width: 85%;
+}
+
+.home-expert__topics-bones .bone:last-child {
+  width: 60%;
+}
+
+/* Header auth placeholder: two pills the size of .btn-header, no sheen. */
+.header-auth__skeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-auth__bone {
+  width: 4.75rem;
+  height: 2.125rem;
+  border-radius: 0.5rem;
+}
+
+.header-auth__bone--wide {
+  width: 5.75rem;
+}
+
+@media (min-width: 641px) and (max-width: 960px) {
+  .header-auth__bone {
+    height: 2rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .header-auth__skeleton {
+    width: 100%;
+  }
+
+  .header-auth__bone {
+    flex: 1 1 8rem;
+    width: auto;
+    min-width: 0;
+    height: 2rem;
+  }
+}
+
+/* Inventory filter count while loading: an empty pill instead of "0". */
+.inventory-filter__count--loading {
+  height: 1.1rem;
+  background: var(--color-skeleton);
+  animation: arl-fade-in var(--loader-fade) ease-out var(--loader-delay) both;
+}
+
+.inventory-filter__btn--active .inventory-filter__count--loading {
+  background: rgba(35, 31, 32, 0.12);
+}
+
+/* Page change (lazy route chunk): Mint hairline at the very top of the viewport. */
+.route-progress {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1001;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-mint) 85%);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: arl-hairline 12s cubic-bezier(0.1, 0.65, 0.2, 1) 250ms forwards;
+  pointer-events: none;
+}
+
+/* Background refresh of a list that stays on screen: a Mint segment along its top. */
+:where(.list-refreshing) {
+  position: relative;
+  overflow-x: clip;
+}
+
+.list-refreshing::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 40%;
+  height: 2px;
+  background: var(--color-mint);
+  opacity: 0;
+  animation: arl-refresh 1.4s cubic-bezier(0.4, 0, 0.2, 1) var(--loader-delay) infinite;
+  pointer-events: none;
+}
+
+/* BusyLabel: idle and busy labels share one grid cell, so the button keeps its width.
+   The hidden one is visibility:hidden, which also drops it from the accessible name. */
+.busy-label {
+  position: relative;
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+}
+
+/* After an icon, keep the label next to it instead of centred in the reserved width. */
+:is(svg, img) + .busy-label {
+  justify-items: start;
+}
+
+.busy-label__idle,
+.busy-label__busy {
+  grid-area: 1 / 1;
+  transition: opacity 160ms ease-out, visibility 0s;
+}
+
+.busy-label.is-busy .busy-label__idle,
+.busy-label:not(.is-busy) .busy-label__busy {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 160ms ease-out, visibility 0s linear 160ms;
+}
+
+.busy-dots {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.busy-dots > span {
+  display: inline-block;
+  width: 0.22em;
+  height: 0.22em;
+  margin-left: 0.14em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  animation: busy-hop 1.1s var(--ease-hop) infinite;
+}
+
+.busy-dots > span:first-child {
+  margin-left: 0.1em;
+}
+
+.busy-dots > span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.busy-dots > span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+/* Compact (header sign-out): dots only, the busy text stays for screen readers. */
+.busy-label--compact .busy-label__text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.busy-label--compact .busy-dots > span:first-child {
+  margin-left: 0;
+}
+
+/* The running button stays at full strength; its disabled siblings keep their dim. */
+button:disabled:has(.busy-label.is-busy) {
+  opacity: 1;
+  cursor: progress;
+}
+
+/* Images: fade in when they load (revealOnLoad). Frames show a flat fill meanwhile. */
+:where(img) {
+  transition: opacity 280ms ease-out;
+}
+
+img.img-pending {
+  opacity: 0;
+}
+
+.inventory-image-frame::before,
+.item-detail__media::before {
+  content: '';
+  position: absolute;
+  inset: 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-skeleton);
+  opacity: 0;
+  transition: opacity 280ms ease-out;
+  pointer-events: none;
+}
+
+.inventory-image-frame:has(> img.img-pending)::before,
+.item-detail__media:has(> img.img-pending)::before {
+  opacity: 1;
+}
+
+/* Paint the in-flow detail image above the frame's fill. */
+.item-detail__image {
+  position: relative;
+}
+
+.expert-detail__avatar {
+  background: var(--color-surface);
+}
+
+/* Featured expert photo still loading: keep its surface circle visible under it. */
+.home-expert:has(> img.home-expert__photo) {
+  position: relative;
+}
+
+.home-expert:has(> img.home-expert__photo)::before {
+  content: '';
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  width: 6rem;
+  height: 6rem;
+  margin-left: -3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  opacity: 0;
+  transition: opacity 280ms ease-out;
+  pointer-events: none;
+}
+
+.home-expert:has(> img.img-pending)::before {
+  opacity: 1;
+}
+
+/* Paint the photo above the fill. */
+img.home-expert__photo {
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .home-expert:has(> img.home-expert__photo)::before {
+    width: 5rem;
+    height: 5rem;
+    margin-left: -2.5rem;
+  }
+}
+
+/* Square photos (admin mentors, expert heading) carry their fill and border on the
+   img, which hides with it while pending, so the parent paints the same square. */
+.admin-mentor-summary:has(> img.admin-mentor-photo),
+.admin-mentor-editor:has(> img.admin-mentor-editor__photo),
+.expert-detail__heading:has(> img.expert-detail__avatar) {
+  position: relative;
+}
+
+.admin-mentor-summary:has(> img.admin-mentor-photo)::before,
+.admin-mentor-editor:has(> img.admin-mentor-editor__photo)::before,
+.expert-detail__heading:has(> img.expert-detail__avatar)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: var(--color-surface);
+  opacity: 0;
+  transition: opacity 280ms ease-out;
+  pointer-events: none;
+}
+
+.admin-mentor-editor:has(> img.admin-mentor-editor__photo)::before {
+  width: 5.5rem;
+  height: 5.5rem;
+}
+
+/* The heading centres the avatar against the title. */
+.expert-detail__heading:has(> img.expert-detail__avatar)::before {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.admin-mentor-summary:has(> img.img-pending)::before,
+.admin-mentor-editor:has(> img.img-pending)::before,
+.expert-detail__heading:has(> img.img-pending)::before {
+  opacity: 1;
+}
+
+/* Paint the photos above the fill. */
+img.admin-mentor-photo,
+img.admin-mentor-editor__photo,
+img.expert-detail__avatar {
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .expert-detail__heading:has(> img.expert-detail__avatar)::before {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+}
+
+/* Rows kept after a failed background refresh sit just under the error line. */
+.admin-status-error + .admin-item-list,
+.admin-status-error + .empty-state {
+  margin-top: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Bones go flat: no sheen. */
+  .skeleton-sheen::after {
+    display: none;
+  }
+
+  /* Hairline and refresh segment: a static full-width bar breathing in opacity. */
+  .route-progress {
+    background: var(--color-mint);
+    transform: none;
+    opacity: 0;
+    animation: arl-breathe 2s ease-in-out 250ms infinite;
+  }
+
+  .list-refreshing::before {
+    width: 100%;
+    transform: none;
+    animation: arl-breathe 2s ease-in-out var(--loader-delay) infinite;
+  }
+
+  /* Busy dots hold still at stepped opacities. */
+  .busy-dots > span {
+    animation: none;
+  }
+
+  .busy-dots > span:nth-child(2) {
+    opacity: 0.75;
+  }
+
+  .busy-dots > span:nth-child(3) {
+    opacity: 1;
+  }
+
+  .reveal-in {
+    animation: content-in-fade 160ms ease-out backwards;
+  }
+
+  .inventory-card,
+  .home-category {
+    transition: none;
+  }
+
+  .inventory-card:hover,
+  .home-category:hover {
+    transform: none;
   }
 }

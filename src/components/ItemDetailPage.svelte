@@ -5,6 +5,7 @@
   import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { fetchInventoryItem } from '../lib/inventory.js';
   import { t } from '../lib/i18n.js';
+  import { reveal, revealOnLoad } from '../lib/motion.js';
   import {
     categoryToPath,
     clearReserveIntent,
@@ -24,6 +25,7 @@
   import ConsultationRequestForm from './ConsultationRequestForm.svelte';
   import ItemCalendar from './ItemCalendar.svelte';
   import ReserveAuthRequiredModal from './ReserveAuthRequiredModal.svelte';
+  import Skeleton from './Skeleton.svelte';
 
   let {
     reserveSuccessTick,
@@ -330,7 +332,11 @@
                 {$t(tagLabels[routeParams.tag] ?? tagLabels.equipment)}
               </a>
             </li>
-            {#if item}
+            {#if loading}
+              <li class="item-detail-breadcrumb__item item-detail-breadcrumb__item--current" aria-hidden="true">
+                <span class="bone item-detail-breadcrumb__bone skeleton"></span>
+              </li>
+            {:else if item}
               <li class="item-detail-breadcrumb__item item-detail-breadcrumb__item--current" aria-current="page">
                 {item.title}
                 {#if !isExpertise}
@@ -366,17 +372,24 @@
       </button>
     </div>
 
+    <!-- Keep these branches a flat {:else if} chain: a local in:reveal plays when this
+         block flips from loading, but not on an element inside a nested {#if}. -->
     {#if loading}
-      <p class="item-detail-page__loading" aria-busy="true">{$t('inventory.loading')}</p>
+      <!-- routeParams, not the item: during a reload `item` is still the previous one. -->
+      <Skeleton
+        variant="detail"
+        expert={routeParams?.tag === 'expertise'}
+        label={$t('item_detail.loading')}
+      />
     {:else if loadFailed}
-      <div class="item-detail-page__not-found">
+      <div class="item-detail-page__not-found" in:reveal>
         <p class="status error" role="alert">{$t('item_detail.load_error')}</p>
         <button type="button" class="btn-secondary" onclick={loadItem}>
           {$t('item_detail.try_again')}
         </button>
       </div>
     {:else if notFound}
-      <div class="item-detail-page__not-found">
+      <div class="item-detail-page__not-found" in:reveal>
         <h1>{$t('item_detail.not_found')}</h1>
         <p>
           <a href={categoryToPath(routeParams?.tag ?? 'equipment')} class="item-detail-page__back-link" onclick={goCategory}>
@@ -384,21 +397,67 @@
           </a>
         </p>
       </div>
+    {:else if item && isExpertise}
+      <article class="item-detail item-detail--expertise" in:reveal>
+        <header class="expert-detail__heading">
+          <img
+            {@attach revealOnLoad}
+            class="expert-detail__avatar"
+            src={item.image}
+            alt=""
+            width="80"
+            height="80"
+            decoding="async"
+          />
+          <h1>{item.title}</h1>
+        </header>
+        <p class="expert-detail__bio">{expertiseCopy.longText}</p>
+
+        {#if statusMessage}
+          <p
+            class="card-status status {statusType} item-detail__status"
+            class:fade-out={fadeOut}
+            role="status"
+            aria-live="polite"
+          >
+            {statusMessage}
+          </p>
+        {/if}
+
+        <aside
+          bind:this={calendarColumn}
+          class="item-detail__calendar"
+          class:item-detail__calendar--highlight={calendarHighlight}
+        >
+          <ConsultationRequestForm
+            item={item}
+            onbeforeconfirm={requireAuthForReservation}
+            onupdated={handleReserveUpdated}
+            onconfirmed={handleReserveSuccess}
+          />
+        </aside>
+      </article>
     {:else if item}
-      {#if isExpertise}
-        <article class="item-detail item-detail--expertise">
-          <header class="expert-detail__heading">
-            <img
-              class="expert-detail__avatar"
-              src={item.image}
-              alt=""
-              width="80"
-              height="80"
-              decoding="async"
-            />
+      <article class="item-detail" in:reveal>
+        <div class="item-detail__media">
+          <img
+            {@attach revealOnLoad}
+            class="item-detail__image"
+            src={item.image}
+            alt={$t('inventory.image_alt', { title: item.title })}
+            width="960"
+            height="540"
+            decoding="async"
+          />
+        </div>
+
+        <div class="item-detail__content">
+          <header class="item-detail__header">
             <h1>{item.title}</h1>
           </header>
-          <p class="expert-detail__bio">{expertiseCopy.longText}</p>
+          <div class="item-detail__body">
+            <p>{item.body}</p>
+          </div>
 
           {#if statusMessage}
             <p
@@ -410,68 +469,22 @@
               {statusMessage}
             </p>
           {/if}
+        </div>
 
-          <aside
-            bind:this={calendarColumn}
-            class="item-detail__calendar"
-            class:item-detail__calendar--highlight={calendarHighlight}
-          >
-            <ConsultationRequestForm
-              item={item}
-              onbeforeconfirm={requireAuthForReservation}
-              onupdated={handleReserveUpdated}
-              onconfirmed={handleReserveSuccess}
-            />
-          </aside>
-        </article>
-      {:else}
-        <article class="item-detail">
-          <div class="item-detail__media">
-            <img
-              class="item-detail__image"
-              src={item.image}
-              alt={$t('inventory.image_alt', { title: item.title })}
-              width="960"
-              height="540"
-              decoding="async"
-            />
-          </div>
-
-          <div class="item-detail__content">
-            <header class="item-detail__header">
-              <h1>{item.title}</h1>
-            </header>
-            <div class="item-detail__body">
-              <p>{item.body}</p>
-            </div>
-
-            {#if statusMessage}
-              <p
-                class="card-status status {statusType} item-detail__status"
-                class:fade-out={fadeOut}
-                role="status"
-                aria-live="polite"
-              >
-                {statusMessage}
-              </p>
-            {/if}
-          </div>
-
-          <aside
-            bind:this={calendarColumn}
-            class="item-detail__calendar"
-            class:item-detail__calendar--highlight={calendarHighlight}
-          >
-            <ItemCalendar
-              item={item}
-              hideHeading
-              onbeforeconfirm={requireAuthForReservation}
-              onupdated={handleReserveUpdated}
-              onconfirmed={handleReserveSuccess}
-            />
-          </aside>
-        </article>
-      {/if}
+        <aside
+          bind:this={calendarColumn}
+          class="item-detail__calendar"
+          class:item-detail__calendar--highlight={calendarHighlight}
+        >
+          <ItemCalendar
+            item={item}
+            hideHeading
+            onbeforeconfirm={requireAuthForReservation}
+            onupdated={handleReserveUpdated}
+            onconfirmed={handleReserveSuccess}
+          />
+        </aside>
+      </article>
     {/if}
   </div>
 </dialog>

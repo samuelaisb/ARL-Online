@@ -1,8 +1,12 @@
 <script>
+  import { onMount } from 'svelte';
   import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
+  import { notify } from '../lib/notification-store.js';
   import { sendContactMessage } from '../lib/contact.js';
+  import BusyLabel from './BusyLabel.svelte';
 
+  let contactSection = $state();
   let name = $state('');
   let email = $state('');
   let message = $state('');
@@ -35,6 +39,27 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
 
+  /**
+   * `/about#contact` (a shared link, Back/Forward to one): bring the contact form into
+   * view and focus its section. This page renders after its chunk loads, so on a fresh
+   * load the browser's own jump to the hash found nothing. Kimchi's `/about#contact`
+   * links don't change the URL hash; KimchiNotification scrolls to the section itself.
+   */
+  function showContactFromHash() {
+    if (window.location.hash !== '#contact' || !contactSection) {
+      return;
+    }
+
+    contactSection.scrollIntoView({ block: 'start' });
+    contactSection.focus({ preventScroll: true });
+  }
+
+  onMount(() => {
+    showContactFromHash();
+    window.addEventListener('hashchange', showContactFromHash);
+    return () => window.removeEventListener('hashchange', showContactFromHash);
+  });
+
   async function handleSubmit(event) {
     event.preventDefault();
     clearFormStatus();
@@ -63,6 +88,8 @@
         website,
       });
       showFormStatus($t('about.contact_success'), 'success');
+      // The status line above stays the carrier: Kimchi may be asleep.
+      notify({ textKey: 'kimchi.contact_sent' });
       name = '';
       email = '';
       message = '';
@@ -139,7 +166,15 @@
     </p>
   </section>
 
-  <section class="about-section" aria-labelledby="about-contact-heading">
+  <!-- id="contact": /about#contact links (Kimchi's "Contact us") land here; the
+       tabindex lets them move focus to the section. -->
+  <section
+    bind:this={contactSection}
+    id="contact"
+    class="about-section"
+    aria-labelledby="about-contact-heading"
+    tabindex="-1"
+  >
     <h2 id="about-contact-heading" class="about-section__title">{$t('about.contact_heading')}</h2>
     <p class="about-section__body">{$t('about.contact_intro')}</p>
 
@@ -200,7 +235,11 @@
       {/if}
 
       <button type="submit" class="btn-primary about-contact-form__submit" disabled={submitting}>
-        {submitting ? $t('about.contact_submitting') : $t('about.contact_submit')}
+        <BusyLabel
+          label={$t('about.contact_submit')}
+          busyLabel={$t('about.contact_submitting')}
+          busy={submitting}
+        />
       </button>
     </form>
   </section>

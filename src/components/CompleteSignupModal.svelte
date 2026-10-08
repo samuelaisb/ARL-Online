@@ -5,15 +5,22 @@
     passwordPrompt,
     signOut,
   } from '../lib/auth.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
+  import BusyLabel from './BusyLabel.svelte';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
+
+  /** The sign-out line here is longer than the usual 5 s bubble. */
+  const SIGNUP_PAUSED_DURATION = 8000;
 
   let dialog = $state();
   let agreementModal = $state();
   let contractSigned = $state(false);
   let emailUpdatesOptIn = $state(false);
+  /** Disables both buttons while either request runs. */
   let submitting = $state(false);
+  /** Which request is running, so only the clicked button shows busy. */
+  let signingOut = $state(false);
   let formStatus = $state('');
 
   // Opens whenever the signed-in account came from an OAuth provider without the agreement.
@@ -63,14 +70,19 @@
 
   async function handleSignOut() {
     submitting = true;
+    signingOut = true;
     formStatus = '';
     try {
       await signOut();
-      notify(translateKey('kimchi.signed_out'));
+      // Backing out of joining, not leaving: say they can finish later. If a new agreement
+      // version ever re-asks existing members through this dialog, they should get
+      // `kimchi.signed_out` here instead.
+      notify({ textKey: 'kimchi.signup_paused' }, SIGNUP_PAUSED_DURATION);
     } catch (error) {
       formStatus = error.message || $t('auth.sign_out_error');
     } finally {
       submitting = false;
+      signingOut = false;
     }
   }
 </script>
@@ -112,10 +124,14 @@
 
     <div class="modal-actions">
       <button type="button" class="btn-secondary" disabled={submitting} onclick={handleSignOut}>
-        {$t('auth.sign_out')}
+        <BusyLabel label={$t('auth.sign_out')} busyLabel={$t('auth.signing_out')} busy={signingOut} />
       </button>
       <button type="submit" class="btn-primary" disabled={submitting}>
-        {submitting ? $t('auth.saving') : $t('auth.complete_signup_submit')}
+        <BusyLabel
+          label={$t('auth.complete_signup_submit')}
+          busyLabel={$t('auth.saving')}
+          busy={submitting && !signingOut}
+        />
       </button>
     </div>
   </form>

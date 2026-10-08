@@ -6,8 +6,18 @@ import {
   DEFAULT_INVENTORY_TAG,
 } from '../lib/inventory.js';
   import { compressImageFile } from '../lib/image.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
+  import BusyLabel from './BusyLabel.svelte';
+
+  // Kimchi names the category the item landed in: a quiet check on the tag picker,
+  // which starts on Equipment.
+  const ITEM_ADDED_KEYS = {
+    equipment: 'kimchi.item_added_tag.equipment',
+    books: 'kimchi.item_added_tag.books',
+    rooms: 'kimchi.item_added_tag.rooms',
+    expertise: 'kimchi.item_added_tag.expertise',
+  };
 
   let { oncreated } = $props();
 
@@ -23,10 +33,13 @@ import {
   let saving = $state(false);
   let formStatus = $state('');
   let formStatusType = $state('');
+  // Outside the dialog, so "added" is still announced once it closes (Kimchi may be asleep).
+  let statusMessage = $state('');
 
   let imageInput;
 
   export function open() {
+    statusMessage = '';
     title = '';
     body = '';
     longBody = '';
@@ -134,8 +147,10 @@ import {
         ...(trimmedExpertEmail ? { expertEmail: trimmedExpertEmail } : {}),
       });
       oncreated?.(item);
-      notify(translateKey('kimchi.item_added'), DEFAULT_NOTIFICATION_DURATION);
+      notify({ textKey: ITEM_ADDED_KEYS[item?.tag] ?? 'kimchi.item_added' }, DEFAULT_NOTIFICATION_DURATION);
       close();
+      // Set once the dialog is closed: while it's modal, the page behind it is inert.
+      statusMessage = $t('admin.item_added_status', { title: item?.title ?? trimmedTitle });
     } catch (error) {
       showFormStatus(error.message || $t('add_item.save_error'), 'error');
     } finally {
@@ -252,17 +267,20 @@ import {
         disabled={processingImage}
         onclick={() => imageInput?.click()}
       >
-        {#if processingImage}
-          {$t('add_item.processing')}
-        {:else}
-          {$t('add_item.choose_image')}
-        {/if}
+        <BusyLabel
+          label={$t('add_item.choose_image')}
+          busyLabel={$t('add_item.processing')}
+          busy={processingImage}
+        />
       </button>
       {#if imageFileName}
         <p class="image-file-name">{imageFileName}</p>
       {/if}
       {#if selectedImageDataUrl}
-        <img class="image-preview" src={selectedImageDataUrl} alt="" />
+        <!-- Keyed so a replacement image fades in too, not just the first one. -->
+        {#key selectedImageDataUrl}
+          <img class="image-preview reveal-in" src={selectedImageDataUrl} alt="" />
+        {/key}
       {/if}
     </div>
 
@@ -275,12 +293,10 @@ import {
     <div class="modal-actions">
       <button type="button" class="btn-secondary" onclick={close}>{$t('auth.cancel')}</button>
       <button type="submit" class="btn-primary" disabled={saving}>
-        {#if saving}
-          {$t('add_item.saving')}
-        {:else}
-          {$t('add_item.save_item')}
-        {/if}
+        <BusyLabel label={$t('add_item.save_item')} busyLabel={$t('add_item.saving')} busy={saving} />
       </button>
     </div>
   </form>
 </dialog>
+
+<p class="visually-hidden" role="status">{statusMessage}</p>

@@ -10,12 +10,18 @@ import { setTimeout as delay } from 'timers/promises';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
 import { compareDateKeys, libraryTodayKey, parseDateKey, toDateKey } from './src/lib/calendar.js';
-import { EXPERT_LONG_TEXT_MAX, EXPERT_NAME_MAX, EXPERT_SHORT_TEXT_MAX } from './src/lib/expertise-fields.js';
+import {
+  EXPERT_LONG_TEXT_MAX,
+  EXPERT_NAME_MAX,
+  EXPERT_SHORT_TEXT_MAX,
+  FOLLOW_UP_NOTE_MAX,
+} from './src/lib/expertise-fields.js';
 import { isConsultationHeld, validateReservationDates } from './src/lib/reservation-rules.js';
 import {
   addReservation,
   approveReservation,
   cancelConsultation,
+  bookFollowUpConsultation,
   cancelReservationForMember,
   checkReservationSchema,
   countPendingReservationsByEmail,
@@ -578,7 +584,7 @@ function buildConsultationIcs(item, reservation, method) {
     `DTSTAMP:${icsTimestamp(new Date())}`,
     `DTSTART:${icsTimestamp(start)}`,
     `DTEND:${icsTimestamp(end)}`,
-    `SUMMARY:${icsEscape(`Consultation: ${consultationTitle(item)}`)}`,
+    `SUMMARY:${icsEscape(`${reservation.followUpOf ? 'Follow-up consultation' : 'Consultation'}: ${consultationTitle(item)}`)}`,
     `DESCRIPTION:${icsEscape(description)}`,
     ...(reservation.zoomJoinUrl ? [`LOCATION:${icsEscape(reservation.zoomJoinUrl)}`] : []),
     `ORGANIZER;CN=Activist Resource Library:mailto:${organizer}`,
@@ -639,9 +645,17 @@ function buildExpertRequestEmailPayload(item, reservation) {
   });
 }
 
-/** Scheduled → member and expert, each with the Zoom link and a calendar invite. */
+/**
+ * Scheduled → member and expert, each with the Zoom link and a calendar invite. A follow-up
+ * booked by the expert says so, and its optional note replaces the member's request summary.
+ */
 function buildConsultationScheduledEmailPayloads(item, reservation) {
   const title = consultationTitle(item);
+  const followUp = Boolean(reservation.followUpOf);
+  const kind = followUp ? 'Follow-up consultation' : 'Consultation';
+  const noteRow = followUp
+    ? ['Follow-up note', reservation.requestSummary]
+    : ['What they would like to discuss', reservation.requestSummary];
   const meetingTime = formatMeetingDateTime(reservation.meetingAt);
   const accountUrl = absoluteSiteUrl('/account');
   const roomNotice = reservation.zoomJoinUrl ? ZOOM_ROOM_NOTICE : NO_ZOOM_NOTICE;
@@ -655,10 +669,15 @@ function buildConsultationScheduledEmailPayloads(item, reservation) {
     payloads.push(
       buildConsultationEmail({
         to: memberEmail,
-        subject: `Consultation confirmed: ${title}`,
-        heading: 'Consultation confirmed',
-        intro: `Your consultation is booked for ${meetingTime} with ${expertEmail ?? title}.`,
-        details: [['Consultation', title, itemPageUrl(item)], ['When', meetingTime], ...zoomDetailRows(reservation)],
+        subject: `${kind} confirmed: ${title}`,
+        heading: `${kind} confirmed`,
+        intro: `Your ${kind.toLowerCase()} is booked for ${meetingTime} with ${expertEmail ?? title}.`,
+        details: [
+          ['Consultation', title, itemPageUrl(item)],
+          ['When', meetingTime],
+          ...(followUp ? [noteRow] : []),
+          ...zoomDetailRows(reservation),
+        ],
         paragraphs: [roomNotice, CONSULTATION_FUNDING_NOTICE, CONSULTATION_DATA_NOTICE, cancelNotice],
         cta,
         links: [
@@ -677,14 +696,14 @@ function buildConsultationScheduledEmailPayloads(item, reservation) {
     payloads.push(
       buildConsultationEmail({
         to: expertEmail,
-        subject: `Consultation scheduled: ${title}`,
-        heading: 'Consultation scheduled',
-        intro: `Your consultation with ${memberEmail ?? 'a member'} is booked for ${meetingTime}.`,
+        subject: `${kind} scheduled: ${title}`,
+        heading: `${kind} scheduled`,
+        intro: `Your ${kind.toLowerCase()} with ${memberEmail ?? 'a member'} is booked for ${meetingTime}.`,
         details: [
           ['Consultation', title],
           ['When', meetingTime],
           ['Member', memberEmail],
-          ['What they would like to discuss', reservation.requestSummary],
+          noteRow,
           ...zoomDetailRows(reservation),
         ],
         paragraphs: [roomNotice, cancelNotice],
@@ -1164,7 +1183,16 @@ async function sendWelcomeEmailIfNeeded(user) {
       throw new Error(claimError.message || 'Failed to claim welcome email send.');
     }
 
-    const { error } = await getResend().emails.send(emailPayload);
+    // The claim above makes this once per account, so it doubles as the new-member alert.
+    // postSlackWorkflow never throws; it runs alongside the email and is awaited either way.
+    const slackPosted = notifySlackAlert({
+      status: 'member_signed_up',
+      userEmail: email,
+      summary: `New member account: ${email}.`,
+    });
+    const { error } = await getResend()
+      .emails.send(emailPayload)
+      .finally(() => slackPosted);
 
     if (error) {
       console.error('Welcome email send failed after metadata claim:', error);
@@ -1341,6 +1369,7 @@ function serializeConsultationForUser({ item, reservation }, role) {
     zoomJoinUrl: active ? reservation.zoomJoinUrl ?? null : null,
     zoomPassword: active ? reservation.zoomPassword ?? null : null,
     cancelledBy: reservation.cancelledBy ?? null,
+    isFollowUp: Boolean(reservation.followUpOf),
     memberEmail: role === 'expert' ? reservation.userEmail ?? null : null,
     expertEmail: role === 'member' ? item.expertEmail ?? null : null,
   };
@@ -1399,8 +1428,43 @@ async function postSlackWorkflow(payload) {
   }
 }
 
+const SLACK_REQUEST_KIND = { equipment: 'equipment', books: 'book', rooms: 'room' };
+
+const SLACK_ALERT_EMOJI = {
+  member_signed_up: '👋',
+  mentor_profile_published: '🧑‍🏫',
+  mentor_profile_updated: '✏️',
+  reservation_cancelled_by_member: '↩️',
+  consultation_follow_up: '🔁',
+};
+
+/**
+ * The whole Slack message for a new request, sent as `message` so the workflow shows only
+ * `{message}`. Plain text with line breaks: the workflow does not format variables.
+ */
+function reservationSlackMessage(item, reservation) {
+  const from = `From ${reservation.userEmail || 'an unknown member'}`;
+
+  if (item.tag === 'expertise') {
+    return [
+      `📚 New consultation request: ${item.title}`,
+      from,
+      reservation.requestSummary ? `Topic: ${reservation.requestSummary}` : '',
+      reservation.timeSlots ? `Availability: ${reservation.timeSlots}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  const kind = SLACK_REQUEST_KIND[item.tag] ?? 'reservation';
+  return [`📚 New ${kind} request: ${item.title}`, from, formatReservationDates(reservation)]
+    .filter(Boolean)
+    .join('\n');
+}
+
 async function notifySlackReservation({ item, reservation }) {
   return postSlackWorkflow({
+    message: reservationSlackMessage(item, reservation),
     item_id: item.id,
     item_title: item.title,
     item_body: item.body,
@@ -1420,14 +1484,16 @@ async function notifySlackReservation({ item, reservation }) {
 /**
  * A staff alert through the same Slack workflow trigger, so it sends exactly the
  * notifySlackReservation keys (unused ones ''). `status` names the event (e.g.
- * 'mentor_profile_published') and `summary`, sent as `request_summary`, is the sentence staff
- * read. Pass `reservation` when the alert is about one reservation or consultation; its id and
- * dates fill `reservation_id`, `start_date` and `end_date` (otherwise both dates are today).
+ * 'mentor_profile_published') and `summary` is the sentence staff read, sent as `message`
+ * (after the event's emoji) and as `request_summary`. Pass `reservation` when the alert is about
+ * one reservation or consultation; its id and dates fill `reservation_id`, `start_date` and
+ * `end_date` (otherwise both dates are today).
  */
 async function notifySlackAlert({ status, item, userEmail, summary, reservation = null }) {
   const today = toDateKey(new Date());
 
   return postSlackWorkflow({
+    message: `${SLACK_ALERT_EMOJI[status] ?? '📣'} ${summary}`,
     item_id: item?.id ?? '',
     item_title: item?.title ?? '',
     item_body: item?.body ?? '',
@@ -2843,6 +2909,16 @@ app.post(
       const emailSent = await settleNotifications('Consultation cancelled', [
         handleConsultationCancelled(result.item, result.reservation, result.previousStatus),
       ]);
+      // Whether the other side was told by email: a mentor with no address on file is skipped
+      // while the member's email still goes out (emailSent stays true). An admin cancel needs both.
+      const memberEmail = trimmedOrNull(result.reservation.userEmail);
+      const expertEmail = trimmedOrNull(result.item.expertEmail);
+      const otherPartyHasEmail =
+        cancelledBy === 'member'
+          ? Boolean(expertEmail)
+          : cancelledBy === 'expert'
+            ? Boolean(memberEmail)
+            : Boolean(memberEmail && expertEmail);
 
       console.log('[consultation]', { action: 'cancel', reservationId, by: cancelledBy });
       res.json({
@@ -2851,6 +2927,7 @@ app.post(
           cancelledBy === 'member' ? 'member' : 'expert',
         ),
         emailSent,
+        otherPartyEmailed: emailSent && otherPartyHasEmail,
       });
     } catch (error) {
       console.error('Failed to cancel consultation:', error);
@@ -2859,6 +2936,110 @@ app.post(
         error: isReservationSchemaError(detail)
           ? reservationSchemaErrorMessage()
           : 'Could not cancel the consultation.',
+      });
+    }
+  },
+);
+
+// The expert (or an admin) books the next meeting from one that has started. The follow-up is
+// scheduled at once: Zoom meeting, invitations to both, and a Slack note for staff.
+app.post(
+  '/api/consultations/:reservationId/follow-up',
+  consultationActionLimiter,
+  requireAuth,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+    const meetingAt = typeof req.body?.meetingAt === 'string' ? req.body.meetingAt : '';
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+
+    try {
+      const found = await loadConsultationForUser(req.user, reservationId);
+
+      if (!found) {
+        return res.status(404).json({ error: 'Consultation not found.' });
+      }
+
+      if (!found.isExpert && !found.isAdmin) {
+        return res.status(403).json({ error: 'Only the expert can book a follow-up.' });
+      }
+
+      if (note.length > FOLLOW_UP_NOTE_MAX) {
+        return res.status(400).json({ error: `The note must be ${FOLLOW_UP_NOTE_MAX} characters or fewer.` });
+      }
+
+      const meetingError = validateMeetingAt(meetingAt);
+      if (meetingError) {
+        return res.status(400).json({ error: meetingError });
+      }
+
+      let result;
+      try {
+        result = await bookFollowUpConsultation(found.item.id, reservationId, {
+          meetingAt: meetingAt.trim(),
+          note,
+          today: libraryTodayKey(),
+          createMeeting: createZoomMeetingForConsultation,
+          deleteMeeting: deleteConsultationMeeting,
+        });
+      } catch (error) {
+        if (error.zoomFailed) {
+          return res.status(502).json({ error: 'Could not create the Zoom meeting. Please try again in a moment.' });
+        }
+        throw error;
+      }
+
+      if (result.notFound || result.reservationNotFound) {
+        return res.status(404).json({ error: 'Consultation not found.' });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json({
+          error: 'A follow-up can only be booked once a scheduled meeting has started.',
+          code: 'follow_up_not_available',
+        });
+      }
+
+      if (result.followUpAlreadyOpen) {
+        return res.status(409).json({
+          error: 'This member already has an open consultation with this expert. Schedule or cancel it first.',
+          code: 'follow_up_already_open',
+        });
+      }
+
+      if (result.meetingTimeRequired) {
+        return res.status(400).json({
+          error: 'A valid meeting date and time is required to schedule a consultation.',
+        });
+      }
+
+      const { item, reservation } = result;
+      const role = found.isExpert ? 'expert' : 'admin';
+      const emailSent = await settleNotifications('Follow-up consultation', [
+        sendConsultationScheduledEmails(item, reservation),
+        notifySlackAlert({
+          status: 'consultation_follow_up',
+          item,
+          userEmail: reservation.userEmail,
+          reservation,
+          summary: `Follow-up consultation "${item.title}" with ${reservation.userEmail ?? 'a member'} booked by the ${role} for ${formatMeetingDateTime(reservation.meetingAt)}.`,
+        }),
+      ]);
+
+      console.log('[consultation]', { action: 'follow_up', reservationId, followUpId: reservation.id, by: role });
+      res.status(201).json({
+        consultation: serializeConsultationForUser(result, 'expert'),
+        // /admin replaces the item's reservations from this, as it does after approve.
+        ...(found.isAdmin ? { item: withPublicItemImage(item) } : {}),
+        emailSent,
+      });
+    } catch (error) {
+      console.error('Failed to book follow-up consultation:', error);
+      const detail = error?.message || '';
+      res.status(500).json({
+        error: isReservationSchemaError(detail)
+          ? reservationSchemaErrorMessage()
+          : 'Could not book the follow-up consultation.',
       });
     }
   },

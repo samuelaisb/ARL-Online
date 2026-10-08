@@ -1,4 +1,4 @@
-*Last updated: October 5, 2026*
+*Last updated: October 7, 2026*
 
 The Activist Resource Library (ARL) is run by **Apathy is Boring (AisB)**, a non-profit based in Montréal, Québec, in partnership with Finance Engage Sustain (FES). This policy explains, in plain language, what personal information we collect on activistresourcelibrary.com, why, and what you can do about it. It follows Québec’s *Act respecting the protection of personal information in the private sector* (Law 25).
 
@@ -20,6 +20,7 @@ We only collect what we need to run the library.
 - **Expert profiles:** if you share your expertise, your name, photo, and descriptions are **public** on the website. Your email stays private, except with members who request a consultation with you.
 - **Contact form:** your name, email, and message. *Why:* to reply to you.
 - **Website use:** pages you visit, your device and browser type, and your approximate location, collected by Google Analytics using cookies, plus standard server logs (such as IP address) kept for security. Your browser also stores your language choice and your login session. *Why:* to keep the site secure and understand how it’s used.
+- **Kimchi, our library cat:** Kimchi remembers a few small things in your browser so it doesn’t repeat itself: whether it has already greeted you or told you that you’re logged in, whether it’s napping, and which updates it has already mentioned. These notes hold only dates, statuses, and reference numbers, never your name, your email, or what you reserved. They stay in your browser and are never sent to us; clearing your browser data erases them.
 
 We don’t sell your information or use it for advertising. Funders and partners such as FES only receive anonymous, combined statistics. If we ever ask you for more information for a funder (for example after a consultation), it will be optional and we’ll tell you how it’s used.
 

@@ -50,6 +50,7 @@ const RESERVATION_SCHEMA_MIGRATION = 'supabase/migrations/002_reservation_approv
 const EXPERTISE_SCHEMA_MIGRATION = 'supabase/migrations/005_expertise.sql';
 const SCHEDULING_SCHEMA_MIGRATION = 'supabase/migrations/006_consultation_scheduling.sql';
 const EXPERTISE_COPY_SCHEMA_MIGRATION = 'supabase/migrations/007_expertise_copy.sql';
+const FOLLOW_UP_SCHEMA_MIGRATION = 'supabase/migrations/008_consultation_follow_up.sql';
 
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE };
 
@@ -58,13 +59,13 @@ export function isReservationSchemaError(message) {
     return false;
   }
 
-  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|zoom_|cancelled_|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
+  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|follow_up_of|zoom_|cancelled_|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
     message,
   );
 }
 
 export function reservationSchemaErrorMessage() {
-  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, and ${EXPERTISE_COPY_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, and expertise long text).`;
+  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, ${EXPERTISE_COPY_SCHEMA_MIGRATION}, and ${FOLLOW_UP_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, expertise long text, and follow-up consultations).`;
 }
 
 /** Warn at startup when migration 002 has not been applied. */
@@ -218,6 +219,7 @@ function reservationRowToApi(row) {
     zoomPassword: row.zoom_password ?? null,
     cancelledAt: row.cancelled_at ?? null,
     cancelledBy: row.cancelled_by ?? null,
+    followUpOf: row.follow_up_of ?? null,
   };
 }
 
@@ -1261,6 +1263,102 @@ export async function cancelConsultation(itemId, reservationId, { cancelledBy })
     item.reservations = [...item.reservations];
     item.reservations[reservationIndex] = updated;
     return { item, reservation: updated, previousStatus: existing.status };
+  });
+}
+
+/**
+ * Books a follow-up to a scheduled consultation whose meeting has started: a new row for the
+ * same member and expert, written straight as `reserved` with its own Zoom meeting and
+ * `follow_up_of` set to the source. The one-open-request rule still holds, ignoring the source
+ * itself (so the follow-up can be booked at the end of the call). `createMeeting` and
+ * `deleteMeeting` work as in scheduleConsultation.
+ */
+export async function bookFollowUpConsultation(
+  itemId,
+  sourceReservationId,
+  { meetingAt, note = null, today, createMeeting = null, deleteMeeting = null },
+) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item || item.tag !== 'expertise') {
+      return { notFound: true };
+    }
+
+    const source = item.reservations.find((entry) => entry.id === sourceReservationId);
+
+    if (!source) {
+      return { reservationNotFound: true };
+    }
+
+    const sourceStart = Date.parse(source.meetingAt ?? '');
+
+    if (source.status !== 'reserved' || Number.isNaN(sourceStart) || sourceStart > Date.now()) {
+      return { invalidStatus: true };
+    }
+
+    const alreadyOpen = item.reservations.some(
+      (entry) =>
+        entry.id !== source.id &&
+        emailsMatch(entry.userEmail, source.userEmail) &&
+        (entry.status === 'pending' || (entry.status === 'reserved' && !isConsultationHeld(entry))),
+    );
+
+    if (alreadyOpen) {
+      return { followUpAlreadyOpen: true };
+    }
+
+    const normalizedMeetingAt =
+      typeof meetingAt === 'string' && meetingAt.trim() ? meetingAt.trim() : null;
+
+    if (!normalizedMeetingAt || Number.isNaN(Date.parse(normalizedMeetingAt))) {
+      return { meetingTimeRequired: true };
+    }
+
+    const meetingIso = new Date(normalizedMeetingAt).toISOString();
+    const reservation = {
+      id: randomUUID(),
+      startDate: today,
+      endDate: today,
+      status: 'reserved',
+      userEmail: source.userEmail,
+      timeSlots: null,
+      requestSummary: typeof note === 'string' && note.trim() ? note.trim() : null,
+      meetingAt: meetingIso,
+      followUpOf: source.id,
+    };
+
+    const meeting = createMeeting ? await createMeeting(item, reservation) : null;
+    const row = { ...reservationToRow(itemId, reservation), follow_up_of: source.id };
+    if (meeting) {
+      row.zoom_meeting_id = meeting.id;
+      row.zoom_join_url = meeting.joinUrl;
+      row.zoom_password = meeting.password || null;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from('reservations').insert(row);
+
+    if (error) {
+      if (meeting && deleteMeeting) {
+        await deleteMeeting(meeting.id).catch((cleanupError) =>
+          console.error('Could not remove Zoom meeting after failed follow-up booking:', cleanupError),
+        );
+      }
+      throw new Error(error.message || 'Could not book the follow-up consultation.');
+    }
+
+    const created = {
+      ...reservation,
+      zoomMeetingId: meeting?.id ?? null,
+      zoomJoinUrl: meeting?.joinUrl ?? null,
+      zoomPassword: meeting?.password || null,
+      cancelledAt: null,
+      cancelledBy: null,
+    };
+
+    item.reservations = [...item.reservations, created];
+    return { item, reservation: created };
   });
 }
 

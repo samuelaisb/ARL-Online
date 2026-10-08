@@ -3,6 +3,7 @@
   import { loadInventoryItems } from './lib/inventory.js';
   import { locale, t } from './lib/i18n.js';
   import {
+    getItemRouteParams,
     isAboutRoute,
     isAccountRoute,
     isAdminRoute,
@@ -16,6 +17,7 @@
     navigateToPage,
     path,
   } from './lib/router.js';
+  import { notifyWhenIdle } from './lib/notification-store.js';
   import {
     applyHreflangTags,
     applySeoTags,
@@ -38,6 +40,7 @@
   import LocaleSwitcher from './components/LocaleSwitcher.svelte';
   import KimchiNotification from './components/KimchiNotification.svelte';
   import PageLoadError from './components/PageLoadError.svelte';
+  import RouteProgress from './components/RouteProgress.svelte';
 
   let items = $state([]);
   let loading = $state(true);
@@ -58,6 +61,21 @@
   // Not reactive on purpose: the SEO effect clears it.
   let serverSeoPath = $path;
 
+  /** After the item overlay closes, Kimchi waits this long before pointing to /account. */
+  const TRACK_REQUEST_DELAY_MS = 600;
+  const TRACK_REQUEST_DURATION = 8000;
+  const INVENTORY_LOAD_FAILED_DURATION = 8000;
+  // A pending equipment, book or room request was sent from the item overlay, and
+  // Kimchi hasn't yet said where to follow it. The reservation_sent bubble fires behind
+  // the dialog's backdrop, so this one waits for the overlay to close. Once per page
+  // load, spent only when the bubble shows. Not reactive on purpose.
+  let trackRequestArmed = false;
+  let trackRequestShown = false;
+  // Bumped on every overlay close, so a delayed offer from an earlier close gives up.
+  let trackRequestAttempt = 0;
+  // Kimchi has mentioned the current inventory load failure. Reset by refreshInventory.
+  let inventoryLoadNoticeShown = false;
+
   const onAdminPage = $derived(isAdminRoute($path));
   const onHowThisWorksPage = $derived(isHowThisWorksRoute($path));
   const onAboutPage = $derived(isAboutRoute($path));
@@ -71,6 +89,7 @@
   async function refreshInventory() {
     loadError = '';
     loading = true;
+    inventoryLoadNoticeShown = false;
 
     try {
       items = await loadInventoryItems();
@@ -133,13 +152,55 @@
 
   function handleReserveSuccess(detail) {
     const updatedItem = detail?.item;
+    const pending = detail?.reservation?.status === 'pending';
     reserveSuccessTick = {
       id: updatedItem?.id ?? null,
       at: Date.now(),
-      pending: detail?.reservation?.status === 'pending',
+      pending,
     };
     if (updatedItem) {
       handleItemUpdated(updatedItem);
+    }
+
+    // Consultation requests come through here too; their confirmation already names
+    // the account page, so only equipment, books and rooms arm the /account pointer.
+    const tag = updatedItem?.tag ?? getItemRouteParams($path)?.tag;
+    if (pending && tag !== 'expertise' && !trackRequestShown) {
+      trackRequestArmed = true;
+    }
+  }
+
+  /**
+   * The overlay closed after a pending request was sent from it: once the page has
+   * settled, Kimchi points to /account. Skipped when the close lands on /account.
+   */
+  async function offerTrackRequest(routePath) {
+    const attempt = ++trackRequestAttempt;
+    if (isAccountRoute(routePath)) {
+      trackRequestArmed = false;
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, TRACK_REQUEST_DELAY_MS));
+    if (attempt !== trackRequestAttempt || !trackRequestArmed || $path !== routePath) {
+      return;
+    }
+
+    // Waits out other bubbles (the request confirmation, a welcome) and any dialog.
+    const id = await notifyWhenIdle(
+      {
+        link: {
+          href: '/account',
+          ctaKey: 'kimchi.track_request_cta',
+          labelKey: 'kimchi.track_request_link',
+        },
+      },
+      TRACK_REQUEST_DURATION,
+    );
+    // Not shown (asleep, page changed): stay armed for the next overlay close.
+    if (id !== -1) {
+      trackRequestArmed = false;
+      trackRequestShown = true;
     }
   }
 
@@ -257,7 +318,32 @@
 
     if (closedItemPath) {
       returnFocusAfterOverlay(closedItemPath, currentPath);
+      if (trackRequestArmed) {
+        offerTrackRequest(currentPath);
+      }
+    } else if (isAccountRoute(currentPath)) {
+      // They found /account on their own: no need to point there any more.
+      trackRequestArmed = false;
     }
+  });
+
+  // The inventory didn't load: on the homepage or a category grid, Kimchi says so,
+  // once per failed load. Both pages also show the error inline (role="alert").
+  // Each qualifying page tries again until the bubble shows; the previous wait was
+  // cancelled by the page change (notifyWhenIdle).
+  $effect(() => {
+    $path;
+    if (!loadError || inventoryLoadNoticeShown || !(onHomePage || onInventoryPage)) {
+      return;
+    }
+
+    notifyWhenIdle({ textKey: 'kimchi.inventory_load_failed' }, INVENTORY_LOAD_FAILED_DURATION).then(
+      (id) => {
+        if (id !== -1) {
+          inventoryLoadNoticeShown = true;
+        }
+      },
+    );
   });
 
   function findOverlayReturnTarget(itemPath) {
@@ -344,10 +430,10 @@
     <a class="site-header__brand" href="/" aria-label={$t('site.brand_home_aria')} onclick={goHome}>
       <img
         class="site-header__logo"
-        src="/assets/brand/apathy-is-boring-logo.png"
+        src="/assets/brand/apathy-is-boring-wordmark.png"
         alt={$t('site.brand_name')}
-        width="240"
-        height="64"
+        width="830"
+        height="385"
       />
     </a>
     <SiteNav />
@@ -359,7 +445,9 @@
 
   <div class="app-body">
     {#if onAdminPage}
-      {#await import('./components/AdminPage.svelte') then { default: AdminPage }}
+      {#await import('./components/AdminPage.svelte')}
+        <RouteProgress />
+      {:then { default: AdminPage }}
         <AdminPage
           {items}
           {loading}
@@ -374,25 +462,33 @@
         <PageLoadError />
       {/await}
     {:else if onHowThisWorksPage}
-      {#await import('./components/HowThisWorksPage.svelte') then { default: HowThisWorksPage }}
+      {#await import('./components/HowThisWorksPage.svelte')}
+        <RouteProgress />
+      {:then { default: HowThisWorksPage }}
         <HowThisWorksPage />
       {:catch}
         <PageLoadError />
       {/await}
     {:else if onAboutPage}
-      {#await import('./components/AboutPage.svelte') then { default: AboutPage }}
+      {#await import('./components/AboutPage.svelte')}
+        <RouteProgress />
+      {:then { default: AboutPage }}
         <AboutPage />
       {:catch}
         <PageLoadError />
       {/await}
     {:else if onPrivacyPage}
-      {#await import('./components/PrivacyPage.svelte') then { default: PrivacyPage }}
+      {#await import('./components/PrivacyPage.svelte')}
+        <RouteProgress />
+      {:then { default: PrivacyPage }}
         <PrivacyPage />
       {:catch}
         <PageLoadError />
       {/await}
     {:else if onAccountPage}
-      {#await import('./components/AccountPage.svelte') then { default: AccountPage }}
+      {#await import('./components/AccountPage.svelte')}
+        <RouteProgress />
+      {:then { default: AccountPage }}
         <AccountPage
           onOpenLogin={openLoginFromReserve}
           onOpenRegister={openRegisterFromReserve}
@@ -402,7 +498,7 @@
         <PageLoadError />
       {/await}
     {:else if onHomePage}
-      <HomePage {items} {loading} />
+      <HomePage {items} {loading} {loadError} />
     {:else if onInventoryPage || onItemDetailPage}
       <main id="main-content" class="container">
         <header class="page-header">
@@ -433,7 +529,9 @@
 </div>
 
 {#if onItemDetailPage}
-  {#await import('./components/ItemDetailPage.svelte') then { default: ItemDetailPage }}
+  {#await import('./components/ItemDetailPage.svelte')}
+    <RouteProgress />
+  {:then { default: ItemDetailPage }}
     <ItemDetailPage
       {reserveSuccessTick}
       onItemUpdated={handleItemUpdated}

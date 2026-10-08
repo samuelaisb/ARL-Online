@@ -9,12 +9,15 @@
   } from '../lib/auth.js';
   import { supabaseConfigured } from '../lib/supabase.js';
   import { INVENTORY_PATH, navigate } from '../lib/router.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
+  import { reveal } from '../lib/motion.js';
   import AccountConsultations from './AccountConsultations.svelte';
   import AccountReservations from './AccountReservations.svelte';
   import AccountShareExpertise from './AccountShareExpertise.svelte';
+  import BusyLabel from './BusyLabel.svelte';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
+  import Skeleton from './Skeleton.svelte';
 
   let { onOpenLogin, onOpenRegister, onProfileSaved } = $props();
 
@@ -47,7 +50,7 @@
 
     try {
       await signOut();
-      notify(translateKey('kimchi.signed_out'));
+      notify({ textKey: 'kimchi.signed_out' });
     } catch (error) {
       signOutError = error.message || $t('auth.sign_out_error');
     } finally {
@@ -109,9 +112,9 @@
       <p class="admin-access__message">{$t('account.not_available_message')}</p>
     </div>
   {:else if !$authReady}
-    <p class="admin-status" role="status">{$t('auth.loading')}</p>
+    <Skeleton variant="page" gate label={$t('auth.loading')} />
   {:else if !$session}
-    <div class="admin-access">
+    <div class="admin-access" in:reveal>
       <h1 class="admin-access__title">{$t('account.sign_in_required_title')}</h1>
       <p class="admin-access__message">{$t('account.sign_in_required_message')}</p>
       <div class="admin-access__actions">
@@ -124,12 +127,12 @@
       </div>
     </div>
   {:else}
-    <header class="page-header account-page__header">
+    <header class="page-header account-page__header" in:reveal>
       <h1>{$t('account.heading')}</h1>
       <p class="account-page__email">{$session.user.email}</p>
     </header>
 
-    <div class="account-actions">
+    <div class="account-actions" in:reveal>
       <button
         type="button"
         class="btn-header btn-header--secondary"
@@ -173,7 +176,7 @@
         onclick={handleSignOut}
       >
         {@render actionIcon('sign-out')}
-        {signingOut ? $t('auth.signing_out') : $t('auth.sign_out')}
+        <BusyLabel label={$t('auth.sign_out')} busyLabel={$t('auth.signing_out')} busy={signingOut} />
       </button>
     </div>
 

@@ -6,10 +6,15 @@
   } from '../lib/expertise-fields.js';
   import { updateExpertiseItem } from '../lib/inventory.js';
   import { compressImageFile } from '../lib/image.js';
-  import { locale, t, translateKey } from '../lib/i18n.js';
+  import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
+  import { reveal, revealOnLoad } from '../lib/motion.js';
+  import BusyLabel from './BusyLabel.svelte';
+  import Skeleton from './Skeleton.svelte';
 
-  let { mentors = [], loading = false, loadError = '', onupdated } = $props();
+  // `loading`: a fetch is running. Before `hasLoaded` that shows the skeleton; after it,
+  // the rows stay and the list is marked as refreshing.
+  let { mentors = [], loading = false, hasLoaded = false, loadError = '', onupdated } = $props();
 
   let editingId = $state('');
   let name = $state('');
@@ -139,7 +144,7 @@
         ...(replaceImage ? { image: imageDataUrl } : {}),
       });
       onupdated?.(item);
-      notify(translateKey('kimchi.mentor_updated'), DEFAULT_NOTIFICATION_DURATION);
+      notify({ textKey: 'kimchi.mentor_updated' }, DEFAULT_NOTIFICATION_DURATION);
       editingId = '';
     } catch (error) {
       formError = error.message || $t('admin.mentors_save_error');
@@ -150,14 +155,19 @@
 </script>
 
 <div id="admin-mentor-list" class="admin-mentor-list" aria-label={$t('admin.mentors')}>
-  {#if loading}
-    <p class="admin-status" role="status">{$t('admin.loading')}</p>
-  {:else if loadError}
+  {#if loadError}
     <p class="admin-status admin-status-error" role="alert">{loadError}</p>
-  {:else if sortedMentors.length === 0}
-    <p class="empty-state">{$t('admin.mentors_empty')}</p>
-  {:else}
-    <ul class="admin-item-list">
+  {/if}
+  {#if loading && !hasLoaded}
+    <Skeleton count={4} avatar label={$t('admin.loading')} />
+  {:else if sortedMentors.length > 0}
+    <!-- No aria-busy while editing: it would hold back the form's alert. -->
+    <ul
+      class="admin-item-list"
+      class:list-refreshing={loading}
+      aria-busy={(loading && !editingId) || undefined}
+      in:reveal
+    >
       {#each sortedMentors as mentor (mentor.id)}
         <li
           class="admin-item-row admin-item-row--mentor"
@@ -165,11 +175,15 @@
         >
           {#if editingId === mentor.id}
             <form class="admin-mentor-editor" novalidate onsubmit={handleSubmit}>
-              <img
-                class="admin-mentor-editor__photo"
-                src={replaceImage && imageDataUrl ? imageDataUrl : mentor.image}
-                alt=""
-              />
+              <!-- A new element per picked image, so the new preview fades in too. -->
+              {#key imageDataUrl}
+                <img
+                  class="admin-mentor-editor__photo"
+                  src={replaceImage && imageDataUrl ? imageDataUrl : mentor.image}
+                  alt=""
+                  {@attach revealOnLoad}
+                />
+              {/key}
 
               <label for="mentor-name">{$t('add_item.expert_name_label')}</label>
               <input
@@ -234,11 +248,11 @@
                   disabled={processingImage || saving}
                   onclick={() => imageInput?.click()}
                 >
-                  {#if processingImage}
-                    {$t('add_item.processing')}
-                  {:else}
-                    {$t('add_item.choose_image')}
-                  {/if}
+                  <BusyLabel
+                    label={$t('add_item.choose_image')}
+                    busyLabel={$t('add_item.processing')}
+                    busy={processingImage}
+                  />
                 </button>
                 {#if imageFileName}
                   <p class="image-file-name">{imageFileName}</p>
@@ -255,18 +269,18 @@
                   {$t('auth.cancel')}
                 </button>
                 <button type="submit" class="btn-primary" disabled={saving || processingImage}>
-                  {#if saving}
-                    {$t('admin.mentors_saving')}
-                  {:else}
-                    {$t('admin.mentors_save')}
-                  {/if}
+                  <BusyLabel
+                    label={$t('admin.mentors_save')}
+                    busyLabel={$t('admin.mentors_saving')}
+                    busy={saving}
+                  />
                 </button>
               </div>
             </form>
           {:else}
             <div class="admin-mentor-summary">
               {#if mentor.image}
-                <img class="admin-mentor-photo" src={mentor.image} alt="" />
+                <img class="admin-mentor-photo" src={mentor.image} alt="" {@attach revealOnLoad} />
               {/if}
               <div class="admin-mentor-meta">
                 <span class="admin-item-title">{mentor.title}</span>
@@ -295,5 +309,7 @@
         </li>
       {/each}
     </ul>
+  {:else if hasLoaded || !loadError}
+    <p class="empty-state" in:reveal>{$t('admin.mentors_empty')}</p>
   {/if}
 </div>

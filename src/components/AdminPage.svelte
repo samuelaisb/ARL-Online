@@ -3,7 +3,9 @@
   import { supabaseConfigured } from '../lib/supabase.js';
   import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
+  import { reveal } from '../lib/motion.js';
   import AdminPanel from './AdminPanel.svelte';
+  import Skeleton from './Skeleton.svelte';
 
   let {
     items = [],
@@ -33,9 +35,9 @@
       <p class="admin-access__message">{$t('admin.not_available_message')}</p>
     </div>
   {:else if !$authReady}
-    <p class="admin-status" role="status">{$t('auth.loading')}</p>
+    <Skeleton variant="page" gate label={$t('auth.loading')} />
   {:else if !$session}
-    <div class="admin-access">
+    <div class="admin-access" in:reveal>
       <h1 class="admin-access__title">{$t('admin.sign_in_required_title')}</h1>
       <p class="admin-access__message">{$t('admin.sign_in_required_message')}</p>
       <div class="admin-access__actions">
@@ -48,16 +50,19 @@
       </div>
     </div>
   {:else if !isApathyAdmin($session)}
-    <div class="admin-access">
+    <div class="admin-access" in:reveal>
       <h1 class="admin-access__title">{$t('admin.access_denied_title')}</h1>
       <p class="admin-access__message">{$t('admin.access_denied_message')}</p>
     </div>
   {:else}
-    <header class="page-header">
+    <header class="page-header" in:reveal>
       <h1>{$t('admin.heading')}</h1>
       <p class="subtitle">{$t('admin.copy')}</p>
     </header>
 
-    <AdminPanel {items} {loading} {loadError} {onAddItem} {onItemRemoved} {onItemUpdated} />
+    <!-- Wrapper only so the panel's action buttons fade in with the header. -->
+    <div in:reveal>
+      <AdminPanel {items} {loading} {loadError} {onAddItem} {onItemRemoved} {onItemUpdated} />
+    </div>
   {/if}
 </main>

@@ -8,6 +8,8 @@
   // once to pick up the new build. The timestamp stops a reload loop when the
   // chunk fails for another reason (bad connection, broken deploy); this message
   // and its button stay up instead.
+  // The card fades in with the CSS .reveal-in: a local in:reveal directly inside
+  // this component's own {#if} would not play when the component mounts.
   const RELOAD_STORAGE_KEY = 'arl-chunk-reload-at';
   const RELOAD_GUARD_MS = 60_000;
 
@@ -51,11 +53,11 @@
 {/snippet}
 
 {#if overlay}
-  <div class="page-load-error page-load-error--overlay">
+  <div class="page-load-error page-load-error--overlay reveal-in">
     {@render notice()}
   </div>
 {:else}
-  <main id="main-content" class="container page-load-error">
+  <main id="main-content" class="container page-load-error reveal-in">
     {@render notice()}
   </main>
 {/if}

@@ -1,22 +1,75 @@
+<script module>
+  // "New in the library" state that outlives the panel (leaving the grid unmounts it).
+  /** This load wrote the first-seen key: a first visit, so nothing is new to this browser yet. */
+  let firstVisitLoad = false;
+  /** Memory copy of the once-per-visit flag, for when sessionStorage is blocked. */
+  let newItemShownThisLoad = false;
+</script>
+
 <script>
   import InventoryCard from './InventoryCard.svelte';
+  import LoadingStatus from './LoadingStatus.svelte';
   import { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG } from '../lib/inventory.js';
   import {
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
+  import { authReady, isApathyAdmin, session } from '../lib/auth.js';
   import { t } from '../lib/i18n.js';
+  import {
+    hasSeen,
+    markSeen,
+    readJson,
+    readSessionJson,
+    writeJson,
+    writeSessionJson,
+  } from '../lib/kimchi-memory.js';
+  import { isAmbientAllowed, notifications, notifyWhenIdle } from '../lib/notification-store.js';
   import {
     categoryToPath,
     getCategoryFromPath,
     getItemRouteParams,
+    isPlainLeftClick,
+    itemToPath,
     navigate,
+    navigateToItem,
     navigateToItemWithReserve,
     path,
   } from '../lib/router.js';
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
 
   let { items, loading, loadError } = $props();
+
+  // When the inventory load lands, cards fade in 30ms apart (capped at 150ms). The
+  // reveal is on only for that moment, so later filter changes and in-place updates
+  // render straight away. A Svelte in: transition can't do this: on {#each} items it
+  // plays only for items added later (filter changes), never on the first render.
+  const REVEAL_STAGGER_MS = 30;
+  const REVEAL_STAGGER_CAP_MS = 150;
+  const REVEAL_WINDOW_MS = 600;
+
+  let revealing = $state(false);
+  let wasLoading = false;
+  let revealTimer;
+
+  $effect.pre(() => {
+    if (loading) {
+      wasLoading = true;
+      return;
+    }
+
+    if (!wasLoading) {
+      return;
+    }
+
+    // Runs before the DOM update, so the cards are created with the reveal already on.
+    wasLoading = false;
+    revealing = true;
+    clearTimeout(revealTimer);
+    revealTimer = setTimeout(() => {
+      revealing = false;
+    }, REVEAL_WINDOW_MS);
+  });
 
   let activeTag = $state(DEFAULT_INVENTORY_TAG);
 
@@ -55,6 +108,125 @@
     }
   });
 
+  // Kimchi's "New in the library": an item added since this browser first saw the shelves,
+  // and in the last 14 days, gets one ambient bubble. One per tab session, each item once
+  // per browser, and nothing without a readable first-seen key. Not for admins (they add
+  // the items) or mentors (until mentor profiles are reviewed).
+  const FIRST_SEEN_STORAGE_KEY = 'arl-kimchi-first-seen';
+  const NEW_ITEM_SESSION_KEY = 'arl-kimchi-new-item-shown';
+  const NEW_ITEM_SEEN_SCOPE = 'new-in-library';
+  const NEW_ITEM_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+  const NEW_ITEM_DURATION = 8000;
+
+  /** The announcement waiting to show, `{ path }`. A path change cancels that wait inside
+   *  `path.set`, before the effect re-runs, so only the same grid path is blocked. */
+  let newItemWait = null;
+
+  /** When this browser first showed the shelves (ms), or null when missing or unreadable. */
+  function readFirstSeenAt() {
+    const saved = readJson(FIRST_SEEN_STORAGE_KEY, null);
+    return saved && Number.isFinite(saved.at) ? saved.at : null;
+  }
+
+  function rememberFirstVisit() {
+    if (readFirstSeenAt() != null) return;
+    firstVisitLoad = writeJson(FIRST_SEEN_STORAGE_KEY, { at: Date.now() });
+  }
+
+  function newItemShownThisVisit() {
+    return newItemShownThisLoad || readSessionJson(NEW_ITEM_SESSION_KEY, false) === true;
+  }
+
+  /**
+   * The bubble's link opens the item the way a card does (`navigateToItem`: the overlay's
+   * history marker, so closing it steps back, and `?lang`). KimchiNotification routes bubble
+   * links through `navigateToPage`, which can't carry an item, so a capturing listener takes
+   * plain left clicks (and Enter) on this one bubble's link first. Modifier clicks keep the
+   * browser's default on the item URL. The listener goes when the bubble leaves the queue.
+   */
+  function openItemFromBubbleLink(bubbleId, item) {
+    let stopped = false;
+    let unsubscribe = null;
+
+    function handleClick(event) {
+      const link = event.target?.closest?.('a[href]');
+      if (!link?.closest(`[data-kimchi-bubble-id="${bubbleId}"]`)) return;
+      if (!isPlainLeftClick(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigateToItem(item);
+    }
+
+    function stop() {
+      if (stopped) return;
+      stopped = true;
+      document.removeEventListener('click', handleClick, true);
+      unsubscribe?.();
+    }
+
+    document.addEventListener('click', handleClick, true);
+    unsubscribe = notifications.subscribe((queued) => {
+      if (!queued.some((entry) => entry.id === bubbleId)) stop();
+    });
+    // The bubble was already gone when the subscription first ran.
+    if (stopped) unsubscribe();
+  }
+
+  async function announceNewItem(shelfItems, gridPath) {
+    if (newItemWait?.path === gridPath || firstVisitLoad || newItemShownThisVisit() || !isAmbientAllowed()) {
+      return;
+    }
+
+    const firstSeenAt = readFirstSeenAt();
+    if (firstSeenAt == null) return;
+
+    const now = Date.now();
+    const item = shelfItems
+      .filter(
+        (candidate) =>
+          candidate.tag !== 'expertise' &&
+          Number.isFinite(candidate.createdAt) &&
+          candidate.createdAt > firstSeenAt &&
+          now - candidate.createdAt <= NEW_ITEM_WINDOW_MS &&
+          !hasSeen(null, NEW_ITEM_SEEN_SCOPE, candidate.id),
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!item) return;
+
+    const wait = { path: gridPath };
+    newItemWait = wait;
+    // Waits for the queue and any dialog to clear; gives up if the visitor leaves the grid.
+    const id = await notifyWhenIdle(
+      {
+        textKey: 'kimchi.new_in_library',
+        vars: { title: item.title },
+        link: { href: itemToPath(item), labelKey: 'kimchi.new_in_library_link' },
+      },
+      NEW_ITEM_DURATION,
+      { ambient: true, kind: 'new-in-library' },
+    );
+    // A newer shelf's wait may hold the marker by now.
+    if (newItemWait === wait) newItemWait = null;
+    if (id === -1) return;
+
+    openItemFromBubbleLink(id, item);
+    markSeen(null, NEW_ITEM_SEEN_SCOPE, item.id);
+    newItemShownThisLoad = true;
+    writeSessionJson(NEW_ITEM_SESSION_KEY, true);
+  }
+
+  $effect(() => {
+    if (loading || loadError || !$authReady) return;
+
+    // The grid itself (not under an item overlay), and not the Expertise list.
+    const gridPath = $path;
+    const category = getCategoryFromPath(gridPath);
+    if (!category || category === 'expertise' || isApathyAdmin($session)) return;
+
+    const shelfItems = items.filter((item) => (item.tag || DEFAULT_INVENTORY_TAG) === category);
+    untrack(() => announceNewItem(shelfItems, gridPath));
+  });
+
   function selectTag(tag) {
     navigate(categoryToPath(tag));
   }
@@ -77,10 +249,12 @@
 
   onMount(() => {
     subscribeAvailabilityClock();
+    rememberFirstVisit();
   });
 
   onDestroy(() => {
     unsubscribeAvailabilityClock();
+    clearTimeout(revealTimer);
   });
 </script>
 
@@ -98,42 +272,59 @@
         class="inventory-filter__btn"
         class:inventory-filter__btn--active={activeTag === tag}
         aria-pressed={activeTag === tag}
-        aria-label={$t('inventory.filter_with_count', {
-          label: $t(tagLabels[tag]),
-          count: tagCounts[tag],
-        })}
+        aria-label={loading
+          ? undefined
+          : $t('inventory.filter_with_count', {
+              label: $t(tagLabels[tag]),
+              count: tagCounts[tag],
+            })}
         onclick={() => selectTag(tag)}
       >
         <span class="inventory-filter__label">{$t(tagLabels[tag])}</span>
-        <span class="inventory-filter__count" aria-hidden="true">{tagCounts[tag]}</span>
+        {#if loading}
+          <!-- Not "0" while the counts are still unknown. -->
+          <span class="inventory-filter__count inventory-filter__count--loading" aria-hidden="true"></span>
+        {:else}
+          <span class="inventory-filter__count" aria-hidden="true">{tagCounts[tag]}</span>
+        {/if}
       </button>
     {/each}
   </div>
 
   {#if loading}
-    <div class="inventory-skeleton-grid" aria-busy="true" aria-label={$t('inventory.loading')}>
+    <div class="inventory-grid skeleton" aria-hidden="true">
       {#each Array(6) as _, index (index)}
-        <div class="inventory-skeleton-card">
-          <div class="inventory-skeleton-card__image"></div>
-          <div class="inventory-skeleton-card__body">
-            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--title"></div>
-            <div class="inventory-skeleton-card__line"></div>
-            <div class="inventory-skeleton-card__line inventory-skeleton-card__line--short"></div>
-            <div class="inventory-skeleton-card__button"></div>
+        <div class="inventory-card skeleton-card skeleton-sheen">
+          <div class="inventory-image-frame">
+            <span class="bone skeleton-card__media"></span>
+          </div>
+          <div class="inventory-content">
+            <span class="bone skeleton-card__title"></span>
+            <div class="skeleton-card__lines">
+              <span class="bone bone--line"></span>
+              <span class="bone bone--line"></span>
+              <span class="bone bone--line"></span>
+            </div>
+            <span class="bone skeleton-card__button"></span>
           </div>
         </div>
       {/each}
     </div>
+    <LoadingStatus text={$t('inventory.loading')} />
   {:else if loadError}
-    <p class="status error inventory-load-error" role="alert">{loadError}</p>
+    <p class="status error inventory-load-error" class:reveal-in={revealing} role="alert">{loadError}</p>
   {:else if items.length === 0}
-    <p class="empty-state">{$t('inventory.empty')}</p>
+    <p class="empty-state" class:reveal-in={revealing}>{$t('inventory.empty')}</p>
   {:else if filteredItems.length === 0}
-    <p class="empty-state">{$t('inventory.empty_filtered')}</p>
+    <p class="empty-state" class:reveal-in={revealing}>{$t('inventory.empty_filtered')}</p>
   {:else}
     <div class="inventory-grid">
-      {#each filteredItems as item (item.id)}
-        <InventoryCard {item} onOpenReserve={openReserve} />
+      {#each filteredItems as item, index (item.id)}
+        <InventoryCard
+          {item}
+          onOpenReserve={openReserve}
+          revealDelay={revealing ? Math.min(index * REVEAL_STAGGER_MS, REVEAL_STAGGER_CAP_MS) : null}
+        />
       {/each}
     </div>
   {/if}

@@ -12,9 +12,11 @@
 </script>
 
 <script>
+  import LoadingStatus from './LoadingStatus.svelte';
   import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { t } from '../lib/i18n.js';
   import { INVENTORY_TAGS } from '../lib/inventory.js';
+  import { reveal, revealOnLoad } from '../lib/motion.js';
   import {
     categoryToPath,
     isPlainLeftClick,
@@ -23,7 +25,7 @@
     navigateToPage,
   } from '../lib/router.js';
 
-  let { items, loading } = $props();
+  let { items, loading, loadError = '' } = $props();
 
   const FEATURED_EXPERT_COUNT = 4;
 
@@ -66,6 +68,12 @@
     <p class="page-intro">{$t('home.intro')}</p>
     <p class="page-intro page-intro--extended">{$t('home.free')}</p>
   </header>
+
+  {#if loadError}
+    <!-- The inventory didn't load, so the experts below can't show. Kimchi says so too,
+         unless she's asleep. -->
+    <p class="status error" role="alert">{$t('home.load_error')}</p>
+  {/if}
 
   <nav class="home-categories" aria-label={$t('home.categories_aria')}>
     <ul class="home-categories__list">
@@ -134,21 +142,27 @@
       </div>
 
       {#if loading}
-        <ul class="home-experts" aria-hidden="true">
+        <ul class="home-experts skeleton" aria-hidden="true">
           {#each Array(FEATURED_EXPERT_COUNT) as _, index (index)}
-            <li class="home-expert home-expert--placeholder">
+            <li class="home-expert home-expert--placeholder skeleton-sheen">
               <span class="home-expert__photo"></span>
-              <span class="home-expert__line"></span>
+              <span class="bone home-expert__name-bone"></span>
+              <span class="home-expert__topics-bones">
+                <span class="bone bone--line"></span>
+                <span class="bone bone--line"></span>
+              </span>
             </li>
           {/each}
         </ul>
+        <LoadingStatus text={$t('home.experts_loading')} />
       {:else}
-        <ul class="home-experts">
+        <ul class="home-experts" in:reveal>
           {#each featuredExperts as expert (expert.id)}
             <li>
               <a class="home-expert" href={itemToPath(expert)} onclick={(event) => openExpert(event, expert)}>
                 {#if expert.image}
                   <img
+                    {@attach revealOnLoad}
                     class="home-expert__photo"
                     src={expert.image}
                     alt=""
@@ -211,11 +225,11 @@
           aria-label={$t('home.aisb_link_aria')}
         >
           <img
-            class="home-partners__logo home-partners__logo--aisb"
-            src="/assets/brand/apathy-is-boring-logo.png"
+            class="home-partners__logo"
+            src="/assets/brand/apathy-is-boring-wordmark.png"
             alt={$t('site.brand_name')}
-            width="64"
-            height="64"
+            width="830"
+            height="385"
           />
         </a>
       </span>

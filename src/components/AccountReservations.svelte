@@ -3,13 +3,16 @@
   import { cancelAccountReservation, fetchAccountReservations } from '../lib/inventory.js';
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
   import { itemToPath, navigate, navigateToItem } from '../lib/router.js';
-  import { locale, t, translateKey } from '../lib/i18n.js';
+  import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import {
     availabilityNow,
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
+  import { reveal } from '../lib/motion.js';
+  import BusyLabel from './BusyLabel.svelte';
+  import Skeleton from './Skeleton.svelte';
 
   let loading = $state(true);
   let loadError = $state('');
@@ -120,7 +123,7 @@
       );
       statusMessage = $t(pending ? 'account_reservations.withdrawn_status' : 'account_reservations.cancelled_status');
       notify(
-        translateKey(pending ? 'kimchi.reservation_withdrawn' : 'kimchi.reservation_cancelled'),
+        { textKey: pending ? 'kimchi.reservation_withdrawn' : 'kimchi.reservation_cancelled' },
         DEFAULT_NOTIFICATION_DURATION,
       );
     } catch (error) {
@@ -192,9 +195,17 @@
             onclick={() => handleCancel(entry)}
           >
             {#if entry.status === 'pending'}
-              {actionId === entry.id ? $t('account_reservations.withdrawing') : $t('account_reservations.withdraw')}
+              <BusyLabel
+                label={$t('account_reservations.withdraw')}
+                busyLabel={$t('account_reservations.withdrawing')}
+                busy={actionId === entry.id}
+              />
             {:else}
-              {actionId === entry.id ? $t('account_reservations.cancelling') : $t('account_reservations.cancel')}
+              <BusyLabel
+                label={$t('account_reservations.cancel')}
+                busyLabel={$t('account_reservations.cancelling')}
+                busy={actionId === entry.id}
+              />
             {/if}
           </button>
         </div>
@@ -211,47 +222,50 @@
   <p class="visually-hidden" role="status">{statusMessage}</p>
 
   {#if loading}
-    <p class="admin-status" role="status">{$t('account_reservations.loading')}</p>
+    <Skeleton heading label={$t('account_reservations.loading')} />
   {:else if loadError}
     <p class="admin-status admin-status-error" role="alert">{loadError}</p>
   {:else}
-    <h3 class="admin-subheading">{$t('account_reservations.heading_active')}</h3>
-    {#if lists.active.length > 0}
-      <ul class="admin-item-list">
-        {#each lists.active as entry (entry.id)}
-          {@render reservationRow(entry)}
-        {/each}
-      </ul>
-    {:else if lists.past.length === 0}
-      <p class="empty-state">
-        {$t('account_reservations.empty')}
-        <a href="/" onclick={openLibrary}>{$t('account_reservations.browse')}</a>
-      </p>
-    {:else}
-      <p class="admin-status">{$t('account_reservations.active_empty')}</p>
-    {/if}
+    <!-- One wrapper so the whole section reveals once, when the load lands (not on row updates). -->
+    <div in:reveal>
+      <h3 class="admin-subheading">{$t('account_reservations.heading_active')}</h3>
+      {#if lists.active.length > 0}
+        <ul class="admin-item-list">
+          {#each lists.active as entry (entry.id)}
+            {@render reservationRow(entry)}
+          {/each}
+        </ul>
+      {:else if lists.past.length === 0}
+        <p class="empty-state">
+          {$t('account_reservations.empty')}
+          <a href="/" onclick={openLibrary}>{$t('account_reservations.browse')}</a>
+        </p>
+      {:else}
+        <p class="admin-status">{$t('account_reservations.active_empty')}</p>
+      {/if}
 
-    {#if lists.past.length > 0}
-      <div class="consultation-history">
-        <button
-          bind:this={pastToggle}
-          type="button"
-          class="btn-header btn-header--secondary consultation-history__toggle"
-          aria-expanded={showPast}
-          aria-controls="account-reservations-past"
-          onclick={() => (showPast = !showPast)}
-        >
-          {$t(showPast ? 'account_reservations.past_hide' : 'account_reservations.past_show')}
-          <span class="admin-pending-count">({lists.past.length})</span>
-        </button>
-        {#if showPast}
-          <ul id="account-reservations-past" class="admin-item-list consultation-history__list">
-            {#each lists.past as entry (`past-${entry.id}`)}
-              {@render reservationRow(entry)}
-            {/each}
-          </ul>
-        {/if}
-      </div>
-    {/if}
+      {#if lists.past.length > 0}
+        <div class="consultation-history">
+          <button
+            bind:this={pastToggle}
+            type="button"
+            class="btn-header btn-header--secondary consultation-history__toggle"
+            aria-expanded={showPast}
+            aria-controls="account-reservations-past"
+            onclick={() => (showPast = !showPast)}
+          >
+            {$t(showPast ? 'account_reservations.past_hide' : 'account_reservations.past_show')}
+            <span class="admin-pending-count">({lists.past.length})</span>
+          </button>
+          {#if showPast}
+            <ul id="account-reservations-past" class="admin-item-list consultation-history__list">
+              {#each lists.past as entry (`past-${entry.id}`)}
+                {@render reservationRow(entry)}
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
+    </div>
   {/if}
 </section>

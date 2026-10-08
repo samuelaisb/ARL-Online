@@ -1,4 +1,4 @@
-*Dernière mise à jour : 5 octobre 2026*
+*Dernière mise à jour : 7 octobre 2026*
 
 La bibliothèque ressources activistes (ARL) est gérée par **Apathy is Boring (AisB)**, un organisme à but non lucratif basé à Montréal, au Québec, en partenariat avec Finance Engage Sustain (FES). Cette politique explique simplement quels renseignements personnels nous recueillons sur activistresourcelibrary.com, pourquoi, et quels sont vos droits. Elle respecte la *Loi sur la protection des renseignements personnels dans le secteur privé* du Québec (Loi 25).
 
@@ -20,6 +20,7 @@ Nous recueillons seulement ce dont nous avons besoin pour faire fonctionner la b
 - **Profils d’experts :** si vous partagez votre expertise, votre nom, votre photo et vos descriptions sont **publics** sur le site. Votre courriel reste privé, sauf auprès des membres qui demandent une consultation avec vous.
 - **Formulaire de contact :** votre nom, votre courriel et votre message. *Pourquoi :* pour vous répondre.
 - **Utilisation du site :** les pages visitées, le type d’appareil et de navigateur et votre emplacement approximatif, recueillis par Google Analytics au moyen de témoins (cookies), ainsi que les journaux de serveur habituels (comme l’adresse IP) conservés pour la sécurité. Votre navigateur conserve aussi votre choix de langue et votre session de connexion. *Pourquoi :* pour assurer la sécurité du site et comprendre comment il est utilisé.
+- **Kimchi, le chat de la bibliothèque :** pour éviter de se répéter, Kimchi garde quelques petites notes dans votre navigateur : s’il vous a déjà salué ou vous a déjà dit que vous êtes connecté, s’il fait la sieste et quelles nouvelles il vous a déjà annoncées. Ces notes contiennent seulement des dates, des statuts et des numéros de référence, jamais votre nom, votre courriel ni ce que vous avez réservé. Elles restent dans votre navigateur et ne nous sont jamais transmises; effacer les données de votre navigateur les supprime.
 
 Nous ne vendons pas vos renseignements et ne les utilisons pas à des fins publicitaires. Les bailleurs de fonds et partenaires comme FES reçoivent seulement des statistiques anonymes et regroupées. Si nous vous demandons un jour des renseignements supplémentaires pour un bailleur de fonds (par exemple après une consultation), ce sera facultatif et nous vous expliquerons comment ils sont utilisés.
 

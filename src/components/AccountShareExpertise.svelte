@@ -14,8 +14,11 @@
     updateMentorProfile,
   } from '../lib/inventory.js';
   import { itemToPath, navigate } from '../lib/router.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
+  import { reveal } from '../lib/motion.js';
+  import BusyLabel from './BusyLabel.svelte';
+  import Skeleton from './Skeleton.svelte';
 
   let { onProfileSaved } = $props();
 
@@ -30,6 +33,9 @@
   let selectedImageDataUrl = $state('');
   let imageFileName = $state('');
   let processingImage = $state(false);
+  // Counts the photos the member has picked; the preview is keyed on it so each new
+  // pick fades in, while the saved photo swaps in place (the old one stays until it loads).
+  let pickedImageCount = $state(0);
   let saving = $state(false);
   let formStatus = $state('');
   let formStatusType = $state('');
@@ -101,6 +107,7 @@
     try {
       selectedImageDataUrl = await compressImageFile(file);
       imageFileName = file.name;
+      pickedImageCount += 1;
     } catch (error) {
       selectedImageDataUrl = '';
       imageFileName = '';
@@ -173,7 +180,7 @@
         'success',
       );
       notify(
-        translateKey(isEdit ? 'kimchi.mentor_profile_updated' : 'kimchi.mentor_profile_published'),
+        { textKey: isEdit ? 'kimchi.mentor_profile_updated' : 'kimchi.mentor_profile_published' },
         DEFAULT_NOTIFICATION_DURATION,
       );
     } catch (error) {
@@ -199,17 +206,17 @@
   <h2 id="share-expertise-heading">{$t('share_expertise.heading')}</h2>
 
   {#if loading}
-    <p class="admin-status" role="status">{$t('share_expertise.loading')}</p>
+    <Skeleton variant="form" label={$t('share_expertise.loading')} />
   {:else if loadError}
     <p class="admin-status admin-status-error" role="alert">{loadError}</p>
   {:else if !emailConfirmed}
-    <p class="account-share-expertise__intro">{$t('share_expertise.intro')}</p>
-    <p class="account-share-expertise__notice">{$t('share_expertise.confirm_email')}</p>
+    <p class="account-share-expertise__intro" in:reveal>{$t('share_expertise.intro')}</p>
+    <p class="account-share-expertise__notice" in:reveal>{$t('share_expertise.confirm_email')}</p>
   {:else}
-    <p class="account-share-expertise__intro">
+    <p class="account-share-expertise__intro" in:reveal>
       {profile ? $t('share_expertise.intro_edit') : $t('share_expertise.intro')}
     </p>
-    <form novalidate onsubmit={handleSubmit}>
+    <form novalidate onsubmit={handleSubmit} in:reveal>
       <label for="mentor-name">{$t('share_expertise.name_label')}</label>
       <input
         id="mentor-name"
@@ -270,7 +277,11 @@
           disabled={processingImage || saving}
           onclick={() => imageInput?.click()}
         >
-          {processingImage ? $t('add_item.processing') : $t('add_item.choose_image')}
+          <BusyLabel
+            label={$t('add_item.choose_image')}
+            busyLabel={$t('add_item.processing')}
+            busy={processingImage}
+          />
         </button>
         {#if imageFileName}
           <p class="image-file-name">{imageFileName}</p>
@@ -278,7 +289,14 @@
           <p class="field-hint account-share-expertise__photo-hint">{$t('share_expertise.photo_hint_edit')}</p>
         {/if}
         {#if previewImage}
-          <img class="image-preview account-share-expertise__photo" src={previewImage} alt="" />
+          {#key pickedImageCount}
+            <img
+              class="image-preview account-share-expertise__photo"
+              class:reveal-in={pickedImageCount > 0}
+              src={previewImage}
+              alt=""
+            />
+          {/key}
         {/if}
       </div>
 
@@ -294,11 +312,11 @@
       {/if}
 
       <button type="submit" class="btn-primary" disabled={saving || processingImage}>
-        {#if saving}
-          {profile ? $t('share_expertise.saving') : $t('share_expertise.publishing')}
-        {:else}
-          {profile ? $t('share_expertise.save') : $t('share_expertise.publish')}
-        {/if}
+        <BusyLabel
+          label={profile ? $t('share_expertise.save') : $t('share_expertise.publish')}
+          busyLabel={profile ? $t('share_expertise.saving') : $t('share_expertise.publishing')}
+          busy={saving}
+        />
       </button>
 
       {#if profilePath}

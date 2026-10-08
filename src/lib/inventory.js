@@ -38,6 +38,8 @@ const ERROR_CODE_KEYS = {
   pending_request_limit: 'calendar.pending_limit',
   consultation_already_open: 'consultation.already_open',
   consultation_already_held: 'account_consultations.already_held',
+  follow_up_not_available: 'account_consultations.follow_up_not_available',
+  follow_up_already_open: 'account_consultations.follow_up_already_open',
   reservation_already_started: 'account_reservations.already_started',
   reservation_not_active: 'account_reservations.not_active',
   reservation_action_limit: 'account_reservations.rate_limited',
@@ -322,7 +324,11 @@ export async function fetchAccountConsultations() {
   };
 }
 
-/** Expert picks the meeting time; the server creates the Zoom meeting and emails both. */
+/**
+ * Expert picks the meeting time; the server creates the Zoom meeting and emails both.
+ * Returns `{ consultation, emailSent }`: `emailSent` is false when an invitation didn't go out
+ * (undefined if the server didn't say).
+ */
 export async function scheduleConsultation(reservationId, meetingAt) {
   const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/schedule`, {
     method: 'POST',
@@ -335,10 +341,35 @@ export async function scheduleConsultation(reservationId, meetingAt) {
     throw new Error(result.error || translateKey('account_consultations.schedule_error'));
   }
 
-  return result.consultation;
+  return { consultation: result.consultation, emailSent: result.emailSent };
 }
 
-/** Member or expert cancels; the server deletes the Zoom meeting and emails both. */
+/**
+ * Expert (or admin) books the next meeting from one that has started. The server creates the
+ * follow-up already scheduled (Zoom meeting, invitations to both). Returns `{ consultation,
+ * emailSent }`, plus the full `item` when the caller is an admin.
+ */
+export async function bookFollowUpConsultation(reservationId, meetingAt, note = '') {
+  const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/follow-up`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ meetingAt, note }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'account_consultations.follow_up_error'));
+  }
+
+  return result;
+}
+
+/**
+ * Member or expert cancels; the server deletes the Zoom meeting and emails both. Returns
+ * `{ consultation, emailSent, otherPartyEmailed }`. `emailSent` is false when an email didn't go
+ * out. `otherPartyEmailed` is true only when the other side had an address and was emailed (a
+ * mentor may have none); it stays undefined until the server sends it.
+ */
 export async function cancelConsultation(reservationId) {
   const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/cancel`, {
     method: 'POST',
@@ -350,7 +381,11 @@ export async function cancelConsultation(reservationId) {
     throw new Error(apiErrorMessage(result, 'account_consultations.cancel_error'));
   }
 
-  return result.consultation;
+  return {
+    consultation: result.consultation,
+    emailSent: result.emailSent,
+    otherPartyEmailed: result.otherPartyEmailed,
+  };
 }
 
 /** The signed-in member's equipment, book and room reservations (all statuses but `available`). */

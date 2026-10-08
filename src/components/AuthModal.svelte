@@ -11,6 +11,7 @@
     signUpWithEmail,
   } from '../lib/auth.js';
   import { t } from '../lib/i18n.js';
+  import BusyLabel from './BusyLabel.svelte';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
   import OAuthProviderIcon from './OAuthProviderIcon.svelte';
 
@@ -234,15 +235,13 @@
             onclick={() => handleOAuth(provider)}
           >
             <OAuthProviderIcon {provider} />
-            <span>
-              {#if oauthProvider === provider}
-                {$t('auth.oauth_redirecting')}
-              {:else}
-                {$t(activeMode === 'register' ? 'auth.sign_up_with' : 'auth.log_in_with', {
-                  provider: OAUTH_PROVIDER_NAMES[provider],
-                })}
-              {/if}
-            </span>
+            <BusyLabel
+              label={$t(activeMode === 'register' ? 'auth.sign_up_with' : 'auth.log_in_with', {
+                provider: OAUTH_PROVIDER_NAMES[provider],
+              })}
+              busyLabel={$t('auth.oauth_redirecting')}
+              busy={oauthProvider === provider}
+            />
           </button>
         {/each}
       </div>
@@ -325,11 +324,19 @@
         disabled={submitting || Boolean(oauthProvider)}
       >
         {#if activeMode === 'reset'}
-          {submitting ? $t('auth.reset_sending') : $t('auth.reset_submit')}
-        {:else if submitting}
-          {activeMode === 'register' ? $t('auth.creating') : $t('auth.logging_in')}
+          <BusyLabel
+            label={$t('auth.reset_submit')}
+            busyLabel={$t('auth.reset_sending')}
+            busy={submitting}
+          />
+        {:else if activeMode === 'register'}
+          <BusyLabel
+            label={$t('auth.create_account')}
+            busyLabel={$t('auth.creating')}
+            busy={submitting}
+          />
         {:else}
-          {activeMode === 'register' ? $t('auth.create_account') : $t('auth.log_in')}
+          <BusyLabel label={$t('auth.log_in')} busyLabel={$t('auth.logging_in')} busy={submitting} />
         {/if}
       </button>
     </div>

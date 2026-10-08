@@ -8,8 +8,9 @@
     session,
     updatePassword,
   } from '../lib/auth.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
+  import BusyLabel from './BusyLabel.svelte';
 
   const titleId = $props.id();
 
@@ -97,7 +98,7 @@
     closePasswordPrompt();
     // Kimchi stays quiet while asleep, so screen readers also get a status line.
     statusMessage = $t('auth.password_updated');
-    notify(translateKey('kimchi.password_updated'));
+    notify({ textKey: 'kimchi.password_updated' });
   }
 </script>
 
@@ -161,7 +162,7 @@
         {$t('auth.cancel')}
       </button>
       <button bind:this={submitButton} type="submit" class="btn-primary" disabled={submitting}>
-        {submitting ? $t('auth.saving') : $t('auth.save_password')}
+        <BusyLabel label={$t('auth.save_password')} busyLabel={$t('auth.saving')} busy={submitting} />
       </button>
     </div>
   </form>

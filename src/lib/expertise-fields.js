@@ -7,6 +7,9 @@ export const EXPERT_SHORT_TEXT_MAX = 180;
 /** Long bio shown when an expert is opened. Stored as inventory_items.long_body. */
 export const EXPERT_LONG_TEXT_MAX = 4000;
 
+/** Optional note an expert adds when booking a follow-up. Stored as reservations.request_summary. */
+export const FOLLOW_UP_NOTE_MAX = 1000;
+
 /**
  * List text vs overlay text.
  * New items store them separately. Older bios keep a short first paragraph in

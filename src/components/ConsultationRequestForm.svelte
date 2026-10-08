@@ -1,7 +1,8 @@
 <script>
   import { createReservation } from '../lib/inventory.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
+  import BusyLabel from './BusyLabel.svelte';
 
   let { item, onupdated, onconfirmed, onbeforeconfirm } = $props();
 
@@ -55,7 +56,7 @@
 
       onupdated?.(updatedItem);
       onconfirmed?.({ item: updatedItem, reservation: result.reservation });
-      notify(translateKey('kimchi.consultation_sent'), DEFAULT_NOTIFICATION_DURATION);
+      notify({ textKey: 'kimchi.consultation_sent' }, DEFAULT_NOTIFICATION_DURATION);
       timeSlots = '';
       summary = '';
       statusMessage = $t('consultation.request_pending');
@@ -106,11 +107,11 @@
       aria-describedby="consultation-sharing-note"
       disabled={saving}
     >
-      {#if saving}
-        {$t('consultation.submitting')}
-      {:else}
-        {$t('consultation.submit')}
-      {/if}
+      <BusyLabel
+        label={$t('consultation.submit')}
+        busyLabel={$t('consultation.submitting')}
+        busy={saving}
+      />
     </button>
   </div>
   <p id="consultation-sharing-note" class="consultation-form__note">

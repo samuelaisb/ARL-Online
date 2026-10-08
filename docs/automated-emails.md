@@ -143,6 +143,7 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 **Failure behavior:**
 
 - Missing `RESEND_API_KEY` or Resend error: logged (`Welcome email failed: …`); client receives 500
+- The same claim posts the Slack staff alert `member_signed_up` (see `docs/automated-webhooks.md`), even when the email then fails
 - Metadata update failure after send: logged; email was still delivered
 
 ---
@@ -205,15 +206,15 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 
 | Field | Value |
 |-------|-------|
-| **Trigger** | Successful `POST /api/consultations/:reservationId/schedule` (expert or admin) **or** admin `POST /api/inventory/:id/reservations/:reservationId/approve` on an expertise item |
+| **Trigger** | Successful `POST /api/consultations/:reservationId/schedule` (expert or admin), admin `POST /api/inventory/:id/reservations/:reservationId/approve` on an expertise item, **or** `POST /api/consultations/:reservationId/follow-up` (expert books a follow-up; the new reservation has `followUpOf`) |
 | **Function** | `runScheduleConsultation()` → `sendConsultationScheduledEmails()` → `buildConsultationScheduledEmailPayloads(item, reservation)` |
 | **Reply-To** | `EMAIL_REPLY_TO` |
 | **To** | Member and expert (separate emails) |
-| **Subject** | Member: `Consultation confirmed: {title}` · Expert: `Consultation scheduled: {title}` |
+| **Subject** | Member: `Consultation confirmed: {title}` · Expert: `Consultation scheduled: {title}`. Follow-ups: `Follow-up consultation confirmed: {title}` · `Follow-up consultation scheduled: {title}` (heading and intro say "follow-up consultation" too) |
 | **Attachment** | `consultation.ics` (`METHOD:REQUEST`, UID `{reservationId}@activistresourcelibrary.com`, 60 min, Zoom link as location; both people as attendees) |
 | **Timing** | Awaited after the Zoom meeting is created and the reservation is saved, before the response (`emailSent`). A failed email is logged (`Consultation scheduled email failed: …`, or `Consultation scheduled notifications failed: …` if it could not be built) and never undoes the schedule |
 
-**Content summary:** meeting time (America/Toronto, labelled "Montreal time"), **Join Zoom** button + passcode (or "we will send you a meeting link" and an account-panel button when Zoom is not configured), note that anyone can join before the host and share their screen, how to cancel from `/account`. Member email also includes "This project is funded by YES Employment.", a **Share your information** link (**placeholder `https://REPLACE-ME.example/participant-info` — update `CONSULTATION_DATA_FORM_URL` in `server.js`**), and the funder logo strip when `EMAIL_FUNDER_LOGO_URL` is set. Expert email includes the member email and request summary.
+**Content summary:** meeting time (America/Toronto, labelled "Montreal time"), **Join Zoom** button + passcode (or "we will send you a meeting link" and an account-panel button when Zoom is not configured), note that anyone can join before the host and share their screen, how to cancel from `/account`. Member email also includes "This project is funded by YES Employment.", a **Share your information** link (**placeholder `https://REPLACE-ME.example/participant-info` — update `CONSULTATION_DATA_FORM_URL` in `server.js`**), and the funder logo strip when `EMAIL_FUNDER_LOGO_URL` is set. Expert email includes the member email and request summary. For a follow-up, the expert's optional note is shown as **Follow-up note** in both emails (it replaces the request summary row in the expert's), and the `.ics` `SUMMARY` reads `Follow-up consultation: {title}`. The follow-up route logs failures as `Follow-up consultation notifications failed: …`.
 
 ---
 
@@ -263,7 +264,7 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 
 ## `emailSent` in responses
 
-Routes that send email add `emailSent` to their JSON. It is `true` only when there was at least one email and Resend accepted every one. It is `false` when any send failed, timed out, or threw while being built, and when there was nobody to email (for example a reservation with no member email). Failures are logged either way. The client does not read it yet.
+Routes that send email add `emailSent` to their JSON. It is `true` only when there was at least one email and Resend accepted every one. It is `false` when any send failed, timed out, or threw while being built, and when there was nobody to email (for example a reservation with no member email). Failures are logged either way. The client reads it only to avoid claiming an email that didn't go out: `AdminPanel` (approve, refuse, deletes, follow-up) and `AccountConsultations` (schedule, cancel, follow-up) show Kimchi's plain bubbles (`kimchi.*_plain`, or the bubble without "has been emailed") when it is `false`, and their hidden status lines add an "emailed" note only when it isn't (`AdminPanel`: only when it is `true`). There is no warning UI; see `docs/automated-notifications.md`.
 
 | Route | `emailSent` covers |
 |-------|--------------------|
@@ -271,7 +272,8 @@ Routes that send email add `emailSent` to their JSON. It is `true` only when the
 | `POST /api/inventory/:id/reservations/:reservationId/approve` | The approval email, or for expertise the two scheduled emails |
 | `POST /api/inventory/:id/reservations/:reservationId/refuse` | The refusal email |
 | `POST /api/consultations/:reservationId/schedule` | The two scheduled emails |
-| `POST /api/consultations/:reservationId/cancel` | The cancellation emails |
+| `POST /api/consultations/:reservationId/follow-up` | The two scheduled emails, worded as a follow-up |
+| `POST /api/consultations/:reservationId/cancel` | The cancellation emails. The response also has `otherPartyEmailed`: `emailSent` and the other side has an address on file (the trimmed `item.expertEmail` when the member cancels, the trimmed `reservation.userEmail` when the expert does, both when an admin does). A mentor with no address is skipped while the member's email still goes out, so `emailSent` alone can be `true` when the mentor wasn't told. Only the boolean is returned, never an address |
 | `DELETE /api/inventory/:id/reservations/:reservationId` | Only when it cancelled an active consultation (not for a held one) or an upcoming equipment, book or room reservation (trigger 8) |
 | `DELETE /api/inventory/:id` | Only when the item had active, not-yet-held consultations (expertise) or upcoming member reservations (other tags); `false` if any of their emails failed or a reservation had no member email |
 

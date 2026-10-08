@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { supabaseConfigured } from '../lib/supabase.js';
   import {
     authReady,
@@ -10,14 +10,29 @@
     signOut,
   } from '../lib/auth.js';
   import { navigate } from '../lib/router.js';
-  import { t, translateKey } from '../lib/i18n.js';
+  import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
+  import { reveal } from '../lib/motion.js';
   import AuthModal from './AuthModal.svelte';
+  import BusyLabel from './BusyLabel.svelte';
   import CompleteSignupModal from './CompleteSignupModal.svelte';
   import SetPasswordModal from './SetPasswordModal.svelte';
 
+  const SIGN_OUT_FAILED_DURATION = 8000;
+
   let authModal = $state();
+  let signOutButton = $state();
   let signingOut = $state(false);
+  // The last sign-out failed and the session is still here. Shown in the header as well
+  // as by Kimchi: she may be asleep, and on a shared computer this must not go unseen.
+  let signOutFailed = $state(false);
+
+  // Signed out some other way (another tab, the account page): drop a stale error.
+  $effect(() => {
+    if (!$session) {
+      signOutFailed = false;
+    }
+  });
 
   onMount(() => {
     initAuth().then(({ passwordResetLinkFailed }) => {
@@ -52,45 +67,78 @@
   }
 
   function handleRegisterClick() {
-    notify(translateKey('kimchi.register_click'));
+    notify({ textKey: 'kimchi.register_click' });
     openRegister();
   }
 
   async function handleSignOut() {
     signingOut = true;
+    signOutFailed = false;
 
     try {
       await signOut();
-      notify(translateKey('kimchi.signed_out'));
+      notify({ textKey: 'kimchi.signed_out' });
     } catch (error) {
       console.error('Sign out failed:', error);
+      signOutFailed = true;
+      notify({ textKey: 'kimchi.sign_out_failed' }, SIGN_OUT_FAILED_DURATION);
     } finally {
       signingOut = false;
+    }
+
+    if (signOutFailed) {
+      // The button was disabled while the attempt ran, which can drop focus to <body>.
+      // Put it back on Sign out so a keyboard user can try again.
+      await tick();
+      if (!document.activeElement || document.activeElement === document.body) {
+        signOutButton?.focus();
+      }
     }
   }
 </script>
 
 {#if supabaseConfigured}
-  <div class="header-auth">
+  <div class="header-auth" class:header-auth--has-error={signOutFailed && $session}>
     {#if !$authReady}
-      <span class="header-auth__loading" aria-live="polite">{$t('auth.loading')}</span>
+      <!-- Two pills the size of the buttons, so the header doesn't jump. The text is
+           not a live region: the account and admin gates announce their own wait. -->
+      <span class="header-auth__skeleton skeleton skeleton--gate" aria-hidden="true">
+        <span class="bone header-auth__bone"></span>
+        <span class="bone header-auth__bone header-auth__bone--wide"></span>
+      </span>
+      <span class="visually-hidden">{$t('auth.loading')}</span>
     {:else if $session}
-      <button type="button" class="btn-header btn-header--secondary" onclick={openAccount}>
+      <button type="button" class="btn-header btn-header--secondary" onclick={openAccount} in:reveal>
         {$t('auth.view_account')}
       </button>
       <button
+        bind:this={signOutButton}
         type="button"
         class="btn-header btn-header--secondary"
         disabled={signingOut}
         onclick={handleSignOut}
+        in:reveal
       >
-        {signingOut ? $t('auth.signing_out') : $t('auth.sign_out')}
+        <BusyLabel
+          compact
+          label={$t('auth.sign_out')}
+          busyLabel={$t('auth.signing_out')}
+          busy={signingOut}
+        />
       </button>
+      {#if signOutFailed}
+        <p class="header-auth__error" role="alert">{$t('auth.sign_out_error')}</p>
+      {/if}
     {:else}
-      <button type="button" class="btn-header btn-header--secondary" onclick={openLogin}>
+      <button type="button" class="btn-header btn-header--secondary" onclick={openLogin} in:reveal>
         {$t('auth.log_in')}
       </button>
-      <button type="button" class="btn-header btn-header--primary" onclick={handleRegisterClick}>
+      <button
+        type="button"
+        class="btn-header btn-header--primary"
+        onclick={handleRegisterClick}
+        in:reveal
+      >
         {$t('auth.register')}
       </button>
     {/if}
