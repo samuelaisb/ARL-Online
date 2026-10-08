@@ -15,7 +15,9 @@
     isPlainLeftClick,
     isPrivacyRoute,
     navigateToPage,
+    pageLoading,
     path,
+    setPageLoader,
   } from './lib/router.js';
   import { notifyWhenIdle } from './lib/notification-store.js';
   import {
@@ -76,6 +78,62 @@
   let trackRequestAttempt = 0;
   // Kimchi has mentioned the current inventory load failure. Reset by refreshInventory.
   let inventoryLoadNoticeShown = false;
+
+  // Lazy pages. Each module is kept once loaded, so {#await} renders a later visit in
+  // the same update as the route change (a fresh import() promise would put it through
+  // its pending branch first). The router waits for lazyPageFor(next) before changing
+  // route, so the current page and its band stay up until the next one is ready.
+  const loadAdminPage = () => import('./components/AdminPage.svelte');
+  const loadHowThisWorksPage = () => import('./components/HowThisWorksPage.svelte');
+  const loadAboutPage = () => import('./components/AboutPage.svelte');
+  const loadPrivacyPage = () => import('./components/PrivacyPage.svelte');
+  const loadAccountPage = () => import('./components/AccountPage.svelte');
+  const LAZY_PAGES = [
+    [isAdminRoute, loadAdminPage],
+    [isHowThisWorksRoute, loadHowThisWorksPage],
+    [isAboutRoute, loadAboutPage],
+    [isPrivacyRoute, loadPrivacyPage],
+    [isAccountRoute, loadAccountPage],
+  ];
+  // Loader → module, or its import while loading. A failed import is dropped, so the
+  // page's {:catch} (or the next visit) tries again.
+  const lazyPages = new Map();
+
+  function lazyPage(load) {
+    if (!lazyPages.has(load)) {
+      const loading = load().then(
+        (module) => {
+          lazyPages.set(load, module);
+          return module;
+        },
+        (error) => {
+          lazyPages.delete(load);
+          throw error;
+        },
+      );
+      lazyPages.set(load, loading);
+    }
+    return lazyPages.get(load);
+  }
+
+  /** The import still to wait for before `pathname`'s page can render, or null. */
+  function lazyPageFor(pathname) {
+    const load = LAZY_PAGES.find(([matches]) => matches(pathname))?.[1];
+    const page = load ? lazyPage(load) : null;
+    return page instanceof Promise ? page : null;
+  }
+
+  setPageLoader(lazyPageFor);
+
+  // Hovering, touching or focusing a link to a lazy page starts loading it, so the
+  // click usually finds it ready and the band morphs straight across. A failure here
+  // stays silent; the click tries again.
+  function preloadLinkedPage(event) {
+    const link = event.target.closest?.('a[href]');
+    if (link && link.origin === window.location.origin) {
+      lazyPageFor(link.pathname)?.catch(() => {});
+    }
+  }
 
   const onAdminPage = $derived(isAdminRoute($path));
   const onHowThisWorksPage = $derived(isHowThisWorksRoute($path));
@@ -413,6 +471,8 @@
   });
 </script>
 
+<svelte:document onpointerover={preloadLinkedPage} onfocusin={preloadLinkedPage} />
+
 <div class="app">
   <a class="skip-link" href="#main-content">{$t('site.skip_to_content')}</a>
 
@@ -444,9 +504,13 @@
     </div>
   </header>
 
+  {#if $pageLoading}
+    <RouteProgress />
+  {/if}
+
   <div class="app-body">
     {#if onAdminPage}
-      {#await import('./components/AdminPage.svelte')}
+      {#await lazyPage(loadAdminPage)}
         <RouteProgress />
       {:then { default: AdminPage }}
         <AdminPage
@@ -463,7 +527,7 @@
         <PageLoadError />
       {/await}
     {:else if onHowThisWorksPage}
-      {#await import('./components/HowThisWorksPage.svelte')}
+      {#await lazyPage(loadHowThisWorksPage)}
         <RouteProgress />
       {:then { default: HowThisWorksPage }}
         <HowThisWorksPage />
@@ -471,7 +535,7 @@
         <PageLoadError />
       {/await}
     {:else if onAboutPage}
-      {#await import('./components/AboutPage.svelte')}
+      {#await lazyPage(loadAboutPage)}
         <RouteProgress />
       {:then { default: AboutPage }}
         <AboutPage />
@@ -479,7 +543,7 @@
         <PageLoadError />
       {/await}
     {:else if onPrivacyPage}
-      {#await import('./components/PrivacyPage.svelte')}
+      {#await lazyPage(loadPrivacyPage)}
         <RouteProgress />
       {:then { default: PrivacyPage }}
         <PrivacyPage />
@@ -487,7 +551,7 @@
         <PageLoadError />
       {/await}
     {:else if onAccountPage}
-      {#await import('./components/AccountPage.svelte')}
+      {#await lazyPage(loadAccountPage)}
         <RouteProgress />
       {:then { default: AccountPage }}
         <AccountPage

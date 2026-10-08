@@ -382,7 +382,9 @@ a.btn-header {
    gates take the band's tint.
    Every band has the same order and spacing, so titles sit at the same height on
    every page: the Ringold title, one intro line (.page-intro, .subtitle or the
-   account email), any actions, then the back link (.page-header__back) last. */
+   account email), any actions, then the back link (.page-header__back) last.
+   On a page change the band morphs into the next page's (view-transition-name; see
+   ::view-transition-group under Loading & motion). */
 .page-header {
   --color-skeleton: var(--band-bone);
   --skeleton-sheen: rgba(255, 255, 255, 0.25);
@@ -390,6 +392,7 @@ a.btn-header {
   padding: 2.5rem 0 2.25rem;
   border-image: linear-gradient(var(--band) 0 0) fill 0 / / 0 100vmax;
   color: var(--band-ink);
+  view-transition-name: page-band;
 }
 
 /* Ringold has one weight: normal, so the browser doesn't fake a bold. server.js
@@ -3900,6 +3903,35 @@ button:disabled {
   pointer-events: none;
 }
 
+/* Page change (router.js morphPage, a view transition): the band's group moves and
+   resizes from the old page's band to the new one's while the two cross-fade, so its
+   colour, height and title morph across; the rest of the page cross-fades. The old
+   page stays up (hairline above) until the new one has loaded. */
+::view-transition-group(*) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-reveal);
+}
+
+/* Where each element can get its own snapshot, the band's text fades out and in where
+   it stands (titles sit at the same height on every page), leaving the band a plain
+   block of colour that stretches to the new height instead of two bands cross-fading.
+   The old text goes in half the time, before a shrinking band slides out from under it. */
+@supports (view-transition-name: match-element) {
+  .page-header > * {
+    view-transition-name: match-element;
+    view-transition-class: band-text;
+  }
+
+  ::view-transition-old(page-band),
+  ::view-transition-new(page-band) {
+    height: 100%;
+  }
+
+  ::view-transition-old(*.band-text) {
+    animation-duration: 140ms;
+  }
+}
+
 /* Background refresh of a list that stays on screen: a Mint segment along its top. */
 :where(.list-refreshing) {
   position: relative;
@@ -4150,6 +4182,11 @@ img.expert-detail__avatar {
   /* Bones go flat: no sheen. */
   .skeleton-sheen::after {
     display: none;
+  }
+
+  /* Page changes keep only the cross-fade: the band doesn't move or resize. */
+  .page-header {
+    view-transition-name: none;
   }
 
   /* Hairline and refresh segment: a static full-width bar breathing in opacity. */

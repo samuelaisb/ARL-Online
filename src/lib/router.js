@@ -1,7 +1,12 @@
 import { tick } from 'svelte';
 import { get, writable } from 'svelte/store';
 import { slugifyTitle } from './slug.js';
-import { categoryToPath, normalizePath } from './item-routes.js';
+import {
+  categoryToPath,
+  isCategoryPath,
+  isItemDetailRoute,
+  normalizePath,
+} from './item-routes.js';
 
 // Also used by the server (SEO injection, catch-all 404s) and auth.js, so one copy.
 export {
@@ -49,14 +54,128 @@ export function resolveItemSlug(item) {
   return slugifyTitle(item?.title);
 }
 
-export function navigate(to) {
-  const next = normalizePath(to.startsWith('/') ? to : `/${to}`);
-  if (next === getPath()) {
-    path.set(next);
-    return;
+/** True while a route change waits for the next page's code to load (App shows the hairline). */
+export const pageLoading = writable(false);
+
+// App.svelte's lazy-page loader: starts loading the page a path shows and returns a
+// promise, or null when that page can render straight away.
+let loadPage = () => null;
+
+export function setPageLoader(loader) {
+  loadPage = loader;
+}
+
+// Bumped by every route change, so a page that is still loading doesn't open once a
+// newer change (another click, Back) has come in.
+let routeChange = 0;
+
+/**
+ * Every route change goes through here; `apply` updates the URL and the path store.
+ * While the next page's code loads, the current page stays on screen with the
+ * hairline, so its title band never drops out. A failed load still applies, and
+ * App's {:catch} shows the reload notice. Page-to-page changes then morph across
+ * (morphPage). With nothing to load and nothing to morph, `apply` runs synchronously.
+ * Resolves to true once the new route is in the DOM, false if a newer change won.
+ */
+async function changeRoute(next, apply, { morph = true } = {}) {
+  const change = ++routeChange;
+  // The page already showing (a deep link still loading its chunk) has its own pending branch.
+  const loading = next === get(path) ? null : loadPage(next);
+  if (loading) {
+    pageLoading.set(true);
+    await loading.catch(() => {});
+    if (change !== routeChange) {
+      return false;
+    }
   }
-  window.history.pushState({}, '', next);
-  path.set(next);
+  pageLoading.set(false);
+
+  if (!morph || !shouldMorph(get(path), next)) {
+    apply();
+    return true;
+  }
+
+  return morphPage(() => {
+    if (change !== routeChange) {
+      return false;
+    }
+    apply();
+    return true;
+  });
+}
+
+// The item overlay is a dialog with its own entrance, and the category tabs share one page.
+function shouldMorph(from, to) {
+  return (
+    typeof document.startViewTransition === 'function' &&
+    document.visibilityState === 'visible' &&
+    from !== to &&
+    !isItemDetailRoute(from) &&
+    !isItemDetailRoute(to) &&
+    !(isCategoryPath(from) && isCategoryPath(to))
+  );
+}
+
+/** Takes a band that is out of view out of the morph, so it doesn't fly in from (or off to) above. */
+function unnameOffscreenBand() {
+  const band = document.querySelector('.page-header');
+  if (!band) {
+    return null;
+  }
+
+  const rect = band.getBoundingClientRect();
+  if (rect.bottom > 0 && rect.top < window.innerHeight) {
+    return null;
+  }
+  band.style.viewTransitionName = 'none';
+  return band;
+}
+
+/**
+ * Runs `update` as a view transition: the title band (`view-transition-name: page-band`
+ * in app.css) morphs from the old page's colour, height and title into the new one's,
+ * and the rest of the page cross-fades. A band scrolled out of view (a footer link)
+ * just fades instead. Browsers without view transitions never get here.
+ */
+async function morphPage(update) {
+  const oldBand = unnameOffscreenBand();
+  let applied = false;
+  let newBand = null;
+  const transition = document.startViewTransition(async () => {
+    applied = update();
+    await tick();
+    newBand = unnameOffscreenBand();
+  });
+
+  // `ready` rejects when the transition is skipped (a newer one started); the update
+  // still runs. `finished` rejects only along with updateCallbackDone, awaited below.
+  transition.ready.catch(() => {});
+  transition.finished
+    .catch(() => {})
+    .then(() => {
+      oldBand?.style.removeProperty('view-transition-name');
+      newBand?.style.removeProperty('view-transition-name');
+    });
+
+  await transition.updateCallbackDone;
+  return applied;
+}
+
+/**
+ * Go to `to`. `toTop` also scrolls to the top, in the same update as the new page.
+ * Returns changeRoute's promise.
+ */
+export function navigate(to, { toTop = false } = {}) {
+  const next = normalizePath(to.startsWith('/') ? to : `/${to}`);
+  return changeRoute(next, () => {
+    if (next !== getPath()) {
+      window.history.pushState({}, '', next);
+    }
+    if (toTop) {
+      window.scrollTo(0, 0);
+    }
+    path.set(next);
+  });
 }
 
 /** True for a click the app should route itself: left button, no modifier key (those open a new tab or window). */
@@ -67,16 +186,17 @@ export function isPlainLeftClick(event) {
 /**
  * navigate() to another page and start it like a fresh load: scroll to the top and
  * focus its main heading, since the clicked link has usually unmounted (leaving focus
- * on <body>) or, in the site footer, stays at the bottom of the page. Lazy pages
- * render once their chunk loads, so poll briefly for the heading (a timer, not
- * requestAnimationFrame, which stalls in background tabs). Gives up if the route
- * changes or focus moves somewhere else in the meantime.
+ * on <body>) or, in the site footer, stays at the bottom of the page. A heading can
+ * render a moment after the page (the auth gates on /account and /admin), so poll
+ * briefly for it (a timer, not requestAnimationFrame, which stalls in background
+ * tabs). Gives up if the route changes or focus moves somewhere else in the meantime.
  */
 export async function navigateToPage(to) {
   const startedFrom = document.activeElement;
-  navigate(to);
+  if (!(await navigate(to, { toTop: true }))) {
+    return;
+  }
   await tick();
-  window.scrollTo(0, 0);
 
   const routePath = get(path);
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -109,19 +229,18 @@ export async function navigateToPage(to) {
 export function navigateToSection(to) {
   const url = new URL(to, window.location.origin);
   const next = normalizePath(url.pathname);
-  if (next === getPath()) {
-    if (window.location.hash === url.hash) {
+  return changeRoute(next, () => {
+    if (next !== getPath()) {
+      window.history.pushState({}, '', next + url.hash);
+      path.set(next);
+    } else if (window.location.hash === url.hash) {
       // Already at that hash: setting it again neither scrolls nor fires hashchange.
       const here = window.location.href;
       window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: here, newURL: here }));
     } else {
       window.location.hash = url.hash;
     }
-    return;
-  }
-
-  window.history.pushState({}, '', next + url.hash);
-  path.set(next);
+  });
 }
 
 // Marks a history entry as an item-overlay push, so closeItemOverlay can decide
@@ -142,13 +261,12 @@ export function navigateToItem(item) {
   preserveLangParam(url);
 
   const target = url.pathname + url.search;
-  if (url.pathname === getPath()) {
+  changeRoute(url.pathname, () => {
+    if (url.pathname !== getPath()) {
+      window.history.pushState(ITEM_OVERLAY_STATE, '', target);
+    }
     path.set(url.pathname);
-    return;
-  }
-
-  window.history.pushState(ITEM_OVERLAY_STATE, '', target);
-  path.set(url.pathname);
+  });
 }
 
 // Closes the item overlay and keeps the URL in sync. When we arrived via an
@@ -168,8 +286,10 @@ export function closeItemOverlay(tag) {
 
   const url = new URL(categoryToPath(tag), window.location.origin);
   preserveLangParam(url);
-  window.history.replaceState({}, '', url.pathname + url.search);
-  path.set(url.pathname);
+  changeRoute(url.pathname, () => {
+    window.history.replaceState({}, '', url.pathname + url.search);
+    path.set(url.pathname);
+  });
 }
 
 const RESERVE_QUERY = 'reserve';
@@ -242,18 +362,16 @@ export function navigateToItemWithReserve(item) {
   const target = url.pathname + url.search;
   const pathOnly = url.pathname;
 
-  if (pathOnly === getPath()) {
-    // Already on the item detail page — ensure ?reserve=1 is in the URL so
-    // tryOpenReserveFromQuery() can detect the intent via window.location.search.
-    if (!hasReserveIntent()) {
+  changeRoute(pathOnly, () => {
+    if (pathOnly !== getPath()) {
+      window.history.pushState(ITEM_OVERLAY_STATE, '', target);
+    } else if (!hasReserveIntent()) {
+      // Already on the item detail page — ensure ?reserve=1 is in the URL so
+      // tryOpenReserveFromQuery() can detect the intent via window.location.search.
       window.history.replaceState(window.history.state, '', target);
     }
     path.set(pathOnly);
-    return;
-  }
-
-  window.history.pushState(ITEM_OVERLAY_STATE, '', target);
-  path.set(pathOnly);
+  });
 }
 
 export function isHomeRoute(pathname) {
@@ -281,7 +399,10 @@ export function isAccountRoute(pathname) {
 }
 
 if (typeof window !== 'undefined') {
+  // Back and Forward swap without the morph: the browser restores the scroll position
+  // right after popstate, which must land on the page it belongs to, not the old one.
   window.addEventListener('popstate', () => {
-    path.set(getPath());
+    const next = getPath();
+    changeRoute(next, () => path.set(next), { morph: false });
   });
 }
