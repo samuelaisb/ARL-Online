@@ -33,12 +33,23 @@
     "steps_aria": "How it works",
     "step_account": "Create an account",
     "step_browse": "Browse and send a request",
+    "load_error": "We couldn't load the library right now. Please reload the page in a moment."
+  },
+  "footer": {
+    "blurb": "Free expertise, equipment, books, and meeting rooms for young, engaged Canadians.",
     "created_by": "Created by",
     "run_by": "Run by",
     "fes_name": "Finance Engage Sustain",
     "fes_link_aria": "Finance Engage Sustain — opens in a new tab",
     "aisb_link_aria": "Apathy is Boring — opens in a new tab",
-    "load_error": "We couldn't load the library right now. Please reload the page in a moment."
+    "nav_aria": "Footer navigation",
+    "library_heading": "Library",
+    "help_heading": "Help & info",
+    "contact": "Contact us",
+    "privacy": "Privacy policy",
+    "discord": "Join our Discord",
+    "discord_aria": "Join our Discord — opens in a new tab",
+    "copyright": "© {year} Apathy is Boring"
   },
   "language": {
     "switch_aria": "Language",
@@ -544,6 +555,7 @@
   },
   "privacy": {
     "heading": "Privacy policy",
+    "subtitle": "What personal information we collect, why, and what you can do about it.",
     "back_to_inventory": "← Back to inventory"
   },
   "kimchi": {
@@ -705,7 +717,7 @@
   "not_found": {
     "heading": "Page not found",
     "body": "We couldn't find the page you were looking for. It may have moved, or the link may have a typo.",
-    "back_to_library": "Back to the library"
+    "back_to_library": "← Back to the library"
   },
   "page_load_error": {
     "message": "This page couldn't load. The site may have just been updated.",

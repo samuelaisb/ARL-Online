@@ -17,15 +17,14 @@
 </script>
 
 <main id="main-content" class="container how-this-works-page">
-  <p class="how-this-works-page__back">
-    <a href={INVENTORY_PATH} class="how-this-works-page__back-link" onclick={goToInventory}>
-      {$t('how_this_works.back_to_inventory')}
-    </a>
-  </p>
-
   <header class="page-header">
     <h1>{$t('how_this_works.heading')}</h1>
     <p class="subtitle">{$t('how_this_works.subtitle')}</p>
+    <p class="page-header__back">
+      <a href={INVENTORY_PATH} class="page-header__back-link" onclick={goToInventory}>
+        {$t('how_this_works.back_to_inventory')}
+      </a>
+    </p>
   </header>
 
   <ol class="how-this-works-steps">

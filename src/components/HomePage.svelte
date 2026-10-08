@@ -13,6 +13,7 @@
 
 <script>
   import LoadingStatus from './LoadingStatus.svelte';
+  import { session } from '../lib/auth.js';
   import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { t } from '../lib/i18n.js';
   import { INVENTORY_TAGS } from '../lib/inventory.js';
@@ -25,7 +26,7 @@
     navigateToPage,
   } from '../lib/router.js';
 
-  let { items, loading, loadError = '' } = $props();
+  let { items, loading, loadError = '', onOpenRegister } = $props();
 
   const FEATURED_EXPERT_COUNT = 4;
   // When the inventory lands, the sections fade in one after another down the page:
@@ -92,7 +93,7 @@
 
 <main id="main-content" class="container home-page">
   <header class="page-header home-page__header">
-    <h1 class="brand-heading" tabindex="-1">{$t('home.heading')}</h1>
+    <h1 tabindex="-1">{$t('home.heading')}</h1>
     <p class="page-intro">{$t('home.intro')}</p>
     <p class="page-intro page-intro--extended">{$t('home.free')}</p>
   </header>
@@ -277,55 +278,25 @@
     <LoadingStatus text={$t('home.loading')} />
   {/if}
 
-  <footer class="home-footer">
+  <!-- Who made the library is in the site footer, under this card. -->
+  <div class="home-footer">
     <ol class="home-steps" aria-label={$t('home.steps_aria')}>
       <li class="home-step">
-        <span class="home-step__number" aria-hidden="true">1</span>
-        {$t('home.step_account')}
+        <!-- Signed-out visitors can start here: the step opens the Register dialog. -->
+        {#if $session}
+          <span class="home-step__number" aria-hidden="true">1</span>
+          {$t('home.step_account')}
+        {:else}
+          <button type="button" class="home-step__action" aria-haspopup="dialog" onclick={onOpenRegister}>
+            <span class="home-step__number" aria-hidden="true">1</span>
+            <span class="home-step__label">{$t('home.step_account')}</span>
+          </button>
+        {/if}
       </li>
       <li class="home-step">
         <span class="home-step__number" aria-hidden="true">2</span>
         {$t('home.step_browse')}
       </li>
     </ol>
-
-    <div class="home-partners">
-      <span class="home-partners__item">
-        <span class="home-partners__label">{$t('home.created_by')}</span>
-        <a
-          class="home-partners__link"
-          href="https://www.fesplanet.org"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={$t('home.fes_link_aria')}
-        >
-          <img
-            class="home-partners__logo"
-            src="/assets/brand/fes-logo.webp"
-            alt={$t('home.fes_name')}
-            width="120"
-            height="40"
-          />
-        </a>
-      </span>
-      <span class="home-partners__item">
-        <span class="home-partners__label">{$t('home.run_by')}</span>
-        <a
-          class="home-partners__link"
-          href="https://www.apathyisboring.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={$t('home.aisb_link_aria')}
-        >
-          <img
-            class="home-partners__logo"
-            src="/assets/brand/apathy-is-boring-wordmark.png"
-            alt={$t('site.brand_name')}
-            width="830"
-            height="385"
-          />
-        </a>
-      </span>
-    </div>
-  </footer>
+  </div>
 </main>

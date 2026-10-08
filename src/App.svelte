@@ -36,6 +36,7 @@
   import HomePage from './components/HomePage.svelte';
   import InventoryPanel from './components/InventoryPanel.svelte';
   import SiteNav from './components/SiteNav.svelte';
+  import SiteFooter from './components/SiteFooter.svelte';
   import HeaderAuth from './components/HeaderAuth.svelte';
   import LocaleSwitcher from './components/LocaleSwitcher.svelte';
   import KimchiNotification from './components/KimchiNotification.svelte';
@@ -498,11 +499,11 @@
         <PageLoadError />
       {/await}
     {:else if onHomePage}
-      <HomePage {items} {loading} {loadError} />
+      <HomePage {items} {loading} {loadError} onOpenRegister={openRegisterFromReserve} />
     {:else if onInventoryPage || onItemDetailPage}
       <main id="main-content" class="container">
         <header class="page-header">
-          <h1 class="brand-heading" tabindex="-1">{$t('site.title')}</h1>
+          <h1 tabindex="-1">{$t('site.title')}</h1>
           <p class="page-intro">{$t('site.intro')}</p>
         </header>
 
@@ -517,15 +518,17 @@
         <header class="page-header">
           <h1 tabindex="-1">{$t('not_found.heading')}</h1>
           <p class="page-intro">{$t('not_found.body')}</p>
+          <p class="page-header__back">
+            <a href="/" class="page-header__back-link" onclick={goHome}>
+              {$t('not_found.back_to_library')}
+            </a>
+          </p>
         </header>
-        <p>
-          <a href="/" class="not-found-page__back-link" onclick={goHome}>
-            {$t('not_found.back_to_library')}
-          </a>
-        </p>
       </main>
     {/if}
   </div>
+
+  <SiteFooter />
 </div>
 
 {#if onItemDetailPage}

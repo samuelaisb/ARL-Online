@@ -100,38 +100,41 @@
 {/snippet}
 
 <main id="main-content" class="container account-page">
-  <p class="account-page__back">
-    <a href={INVENTORY_PATH} class="account-page__back-link" onclick={goToInventory}>
-      {$t('account.back_to_inventory')}
-    </a>
-  </p>
-
-  {#if !supabaseConfigured}
-    <div class="admin-access">
-      <h1 class="admin-access__title">{$t('account.not_available_title')}</h1>
-      <p class="admin-access__message">{$t('account.not_available_message')}</p>
-    </div>
-  {:else if !$authReady}
-    <Skeleton variant="page" gate label={$t('auth.loading')} />
-  {:else if !$session}
-    <div class="admin-access" in:reveal>
-      <h1 class="admin-access__title">{$t('account.sign_in_required_title')}</h1>
-      <p class="admin-access__message">{$t('account.sign_in_required_message')}</p>
-      <div class="admin-access__actions">
-        <button type="button" class="btn-header btn-header--secondary" onclick={onOpenLogin}>
-          {$t('auth.log_in')}
-        </button>
-        <button type="button" class="btn-header btn-header--primary" onclick={onOpenRegister}>
-          {$t('auth.register')}
-        </button>
+  <!-- The band is there from the first frame; only what's inside it changes while
+       sign-in loads. -->
+  <header class="page-header">
+    {#if !supabaseConfigured}
+      <h1>{$t('account.not_available_title')}</h1>
+      <p class="page-intro">{$t('account.not_available_message')}</p>
+    {:else if !$authReady}
+      <Skeleton variant="page" gate label={$t('auth.loading')} />
+    {:else if !$session}
+      <div in:reveal>
+        <h1>{$t('account.sign_in_required_title')}</h1>
+        <p class="page-intro">{$t('account.sign_in_required_message')}</p>
+        <div class="page-header__actions">
+          <button type="button" class="btn-header btn-header--secondary" onclick={onOpenLogin}>
+            {$t('auth.log_in')}
+          </button>
+          <button type="button" class="btn-header btn-header--primary" onclick={onOpenRegister}>
+            {$t('auth.register')}
+          </button>
+        </div>
       </div>
-    </div>
-  {:else}
-    <header class="page-header account-page__header" in:reveal>
-      <h1>{$t('account.heading')}</h1>
-      <p class="account-page__email">{$session.user.email}</p>
-    </header>
+    {:else}
+      <div in:reveal>
+        <h1>{$t('account.heading')}</h1>
+        <p class="account-page__email">{$session.user.email}</p>
+      </div>
+    {/if}
+    <p class="page-header__back">
+      <a href={INVENTORY_PATH} class="page-header__back-link" onclick={goToInventory}>
+        {$t('account.back_to_inventory')}
+      </a>
+    </p>
+  </header>
 
+  {#if supabaseConfigured && $authReady && $session}
     <div class="account-actions" in:reveal>
       <button
         type="button"

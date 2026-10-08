@@ -11,8 +11,8 @@
     U+2190-2193, U+2212, U+2215, U+2713, U+FEFF, U+FFFD;
 }
 
-/* Only .brand-heading (homepage and inventory h1) uses Ringold; server.js preloads
-   it on those routes. */
+/* Ringold is the title face of every page's band (.page-header h1); server.js
+   preloads it on every page. */
 @font-face {
   font-family: 'Ringold Sans';
   src: url('/assets/fonts/ringold/Ringold-Sans.woff2') format('woff2');
@@ -76,6 +76,12 @@ body {
   font-family: inherit;
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+/* A link without a colour of its own is Mint (never the browser's blue or visited
+   purple). Any class rule that sets a colour overrides this. */
+a {
+  color: var(--color-mint);
 }
 
 .app {
@@ -318,25 +324,125 @@ a.btn-header {
   color: var(--color-dark);
 }
 
+/* overflow-x: clip keeps the title bands' side extensions (below) from ever widening the
+   page; it isn't a scroll container, so nothing inside loses sticky positioning. */
 .app-body {
   flex: 1;
   display: flex;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 0 1.5rem 3rem;
+  overflow-x: clip;
 }
 
+/* Pages sit straight on the page surface, with no card around them, in a 64rem column
+   that the site footer lines up with. Each page opens with its .page-header as a
+   full-width colour band; --band* set the colours, per page below. */
 .container {
+  --band: var(--color-lemon);
+  --band-ink: var(--color-dark);
+  --band-link: var(--color-mint);
+  --band-bone: rgba(35, 31, 32, 0.12);
   width: 100%;
-  max-width: 48rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 1rem;
-  padding: 2rem;
-  box-shadow: 0 8px 32px var(--color-shadow);
+  max-width: 64rem;
 }
 
+.how-this-works-page,
+.privacy-page {
+  --band: var(--color-lavender);
+}
+
+.about-page {
+  --band: var(--color-mint);
+  --band-ink: var(--color-light);
+  --band-link: var(--color-lemon);
+  --band-bone: rgba(250, 249, 247, 0.16);
+}
+
+.account-page {
+  --band: var(--color-pear);
+}
+
+.admin-page {
+  --band: var(--color-dark);
+  --band-ink: var(--color-light);
+  --band-link: var(--color-lemon);
+  --band-bone: rgba(250, 249, 247, 0.16);
+}
+
+.not-found-page {
+  --band: var(--color-plum);
+  --band-ink: var(--color-light);
+  --band-link: var(--color-lemon);
+  --band-bone: rgba(250, 249, 247, 0.16);
+}
+
+/* The band: border-image paints the header plus 100vmax on each side. That extension
+   is ink overflow (like a shadow), so the band reaches the window edges without
+   new markup or sideways scroll. The skeleton bones of the account and admin sign-in
+   gates take the band's tint.
+   Every band has the same order and spacing, so titles sit at the same height on
+   every page: the Ringold title, one intro line (.page-intro, .subtitle or the
+   account email), any actions, then the back link (.page-header__back) last. */
 .page-header {
-  margin-bottom: 1.75rem;
+  --color-skeleton: var(--band-bone);
+  --skeleton-sheen: rgba(255, 255, 255, 0.25);
+  margin: 0 0 2.25rem;
+  padding: 2.5rem 0 2.25rem;
+  border-image: linear-gradient(var(--band) 0 0) fill 0 / / 0 100vmax;
+  color: var(--band-ink);
+}
+
+/* Ringold has one weight: normal, so the browser doesn't fake a bold. server.js
+   preloads it on every page. */
+.page-header h1 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 2.5rem;
+  font-weight: normal;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.page-header .page-intro,
+.page-header .subtitle,
+.page-header .account-page__email {
+  max-width: 42rem;
+  margin: 0.75rem 0 0;
+  color: inherit;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+.page-header .page-intro--extended {
+  margin-top: 0.5rem;
+}
+
+.page-header__back {
+  margin: 1.25rem 0 0;
+}
+
+.page-header__back-link {
+  color: var(--band-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.page-header__back-link:hover {
+  text-decoration: underline;
+}
+
+.page-header__back-link:focus-visible {
+  outline: 2px solid var(--band-link);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+/* Sign in required / access denied on /account and /admin: Log in and Register. */
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
 }
 
 .page-intro {
@@ -348,6 +454,144 @@ a.btn-header {
 
 .page-intro--extended {
   margin-top: 0.5rem;
+}
+
+/* Site footer, on every page. Like the header it sits on the page surface, and it
+   lines up with the page column above it. .app's padding-bottom below it keeps the
+   last line clear of Kimchi. */
+.site-footer {
+  padding: 2.5rem 1.5rem 0;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.site-footer__inner,
+.site-footer__legal {
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+.site-footer__inner {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem 3rem;
+}
+
+.site-footer__name {
+  margin: 0;
+  color: var(--color-dark);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.site-footer__blurb {
+  margin: 0.5rem 0 0;
+  max-width: 24rem;
+}
+
+.site-footer__partners {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: 1.25rem;
+}
+
+/* Each label stays on the same line as its logo when the strip wraps. */
+.site-footer__partner {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.site-footer__partner-label {
+  font-size: 0.8125rem;
+}
+
+.site-footer__partner-link {
+  display: block;
+  line-height: 0;
+}
+
+.site-footer__partner-link:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+.site-footer__partner-logo {
+  display: block;
+  width: auto;
+  height: 2rem;
+}
+
+.site-footer__nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 2rem;
+}
+
+.site-footer__heading {
+  margin: 0 0 0.5rem;
+  color: var(--color-dark);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+}
+
+.site-footer__links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The padding makes each link a 29px-tall target. */
+.site-footer__link {
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.site-footer__link:hover {
+  color: var(--color-dark);
+  text-decoration: underline;
+  text-decoration-color: var(--color-mint);
+  text-underline-offset: 0.2em;
+}
+
+.site-footer__link[aria-current='page'] {
+  color: var(--color-dark);
+  font-weight: 700;
+}
+
+.site-footer__link:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+.site-footer__legal {
+  margin-top: 2rem;
+  margin-bottom: 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.8125rem;
+}
+
+/* Phones: who runs the library on top, the two link columns side by side below. */
+@media (max-width: 640px) {
+  .site-footer {
+    padding-top: 2rem;
+  }
+
+  .site-footer__inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .skip-link {
@@ -386,13 +630,6 @@ h3,
 h1 {
   margin: 0 0 0.5rem;
   font-size: 1.75rem;
-}
-
-/* The homepage and inventory headings. Ringold has one weight: normal, so the
-   browser doesn't fake a bold. */
-.brand-heading {
-  font-family: var(--font-brand);
-  font-weight: normal;
 }
 
 /* A page's main heading takes focus from script (tabindex="-1") when the item
@@ -452,8 +689,8 @@ h1[tabindex='-1']:focus {
   margin-bottom: 1.25rem;
   padding: 0.25rem;
   border-radius: 0.625rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
   overflow: hidden;
 }
 
@@ -521,10 +758,6 @@ h1[tabindex='-1']:focus {
 }
 
 /* Homepage: one link per category, icon chips in the brand's light/dark pairings. */
-.home-page__header {
-  margin-bottom: 1.5rem;
-}
-
 .home-categories__list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -540,15 +773,15 @@ h1[tabindex='-1']:focus {
   gap: 1rem;
   height: 100%;
   padding: 1.25rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.75rem;
   background: var(--color-bg);
   color: var(--color-text);
   text-decoration: none;
-  box-shadow: 0 2px 8px var(--color-shadow);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Tiles are flat at rest; hover lifts them onto a soft shadow. The edge stays put. */
 .home-category:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px var(--color-shadow-strong);
@@ -756,10 +989,9 @@ h1[tabindex='-1']:focus {
   aspect-ratio: 1;
   margin-bottom: 0.375rem;
   overflow: hidden;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.75rem;
   background: var(--color-bg);
-  box-shadow: 0 2px 8px var(--color-shadow);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -819,13 +1051,8 @@ h1[tabindex='-1']:focus {
   line-clamp: 2;
 }
 
-/* Bottom of the card: the two steps, then who made the library. */
+/* Bottom of the card: the two steps. (Who made the library is in the site footer.) */
 .home-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.25rem 2rem;
   margin-top: 2.25rem;
   padding-top: 1.5rem;
   border-top: 1px solid var(--color-border);
@@ -847,6 +1074,33 @@ h1[tabindex='-1']:focus {
   font-weight: 600;
 }
 
+/* "Create an account" (signed-out visitors): a button that opens the Register dialog,
+   styled as a link, with the number chip inside so the whole step is the target. */
+.home-step__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: var(--color-mint);
+  transition: color 0.15s;
+}
+
+.home-step__action:hover {
+  color: var(--color-dark);
+}
+
+.home-step__action:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.home-step__label {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .home-step__number {
   display: inline-flex;
   flex-shrink: 0;
@@ -861,46 +1115,12 @@ h1[tabindex='-1']:focus {
   font-weight: 700;
 }
 
-.home-partners {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1.25rem;
-}
-
-/* Each label stays on the same line as its logo when the strip wraps. */
-.home-partners__item {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.home-partners__label {
-  color: var(--color-text-muted);
-  font-size: 0.8125rem;
-}
-
-.home-partners__link {
-  display: block;
-  line-height: 0;
-}
-
-.home-partners__link:focus-visible {
-  outline: 2px solid var(--color-mint);
-  outline-offset: 2px;
-  border-radius: 0.125rem;
-}
-
-.home-partners__logo {
-  display: block;
-  width: auto;
-  height: 2rem;
-}
-
+/* Steps and FAQ are ruled lists (a dark rule above each step, hairlines between
+   questions) at a reading width, not boxes. */
 .how-this-works-steps {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  max-width: 44rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -908,12 +1128,10 @@ h1[tabindex='-1']:focus {
 
 .how-this-works-step {
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
   align-items: flex-start;
-  padding: 1.25rem 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  padding: 1.5rem 0;
+  border-top: 2px solid var(--color-dark);
 }
 
 .how-this-works-step__number {
@@ -921,14 +1139,14 @@ h1[tabindex='-1']:focus {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: 50%;
   background: var(--color-lavender);
   color: var(--color-dark);
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.25rem;
   line-height: 1;
 }
 
@@ -938,7 +1156,7 @@ h1[tabindex='-1']:focus {
 
 .how-this-works-step__title {
   margin: 0 0 0.375rem;
-  font-size: 1.0625rem;
+  font-size: 1.25rem;
 }
 
 .how-this-works-step__body {
@@ -949,6 +1167,7 @@ h1[tabindex='-1']:focus {
 }
 
 .how-this-works-faq {
+  max-width: 44rem;
   margin-top: 2.5rem;
 }
 
@@ -960,14 +1179,12 @@ h1[tabindex='-1']:focus {
 .how-this-works-faq__list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  border-bottom: 1px solid var(--color-border-strong);
 }
 
 .how-this-works-faq__item {
-  padding: 1rem 1.25rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--color-border-strong);
 }
 
 .how-this-works-faq__question {
@@ -1000,37 +1217,11 @@ h1[tabindex='-1']:focus {
   line-height: 1.55;
 }
 
-.about-page__back,
-.privacy-page__back,
-.how-this-works-page__back,
-.account-page__back,
-.admin-page__back {
-  margin: 0 0 1.5rem;
-}
-
-.about-page__back-link,
-.privacy-page__back-link,
-.how-this-works-page__back-link,
-.account-page__back-link,
-.admin-page__back-link,
-.not-found-page__back-link {
-  color: var(--color-mint);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.about-page__back-link:hover,
-.privacy-page__back-link:hover,
-.how-this-works-page__back-link:hover,
-.account-page__back-link:hover,
-.admin-page__back-link:hover,
-.not-found-page__back-link:hover {
-  text-decoration: underline;
-}
 
 /* scroll-margin-top: /about#contact scrolls the contact section into view with a little room above. */
 .about-section {
-  margin-bottom: 2rem;
+  max-width: 44rem;
+  margin-bottom: 2.5rem;
   scroll-margin-top: 1rem;
 }
 
@@ -1061,7 +1252,7 @@ h1[tabindex='-1']:focus {
 }
 
 .privacy-content {
-  max-width: 46rem;
+  max-width: 44rem;
   color: var(--color-text-muted);
   font-size: 0.9375rem;
   line-height: 1.6;
@@ -1105,11 +1296,14 @@ h1[tabindex='-1']:focus {
   list-style: none;
 }
 
+/* Each partner is set off by a rule in its brand colour: AisB Lemon, FES Lavender. */
 .about-partner {
-  padding: 1.25rem 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  border-left: 4px solid var(--color-lemon);
+}
+
+.about-partner:nth-child(2) {
+  border-left-color: var(--color-lavender);
 }
 
 .about-partner__name {
@@ -1136,8 +1330,8 @@ h1[tabindex='-1']:focus {
 .about-contact-form {
   margin-top: 1rem;
   padding: 1.25rem 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.75rem;
 }
 
@@ -1305,30 +1499,6 @@ h1[tabindex='-1']:focus {
   z-index: 2;
 }
 
-.admin-access {
-  max-width: 28rem;
-  padding: 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-}
-
-.admin-access__title {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
-}
-
-.admin-access__message {
-  margin: 0 0 1rem;
-  color: var(--color-text-muted);
-}
-
-.admin-access__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
 .account-page__email {
   margin: 0;
   color: var(--color-text-muted);
@@ -1369,8 +1539,8 @@ h1[tabindex='-1']:focus {
   max-width: 48rem;
   margin-top: 1.5rem;
   padding: 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.75rem;
 }
 
@@ -1432,6 +1602,18 @@ h1[tabindex='-1']:focus {
 .consultation-row__zoom {
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/* Links inside sentences on /account: "Browse the library", "Browse Expertise",
+   "View your profile" and the Zoom link. */
+.empty-state a {
+  font-weight: 600;
+}
+
+.empty-state a:hover,
+.consultation-row__zoom:hover,
+.account-share-expertise__view a:hover {
+  color: var(--color-dark);
 }
 
 .consultation-row--inactive {
@@ -1914,10 +2096,9 @@ h1[tabindex='-1']:focus {
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.75rem;
   background: var(--color-bg);
-  box-shadow: 0 2px 8px var(--color-shadow);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -1949,7 +2130,6 @@ h1[tabindex='-1']:focus {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   line-height: 1.4;
-  box-shadow: 0 1px 4px var(--color-shadow);
 }
 
 .availability-badge--available {
@@ -1970,7 +2150,6 @@ h1[tabindex='-1']:focus {
 /* Breadcrumb inline badge: override the card-absolute defaults */
 .item-detail-breadcrumb__badge {
   position: static;
-  box-shadow: none;
   font-size: 0.65rem;
 }
 
@@ -2967,7 +3146,12 @@ button:disabled {
   margin: 0 0 1rem;
 }
 
-/* PageLoadError: a lazy page's chunk failed (usually a tab open across a deploy). */
+/* PageLoadError: a lazy page's chunk failed (usually a tab open across a deploy). The
+   page version has no title band, so it keeps some room under the site header. */
+.container.page-load-error {
+  padding-top: 2.25rem;
+}
+
 .page-load-error--overlay {
   position: fixed;
   top: calc(1rem + env(safe-area-inset-top, 0px));
@@ -3000,18 +3184,23 @@ button:disabled {
 }
 
 @media (min-width: 900px) {
-  .container {
-    max-width: 56rem;
-  }
-
   .inventory-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 640px) {
-  .container {
-    padding: 1.25rem;
+  .page-header {
+    margin-bottom: 1.75rem;
+    padding: 2rem 0 1.75rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+  }
+
+  .skeleton-page__title {
+    height: 1.9rem;
   }
 
   .account-share-expertise {
@@ -3469,20 +3658,18 @@ button:disabled {
   border-radius: 0.5rem;
 }
 
-/* Skeleton page header (account and admin auth gates). */
-.skeleton-page {
-  margin-bottom: 1.75rem;
-}
-
+/* Skeleton page header (account and admin auth gates), inside the .page-header band:
+   the bones take up the band title's line (2.5rem × 1.05) and the intro line under it
+   (0.75rem gap, 1.0625rem × 1.5). */
 .skeleton-page__title {
   width: min(18rem, 60%);
-  height: 2rem;
-  margin: 0.06rem 0 0.56rem;
+  height: 2.375rem;
+  margin: 0.125rem 0;
 }
 
 .skeleton-page__line {
   width: 55%;
-  margin: 0.23rem 0;
+  margin: 1.17rem 0 0.42rem;
 }
 
 /* Skeleton item detail, inside the real .item-detail grid. */
@@ -3561,7 +3748,7 @@ button:disabled {
 .skeleton-card,
 .skeleton-card:hover {
   transform: none;
-  box-shadow: 0 2px 8px var(--color-shadow);
+  box-shadow: none;
   cursor: default;
 }
 

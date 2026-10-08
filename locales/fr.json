@@ -33,12 +33,23 @@
     "steps_aria": "Comment ça marche",
     "step_account": "Créez un compte",
     "step_browse": "Parcourez et envoyez une demande",
+    "load_error": "Impossible de charger la bibliothèque pour le moment. Veuillez recharger la page dans un instant."
+  },
+  "footer": {
+    "blurb": "De l'expertise, de l'équipement, des livres et des salles de réunion, gratuitement, pour les jeunes Canadiennes et Canadiens engagés.",
     "created_by": "Créée par",
     "run_by": "Gérée par",
     "fes_name": "Finance Engage Sustain",
     "fes_link_aria": "Finance Engage Sustain — ouvre un nouvel onglet",
     "aisb_link_aria": "Apathy is Boring — ouvre un nouvel onglet",
-    "load_error": "Impossible de charger la bibliothèque pour le moment. Veuillez recharger la page dans un instant."
+    "nav_aria": "Navigation de pied de page",
+    "library_heading": "Bibliothèque",
+    "help_heading": "Aide et infos",
+    "contact": "Nous contacter",
+    "privacy": "Politique de confidentialité",
+    "discord": "Rejoignez notre Discord",
+    "discord_aria": "Rejoignez notre Discord — ouvre un nouvel onglet",
+    "copyright": "© {year} Apathy is Boring"
   },
   "language": {
     "switch_aria": "Langue",
@@ -544,6 +555,7 @@
   },
   "privacy": {
     "heading": "Politique de confidentialité",
+    "subtitle": "Quels renseignements personnels nous recueillons, pourquoi, et quels sont vos droits.",
     "back_to_inventory": "← Retour à l'inventaire"
   },
   "kimchi": {
@@ -705,7 +717,7 @@
   "not_found": {
     "heading": "Page introuvable",
     "body": "Nous n'avons pas trouvé la page que vous cherchez. Elle a peut-être été déplacée, ou le lien contient une faute de frappe.",
-    "back_to_library": "Retour à la bibliothèque"
+    "back_to_library": "← Retour à la bibliothèque"
   },
   "page_load_error": {
     "message": "Cette page n'a pas pu se charger. Le site vient peut-être d'être mis à jour.",

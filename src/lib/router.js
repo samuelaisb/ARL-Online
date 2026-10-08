@@ -1,5 +1,5 @@
 import { tick } from 'svelte';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { slugifyTitle } from './slug.js';
 import { categoryToPath, normalizePath } from './item-routes.js';
 
@@ -66,14 +66,62 @@ export function isPlainLeftClick(event) {
 
 /**
  * navigate() to another page and start it like a fresh load: scroll to the top and
- * focus its main heading (pages give it tabindex="-1"), since the clicked link has
- * usually unmounted and would leave focus on <body>.
+ * focus its main heading, since the clicked link has usually unmounted (leaving focus
+ * on <body>) or, in the site footer, stays at the bottom of the page. Lazy pages
+ * render once their chunk loads, so poll briefly for the heading (a timer, not
+ * requestAnimationFrame, which stalls in background tabs). Gives up if the route
+ * changes or focus moves somewhere else in the meantime.
  */
 export async function navigateToPage(to) {
+  const startedFrom = document.activeElement;
   navigate(to);
   await tick();
   window.scrollTo(0, 0);
-  document.querySelector('#main-content h1')?.focus({ preventScroll: true });
+
+  const routePath = get(path);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const active = document.activeElement;
+    const focusMoved =
+      active && active !== startedFrom && active !== document.body && active.isConnected;
+    if (get(path) !== routePath || focusMoved) {
+      return;
+    }
+
+    const heading = document.querySelector('#main-content h1');
+    if (heading) {
+      // Most page headings have no tabindex, and focus() does nothing without one.
+      if (!heading.hasAttribute('tabindex')) {
+        heading.setAttribute('tabindex', '-1');
+      }
+      heading.focus({ preventScroll: true });
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/**
+ * navigate() to a `/page#section` link, keeping the hash in the URL. The page brings
+ * the section into view and focuses it, on mount or on `hashchange` (AboutPage's
+ * `#contact`). On the same page this is a plain fragment change, which keeps `?lang`.
+ */
+export function navigateToSection(to) {
+  const url = new URL(to, window.location.origin);
+  const next = normalizePath(url.pathname);
+  if (next === getPath()) {
+    if (window.location.hash === url.hash) {
+      // Already at that hash: setting it again neither scrolls nor fires hashchange.
+      const here = window.location.href;
+      window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: here, newURL: here }));
+    } else {
+      window.location.hash = url.hash;
+    }
+    return;
+  }
+
+  window.history.pushState({}, '', next + url.hash);
+  path.set(next);
 }
 
 // Marks a history entry as an item-overlay push, so closeItemOverlay can decide

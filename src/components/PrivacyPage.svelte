@@ -33,14 +33,14 @@
 </script>
 
 <main id="main-content" class="container privacy-page">
-  <p class="privacy-page__back">
-    <a href={INVENTORY_PATH} class="privacy-page__back-link" onclick={goToInventory}>
-      {$t('privacy.back_to_inventory')}
-    </a>
-  </p>
-
   <header class="page-header">
     <h1>{$t('privacy.heading')}</h1>
+    <p class="subtitle">{$t('privacy.subtitle')}</p>
+    <p class="page-header__back">
+      <a href={INVENTORY_PATH} class="page-header__back-link" onclick={goToInventory}>
+        {$t('privacy.back_to_inventory')}
+      </a>
+    </p>
   </header>
 
   <article class="privacy-content" bind:this={content}>

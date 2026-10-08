@@ -103,15 +103,14 @@
 </script>
 
 <main id="main-content" class="container about-page">
-  <p class="about-page__back">
-    <a href={INVENTORY_PATH} class="about-page__back-link" onclick={goToInventory}>
-      {$t('about.back_to_inventory')}
-    </a>
-  </p>
-
   <header class="page-header">
     <h1>{$t('about.heading')}</h1>
     <p class="subtitle">{$t('about.subtitle')}</p>
+    <p class="page-header__back">
+      <a href={INVENTORY_PATH} class="page-header__back-link" onclick={goToInventory}>
+        {$t('about.back_to_inventory')}
+      </a>
+    </p>
   </header>
 
   <section class="about-section" aria-labelledby="about-mission-heading">
