@@ -532,6 +532,16 @@ a.btn-header {
   height: 2rem;
 }
 
+/* Logos inside links: Safari's Live Text reads the words in them and turns hover into
+   a text cursor and selection. Hover passes through to the link (pointer cursor), and
+   the image is not selectable. */
+.site-header__logo,
+.site-footer__partner-logo {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .site-footer__nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3915,10 +3925,11 @@ button:disabled {
 
 /* Where each element can get its own snapshot, the band's text fades out and in where
    it stands (titles sit at the same height on every page), and the old text goes in
-   half the time, before a shrinking band slides out from under it. With both bands on
-   screen (.band-morph), the transition paints the band itself as one block of colour,
-   full width, going from the old band's colour to the new one's as it resizes. The
-   bands' own snapshots stay hidden: Safari flickered drawing them (their 100vmax
+   half the time, before a shrinking band slides out from under it. The transition
+   paints the band itself (.band-morph, from router.js) as one block of colour, full
+   width, going from the old band's colour to the new one's as it resizes; a band on
+   one side only (the other out of view) fades in or out from transparent. The bands'
+   own snapshots stay hidden: Safari flickered drawing them (their 100vmax
    border-image sides are ink overflow). Elsewhere the two bands cross-fade whole. */
 @supports (view-transition-name: match-element) {
   .page-header > * {

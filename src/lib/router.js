@@ -117,9 +117,10 @@ function shouldMorph(from, to) {
 }
 
 /**
- * The band's colour when it can morph: it carries its view-transition-name (none with
- * reduced motion) and is on screen. A band out of view loses its name for this
- * transition, so it fades where it is instead of flying in from (or off to) above.
+ * The band's colour when it takes part in the transition: it carries its
+ * view-transition-name (none with reduced motion) and is on screen. A band out of view
+ * loses its name for this transition, so the other one fades in or out where it
+ * stands instead of flying in from (or off to) above.
  */
 function morphableBand(band) {
   if (!band || getComputedStyle(band).viewTransitionName === 'none') {
@@ -142,9 +143,11 @@ let activeMorph = null;
 /**
  * Runs `update` as a view transition: the title band (`view-transition-name: page-band`
  * in app.css) moves and resizes from the old page's band to the new one's while the
- * rest of the page cross-fades. When both bands are on screen, `.band-morph` on <html>
- * has the transition paint the band itself, its colour going from --band-morph-from
- * to --band-morph-to, instead of from the bands' snapshots (Safari flickered on those).
+ * rest of the page cross-fades. `.band-morph` on <html> has the transition paint the
+ * band itself, its colour going from --band-morph-from to --band-morph-to, instead of
+ * from the bands' snapshots (Safari flickered on those). With only one band on screen
+ * (a "See all" or footer link low on the page, `/about#contact`), the missing side is
+ * transparent, so that band fades in or out where it stands.
  * Browsers without view transitions never get here.
  */
 async function morphPage(update) {
@@ -159,9 +162,9 @@ async function morphPage(update) {
     await tick();
     newBand = document.querySelector('.page-header');
     const to = morphableBand(newBand);
-    if (from && to) {
-      root.style.setProperty('--band-morph-from', from);
-      root.style.setProperty('--band-morph-to', to);
+    if (from || to) {
+      root.style.setProperty('--band-morph-from', from || 'transparent');
+      root.style.setProperty('--band-morph-to', to || 'transparent');
       root.classList.add('band-morph');
     }
   });
