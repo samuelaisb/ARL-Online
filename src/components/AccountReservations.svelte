@@ -10,7 +10,6 @@
     subscribeAvailabilityClock,
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
-  import { reveal } from '../lib/motion.js';
   import BusyLabel from './BusyLabel.svelte';
   import Skeleton from './Skeleton.svelte';
 
@@ -226,46 +225,43 @@
   {:else if loadError}
     <p class="admin-status admin-status-error" role="alert">{loadError}</p>
   {:else}
-    <!-- One wrapper so the whole section reveals once, when the load lands (not on row updates). -->
-    <div in:reveal>
-      <h3 class="admin-subheading">{$t('account_reservations.heading_active')}</h3>
-      {#if lists.active.length > 0}
-        <ul class="admin-item-list">
-          {#each lists.active as entry (entry.id)}
-            {@render reservationRow(entry)}
-          {/each}
-        </ul>
-      {:else if lists.past.length === 0}
-        <p class="empty-state">
-          {$t('account_reservations.empty')}
-          <a href="/" onclick={openLibrary}>{$t('account_reservations.browse')}</a>
-        </p>
-      {:else}
-        <p class="admin-status">{$t('account_reservations.active_empty')}</p>
-      {/if}
+    <h3 class="admin-subheading">{$t('account_reservations.heading_active')}</h3>
+    {#if lists.active.length > 0}
+      <ul class="admin-item-list">
+        {#each lists.active as entry (entry.id)}
+          {@render reservationRow(entry)}
+        {/each}
+      </ul>
+    {:else if lists.past.length === 0}
+      <p class="empty-state">
+        {$t('account_reservations.empty')}
+        <a href="/" onclick={openLibrary}>{$t('account_reservations.browse')}</a>
+      </p>
+    {:else}
+      <p class="admin-status">{$t('account_reservations.active_empty')}</p>
+    {/if}
 
-      {#if lists.past.length > 0}
-        <div class="consultation-history">
-          <button
-            bind:this={pastToggle}
-            type="button"
-            class="btn-header btn-header--secondary consultation-history__toggle"
-            aria-expanded={showPast}
-            aria-controls="account-reservations-past"
-            onclick={() => (showPast = !showPast)}
-          >
-            {$t(showPast ? 'account_reservations.past_hide' : 'account_reservations.past_show')}
-            <span class="admin-pending-count">({lists.past.length})</span>
-          </button>
-          {#if showPast}
-            <ul id="account-reservations-past" class="admin-item-list consultation-history__list">
-              {#each lists.past as entry (`past-${entry.id}`)}
-                {@render reservationRow(entry)}
-              {/each}
-            </ul>
-          {/if}
-        </div>
-      {/if}
-    </div>
+    {#if lists.past.length > 0}
+      <div class="consultation-history">
+        <button
+          bind:this={pastToggle}
+          type="button"
+          class="btn-header btn-header--secondary consultation-history__toggle"
+          aria-expanded={showPast}
+          aria-controls="account-reservations-past"
+          onclick={() => (showPast = !showPast)}
+        >
+          {$t(showPast ? 'account_reservations.past_hide' : 'account_reservations.past_show')}
+          <span class="admin-pending-count">({lists.past.length})</span>
+        </button>
+        {#if showPast}
+          <ul id="account-reservations-past" class="admin-item-list consultation-history__list">
+            {#each lists.past as entry (`past-${entry.id}`)}
+              {@render reservationRow(entry)}
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </section>

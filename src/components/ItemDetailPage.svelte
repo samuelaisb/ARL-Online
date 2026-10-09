@@ -5,7 +5,7 @@
   import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { fetchInventoryItem } from '../lib/inventory.js';
   import { t } from '../lib/i18n.js';
-  import { reveal, revealOnLoad } from '../lib/motion.js';
+  import { revealOnLoad } from '../lib/motion.js';
   import {
     categoryToPath,
     clearReserveIntent,
@@ -375,8 +375,6 @@
       </button>
     </div>
 
-    <!-- Keep these branches a flat {:else if} chain: a local in:reveal plays when this
-         block flips from loading, but not on an element inside a nested {#if}. -->
     {#if loading}
       <!-- routeParams, not the item: during a reload `item` is still the previous one. -->
       <Skeleton
@@ -385,14 +383,14 @@
         label={$t('item_detail.loading')}
       />
     {:else if loadFailed}
-      <div class="item-detail-page__not-found" in:reveal>
+      <div class="item-detail-page__not-found">
         <p class="status error" role="alert">{$t('item_detail.load_error')}</p>
         <button type="button" class="btn-secondary" onclick={loadItem}>
           {$t('item_detail.try_again')}
         </button>
       </div>
     {:else if notFound}
-      <div class="item-detail-page__not-found" in:reveal>
+      <div class="item-detail-page__not-found">
         <h1>{$t('item_detail.not_found')}</h1>
         <p>
           <a href={categoryToPath(routeParams?.tag ?? 'equipment')} class="item-detail-page__back-link" onclick={goCategory}>
@@ -401,7 +399,7 @@
         </p>
       </div>
     {:else if item && isExpertise}
-      <article class="item-detail item-detail--expertise" in:reveal>
+      <article class="item-detail item-detail--expertise">
         <header class="expert-detail__heading">
           <img
             {@attach revealOnLoad}
@@ -441,7 +439,7 @@
         </aside>
       </article>
     {:else if item}
-      <article class="item-detail" in:reveal>
+      <article class="item-detail">
         <div class="item-detail__media">
           <img
             {@attach revealOnLoad}

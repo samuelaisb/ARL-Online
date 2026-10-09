@@ -8,7 +8,7 @@
   import { compressImageFile } from '../lib/image.js';
   import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
-  import { reveal, revealOnLoad } from '../lib/motion.js';
+  import { revealOnLoad } from '../lib/motion.js';
   import BusyLabel from './BusyLabel.svelte';
   import Skeleton from './Skeleton.svelte';
 
@@ -166,7 +166,6 @@
       class="admin-item-list"
       class:list-refreshing={loading}
       aria-busy={(loading && !editingId) || undefined}
-      in:reveal
     >
       {#each sortedMentors as mentor (mentor.id)}
         <li
@@ -175,15 +174,12 @@
         >
           {#if editingId === mentor.id}
             <form class="admin-mentor-editor" novalidate onsubmit={handleSubmit}>
-              <!-- A new element per picked image, so the new preview fades in too. -->
-              {#key imageDataUrl}
-                <img
-                  class="admin-mentor-editor__photo"
-                  src={replaceImage && imageDataUrl ? imageDataUrl : mentor.image}
-                  alt=""
-                  {@attach revealOnLoad}
-                />
-              {/key}
+              <img
+                class="admin-mentor-editor__photo"
+                src={replaceImage && imageDataUrl ? imageDataUrl : mentor.image}
+                alt=""
+                {@attach revealOnLoad}
+              />
 
               <label for="mentor-name">{$t('add_item.expert_name_label')}</label>
               <input
@@ -310,6 +306,6 @@
       {/each}
     </ul>
   {:else if hasLoaded || !loadError}
-    <p class="empty-state" in:reveal>{$t('admin.mentors_empty')}</p>
+    <p class="empty-state">{$t('admin.mentors_empty')}</p>
   {/if}
 </div>

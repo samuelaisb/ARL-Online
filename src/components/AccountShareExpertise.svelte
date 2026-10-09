@@ -16,7 +16,6 @@
   import { itemToPath, navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
-  import { reveal } from '../lib/motion.js';
   import BusyLabel from './BusyLabel.svelte';
   import Skeleton from './Skeleton.svelte';
 
@@ -33,9 +32,6 @@
   let selectedImageDataUrl = $state('');
   let imageFileName = $state('');
   let processingImage = $state(false);
-  // Counts the photos the member has picked; the preview is keyed on it so each new
-  // pick fades in, while the saved photo swaps in place (the old one stays until it loads).
-  let pickedImageCount = $state(0);
   let saving = $state(false);
   let formStatus = $state('');
   let formStatusType = $state('');
@@ -107,7 +103,6 @@
     try {
       selectedImageDataUrl = await compressImageFile(file);
       imageFileName = file.name;
-      pickedImageCount += 1;
     } catch (error) {
       selectedImageDataUrl = '';
       imageFileName = '';
@@ -210,13 +205,13 @@
   {:else if loadError}
     <p class="admin-status admin-status-error" role="alert">{loadError}</p>
   {:else if !emailConfirmed}
-    <p class="account-share-expertise__intro" in:reveal>{$t('share_expertise.intro')}</p>
-    <p class="account-share-expertise__notice" in:reveal>{$t('share_expertise.confirm_email')}</p>
+    <p class="account-share-expertise__intro">{$t('share_expertise.intro')}</p>
+    <p class="account-share-expertise__notice">{$t('share_expertise.confirm_email')}</p>
   {:else}
-    <p class="account-share-expertise__intro" in:reveal>
+    <p class="account-share-expertise__intro">
       {profile ? $t('share_expertise.intro_edit') : $t('share_expertise.intro')}
     </p>
-    <form novalidate onsubmit={handleSubmit} in:reveal>
+    <form novalidate onsubmit={handleSubmit}>
       <label for="mentor-name">{$t('share_expertise.name_label')}</label>
       <input
         id="mentor-name"
@@ -289,14 +284,7 @@
           <p class="field-hint account-share-expertise__photo-hint">{$t('share_expertise.photo_hint_edit')}</p>
         {/if}
         {#if previewImage}
-          {#key pickedImageCount}
-            <img
-              class="image-preview account-share-expertise__photo"
-              class:reveal-in={pickedImageCount > 0}
-              src={previewImage}
-              alt=""
-            />
-          {/key}
+          <img class="image-preview account-share-expertise__photo" src={previewImage} alt="" />
         {/if}
       </div>
 

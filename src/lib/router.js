@@ -73,8 +73,10 @@ let routeChange = 0;
  * Every route change goes through here; `apply` updates the URL and the path store.
  * While the next page's code loads, the current page stays on screen with the
  * hairline, so its title band never drops out. A failed load still applies, and
- * App's {:catch} shows the reload notice. Page-to-page changes then morph across
- * (morphPage). With nothing to load and nothing to morph, `apply` runs synchronously.
+ * App's {:catch} shows the reload notice. Page-to-page changes then morph the title
+ * band across (morphPage); any other change swaps at once and ends a morph still
+ * running, so that band doesn't keep moving over the new page. With nothing to load
+ * and nothing to morph, `apply` runs synchronously.
  * Resolves to true once the new route is in the DOM, false if a newer change won.
  */
 async function changeRoute(next, apply, { morph = true } = {}) {
@@ -91,6 +93,7 @@ async function changeRoute(next, apply, { morph = true } = {}) {
   pageLoading.set(false);
 
   if (!morph || !shouldMorph(get(path), next)) {
+    activeMorph?.skipTransition();
     apply();
     return true;
   }
@@ -104,11 +107,16 @@ async function changeRoute(next, apply, { morph = true } = {}) {
   });
 }
 
-// The item overlay is a dialog with its own entrance, and the category tabs share one page.
+// Only page-to-page changes morph: the item overlay is a dialog with its own entrance,
+// and the category tabs share one page. Not under Reduce Motion, and only where
+// match-element gives the band words their own snapshots, which keeps them above the
+// morphing band (app.css); without it they would vanish under it.
 function shouldMorph(from, to) {
   return (
     typeof document.startViewTransition === 'function' &&
     document.visibilityState === 'visible' &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
+    CSS.supports('view-transition-name', 'match-element') &&
     from !== to &&
     !isItemDetailRoute(from) &&
     !isItemDetailRoute(to) &&
@@ -116,20 +124,14 @@ function shouldMorph(from, to) {
   );
 }
 
-/**
- * The band's colour when it takes part in the transition: it carries its
- * view-transition-name (none with reduced motion) and is on screen. A band out of view
- * loses its name for this transition, so the other one fades in or out where it
- * stands instead of flying in from (or off to) above.
- */
-function morphableBand(band) {
-  if (!band || getComputedStyle(band).viewTransitionName === 'none') {
+/** The band's colour (its --band), or null when there is no band or it is out of view. */
+function bandColour(band) {
+  if (!band) {
     return null;
   }
 
   const rect = band.getBoundingClientRect();
   if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
-    band.style.viewTransitionName = 'none';
     return null;
   }
   return getComputedStyle(band).getPropertyValue('--band').trim() || null;
@@ -141,44 +143,50 @@ let morphCount = 0;
 let activeMorph = null;
 
 /**
- * Runs `update` as a view transition: the title band (`view-transition-name: page-band`
- * in app.css) moves and resizes from the old page's band to the new one's while the
- * rest of the page cross-fades. `.band-morph` on <html> has the transition paint the
- * band itself, its colour going from --band-morph-from to --band-morph-to, instead of
- * from the bands' snapshots (Safari flickered on those). With only one band on screen
- * (a "See all" or footer link low on the page, `/about#contact`), the missing side is
- * transparent, so that band fades in or out where it stands.
- * Browsers without view transitions never get here.
+ * Runs `update` as a view transition in which only the title band
+ * (`view-transition-name: page-band` in app.css) animates: it moves and resizes from the
+ * old page's band to the new one's, its colour going from --band-morph-from to
+ * --band-morph-to. The band words and the rest of the page switch at once.
+ * `.band-morph` on <html> has the transition paint the band itself instead of the
+ * bands' snapshots (Safari flickered on those). With a band out of view on either side
+ * (a "See all" or footer link low on the page, `/about#contact`) there is nothing to
+ * morph, so the page swaps at once with no transition.
+ * Browsers without view transitions or match-element never get here (shouldMorph).
  */
 async function morphPage(update) {
+  const from = bandColour(document.querySelector('.page-header'));
+  if (!from) {
+    activeMorph?.skipTransition();
+    return update();
+  }
+
   const root = document.documentElement;
   const morph = ++morphCount;
-  const oldBand = document.querySelector('.page-header');
-  const from = morphableBand(oldBand);
   let applied = false;
-  let newBand = null;
-  const transition = document.startViewTransition(async () => {
+  let transition;
+  transition = document.startViewTransition(async () => {
     applied = update();
     await tick();
-    newBand = document.querySelector('.page-header');
-    const to = morphableBand(newBand);
-    if (from || to) {
-      root.style.setProperty('--band-morph-from', from || 'transparent');
-      root.style.setProperty('--band-morph-to', to || 'transparent');
-      root.classList.add('band-morph');
+    const to = applied ? bandColour(document.querySelector('.page-header')) : null;
+    if (!to) {
+      // No band in view to morph to, or a newer change won: show the page as it now is.
+      transition.skipTransition();
+      return;
     }
+    root.style.setProperty('--band-morph-from', from);
+    root.style.setProperty('--band-morph-to', to);
+    root.classList.add('band-morph');
   });
 
   activeMorph = transition;
 
-  // `ready` rejects when the transition is skipped (a newer one started); the update
-  // still runs. `finished` rejects only along with updateCallbackDone, awaited below.
+  // `ready` rejects when the transition is skipped (a newer change, a press, or no band
+  // to morph to); the update still runs. `finished` rejects only along with
+  // updateCallbackDone, awaited below.
   transition.ready.catch(() => {});
   transition.finished
     .catch(() => {})
     .then(() => {
-      oldBand?.style.removeProperty('view-transition-name');
-      newBand?.style.removeProperty('view-transition-name');
       if (activeMorph === transition) {
         activeMorph = null;
       }

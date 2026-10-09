@@ -7,9 +7,6 @@
   /** @type {{ notification: { id: number, duration: number, text?: string, textKey?: string, vars?: Record<string, unknown>, link?: { href: string, cta?: string, label?: string, ctaKey?: string, labelKey?: string, vars?: Record<string, unknown> } }, isAnchored: boolean, onDismiss: (id: number) => void, onClose?: (id: number) => void, onLinkClick: (event: MouseEvent, href: string, id: number) => void }} */
   let { notification, isAnchored, onDismiss, onClose, onLinkClick } = $props();
 
-  const FADE_MS = 350;
-  /** Reduced motion: the bubble fades in where it stands instead of springing. */
-  const REDUCED_FADE_IN_MS = 160;
   /** A paused bubble always gets at least this long to be read once it resumes. */
   const MIN_RESUME_MS = 1500;
 
@@ -92,47 +89,19 @@
   });
 
   /**
-   * Elastic pop: the bubble springs up from Kimchi with a backOut overshoot.
-   * With reduced motion it is an opacity-only fade (no rise, no scale).
+   * Elastic pop: the bubble springs up from Kimchi with a backOut overshoot (transform
+   * only, never a fade). With reduced motion it appears at once. The duration must be
+   * explicit there: Svelte 5.56 turns an omitted one into NaN. There is no outro: a
+   * closed bubble leaves at once and the stack springs into place (`springSlide`).
    */
   function pop(node, { duration = 480, easing = backOut, y = 18 } = {}) {
-    if (prefersReducedMotion.current) {
-      return {
-        duration: REDUCED_FADE_IN_MS,
-        css: (progress) => `opacity: ${progress};`,
-      };
-    }
+    if (prefersReducedMotion.current) return { duration: 0 };
 
     return {
       duration,
       easing,
-      css: (progress, remaining) => `
-        transform: translateY(${remaining * y}px) scale(${0.55 + 0.45 * progress});
-        opacity: ${Math.min(1, progress * 1.8)};
-      `,
-    };
-  }
-
-  /** Fade out in place so flex siblings do not collapse the leaving bubble instantly. */
-  function bubbleFadeOut(node, { duration = FADE_MS } = {}) {
-    const bubbleArea = node.parentElement;
-    const rect = node.getBoundingClientRect();
-    const areaRect = bubbleArea?.getBoundingClientRect() ?? rect;
-    const top = rect.top - areaRect.top;
-    const right = areaRect.right - rect.right;
-
-    return {
-      duration,
-      css: (t) => `
-        opacity: ${t};
-        position: absolute;
-        top: ${top}px;
-        right: ${right}px;
-        width: ${rect.width}px;
-        min-height: ${rect.height}px;
-        z-index: 2;
-        pointer-events: none;
-      `,
+      css: (progress, remaining) =>
+        `transform: translateY(${remaining * y}px) scale(${0.55 + 0.45 * progress});`,
     };
   }
 </script>
@@ -142,7 +111,6 @@
   role="status"
   data-kimchi-bubble-id={notification.id}
   in:pop
-  out:bubbleFadeOut
   onpointerenter={handlePointerEnter}
   onpointerleave={handlePointerLeave}
   onfocusin={handleFocusIn}

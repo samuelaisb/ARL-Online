@@ -44,11 +44,14 @@
   /**
    * Animate existing bubbles sliding upward when a new one pushes in below.
    * Uses backOut easing for a light elastic overshoot. With reduced motion they just
-   * move to their new place.
+   * move to their new place. A slot that was hidden (short screens show only the
+   * newest bubble) has an empty `from` rect, so it appears in place instead of
+   * sliding in from the top of the viewport.
    */
   function springSlide(node, { from, to }) {
     const dy = from.top - to.top;
-    if (!dy || prefersReducedMotion.current) return { duration: 0 };
+    const wasHidden = from.width === 0 && from.height === 0;
+    if (!dy || wasHidden || prefersReducedMotion.current) return { duration: 0 };
     return {
       duration: 420,
       easing: backOut,
@@ -793,7 +796,6 @@
   }
 
   .kimchi-widget__bubble-area {
-    position: relative;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -873,9 +875,9 @@
     cursor: pointer;
   }
 
-  /* Green "online" presence dot, like a chat app status indicator. A soft drop shadow
-     (no outline ring) lifts its white border off the avatar and light page backgrounds;
-     the pulse stops repeat it. */
+  /* Green "online" presence dot, like a chat app status indicator (steady, no pulse).
+     A soft drop shadow (no outline ring) lifts its white border off the avatar and
+     light page backgrounds. */
   .kimchi-widget__status-dot {
     width: 0.875rem;
     height: 0.875rem;
@@ -884,7 +886,6 @@
     background: #34c759;
     border: 2.5px solid #fff;
     box-shadow: 0 1px 4px rgba(30, 30, 30, 0.4);
-    animation: kimchi-online-pulse 2.4s ease-in-out infinite;
     transition: transform 0.15s ease;
   }
 
@@ -892,35 +893,15 @@
     transform: scale(1.12);
   }
 
-  /* Same two-tone ring as the avatar, around the whole target. The pulse animates
-     box-shadow, so it stops while focused or it would paint over the white halo. */
+  /* Same two-tone ring as the avatar, around the whole target. */
   .kimchi-widget__status:focus-visible {
     outline: 2px solid var(--color-mint, #024238);
     outline-offset: 0;
     box-shadow: 0 0 0 4px #fff;
   }
 
-  .kimchi-widget__status:focus-visible .kimchi-widget__status-dot {
-    animation: none;
-  }
-
   .kimchi-widget__status--offline .kimchi-widget__status-dot {
     background: #9e9e9e;
-    animation: none;
-  }
-
-  @keyframes kimchi-online-pulse {
-    0%,
-    100% {
-      box-shadow:
-        0 1px 4px rgba(30, 30, 30, 0.4),
-        0 0 0 0 rgba(52, 199, 89, 0.45);
-    }
-    50% {
-      box-shadow:
-        0 1px 4px rgba(30, 30, 30, 0.4),
-        0 0 0 4px rgba(52, 199, 89, 0);
-    }
   }
 
   @keyframes kimchi-wiggle {
@@ -936,17 +917,14 @@
     }
   }
 
-  /* Reduced motion: no wiggle, pulse or hover growth; the hover glow stays. */
+  /* Reduced motion: no wiggle or hover growth, and no eases; the hover glow stays but
+     switches on at once. */
   @media (prefers-reduced-motion: reduce) {
-    .kimchi-widget__avatar--talking,
-    .kimchi-widget__status-dot {
+    .kimchi-widget__avatar--talking {
       animation: none;
     }
 
-    .kimchi-widget__avatar {
-      transition: box-shadow 0.15s ease;
-    }
-
+    .kimchi-widget__avatar,
     .kimchi-widget__status-dot {
       transition: none;
     }

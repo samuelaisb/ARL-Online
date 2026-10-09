@@ -12,7 +12,6 @@
   import { navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
-  import { reveal } from '../lib/motion.js';
   import AuthModal from './AuthModal.svelte';
   import BusyLabel from './BusyLabel.svelte';
   import CompleteSignupModal from './CompleteSignupModal.svelte';
@@ -108,7 +107,7 @@
       </span>
       <span class="visually-hidden">{$t('auth.loading')}</span>
     {:else if $session}
-      <button type="button" class="btn-header btn-header--secondary" onclick={openAccount} in:reveal>
+      <button type="button" class="btn-header btn-header--secondary" onclick={openAccount}>
         {$t('auth.view_account')}
       </button>
       <button
@@ -117,7 +116,6 @@
         class="btn-header btn-header--secondary"
         disabled={signingOut}
         onclick={handleSignOut}
-        in:reveal
       >
         <BusyLabel
           compact
@@ -130,15 +128,10 @@
         <p class="header-auth__error" role="alert">{$t('auth.sign_out_error')}</p>
       {/if}
     {:else}
-      <button type="button" class="btn-header btn-header--secondary" onclick={openLogin} in:reveal>
+      <button type="button" class="btn-header btn-header--secondary" onclick={openLogin}>
         {$t('auth.log_in')}
       </button>
-      <button
-        type="button"
-        class="btn-header btn-header--primary"
-        onclick={handleRegisterClick}
-        in:reveal
-      >
+      <button type="button" class="btn-header btn-header--primary" onclick={handleRegisterClick}>
         {$t('auth.register')}
       </button>
     {/if}

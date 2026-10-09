@@ -277,10 +277,7 @@ import {
         <p class="image-file-name">{imageFileName}</p>
       {/if}
       {#if selectedImageDataUrl}
-        <!-- Keyed so a replacement image fades in too, not just the first one. -->
-        {#key selectedImageDataUrl}
-          <img class="image-preview reveal-in" src={selectedImageDataUrl} alt="" />
-        {/key}
+        <img class="image-preview" src={selectedImageDataUrl} alt="" />
       {/if}
     </div>
 

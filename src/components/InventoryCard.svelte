@@ -96,14 +96,7 @@
   import { revealOnLoad } from '../lib/motion.js';
   import { itemToPath, navigateToItem } from '../lib/router.js';
 
-  // revealDelay (ms): set by InventoryPanel only at the moment the inventory load
-  // lands, so the card fades in on its turn of the stagger; null renders it as-is.
-  let {
-    item,
-    reserveSuccessTick = { id: null, at: 0 },
-    onOpenReserve,
-    revealDelay = null,
-  } = $props();
+  let { item, reserveSuccessTick = { id: null, at: 0 }, onOpenReserve } = $props();
 
   let statusMessage = $state('');
   let statusType = $state('');
@@ -193,13 +186,7 @@
   });
 </script>
 
-<article
-  class="inventory-card"
-  class:reveal-in={revealDelay != null}
-  style:animation-delay={revealDelay ? `${revealDelay}ms` : null}
-  onpointerenter={handlePointerEnter}
-  onpointerleave={handlePointerLeave}
->
+<article class="inventory-card" onpointerenter={handlePointerEnter} onpointerleave={handlePointerLeave}>
   <div class="inventory-image-frame">
     <img
       {@attach revealOnLoad}

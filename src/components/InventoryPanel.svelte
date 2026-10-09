@@ -40,37 +40,6 @@
 
   let { items, loading, loadError } = $props();
 
-  // When the inventory load lands, cards fade in 30ms apart (capped at 150ms). The
-  // reveal is on only for that moment, so later filter changes and in-place updates
-  // render straight away. A Svelte in: transition can't do this: on {#each} items it
-  // plays only for items added later (filter changes), never on the first render.
-  const REVEAL_STAGGER_MS = 30;
-  const REVEAL_STAGGER_CAP_MS = 150;
-  const REVEAL_WINDOW_MS = 600;
-
-  let revealing = $state(false);
-  let wasLoading = false;
-  let revealTimer;
-
-  $effect.pre(() => {
-    if (loading) {
-      wasLoading = true;
-      return;
-    }
-
-    if (!wasLoading) {
-      return;
-    }
-
-    // Runs before the DOM update, so the cards are created with the reveal already on.
-    wasLoading = false;
-    revealing = true;
-    clearTimeout(revealTimer);
-    revealTimer = setTimeout(() => {
-      revealing = false;
-    }, REVEAL_WINDOW_MS);
-  });
-
   let activeTag = $state(DEFAULT_INVENTORY_TAG);
 
   const filteredItems = $derived(
@@ -254,7 +223,6 @@
 
   onDestroy(() => {
     unsubscribeAvailabilityClock();
-    clearTimeout(revealTimer);
   });
 </script>
 
@@ -312,19 +280,15 @@
     </div>
     <LoadingStatus text={$t('inventory.loading')} />
   {:else if loadError}
-    <p class="status error inventory-load-error" class:reveal-in={revealing} role="alert">{loadError}</p>
+    <p class="status error inventory-load-error" role="alert">{loadError}</p>
   {:else if items.length === 0}
-    <p class="empty-state" class:reveal-in={revealing}>{$t('inventory.empty')}</p>
+    <p class="empty-state">{$t('inventory.empty')}</p>
   {:else if filteredItems.length === 0}
-    <p class="empty-state" class:reveal-in={revealing}>{$t('inventory.empty_filtered')}</p>
+    <p class="empty-state">{$t('inventory.empty_filtered')}</p>
   {:else}
     <div class="inventory-grid">
-      {#each filteredItems as item, index (item.id)}
-        <InventoryCard
-          {item}
-          onOpenReserve={openReserve}
-          revealDelay={revealing ? Math.min(index * REVEAL_STAGGER_MS, REVEAL_STAGGER_CAP_MS) : null}
-        />
+      {#each filteredItems as item (item.id)}
+        <InventoryCard {item} onOpenReserve={openReserve} />
       {/each}
     </div>
   {/if}

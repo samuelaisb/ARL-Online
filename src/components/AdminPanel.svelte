@@ -34,7 +34,6 @@
   import MentorBrowser from './MentorBrowser.svelte';
   import BusyLabel from './BusyLabel.svelte';
   import Skeleton from './Skeleton.svelte';
-  import { reveal } from '../lib/motion.js';
 
   // `loading` here is App's public inventory load (AdminPage passes it through).
   let { items = [], loading: inventoryLoading = false, onAddItem, onItemRemoved, onItemUpdated } = $props();
@@ -966,7 +965,6 @@
           class="admin-item-list"
           class:list-refreshing={loading}
           aria-busy={loading || undefined}
-          in:reveal
         >
           {#each adminItems as item (item.id)}
             <li bind:this={removeRows[item.id]} class="admin-item-row" tabindex="-1">
@@ -987,7 +985,7 @@
           {/each}
         </ul>
       {:else if hasLoaded}
-        <p class="empty-state" in:reveal>{$t('admin.empty')}</p>
+        <p class="empty-state">{$t('admin.empty')}</p>
       {/if}
 
       {#if removeError}
@@ -1008,7 +1006,6 @@
           class="admin-item-list"
           class:list-refreshing={loading}
           aria-busy={loading || undefined}
-          in:reveal
         >
           {#each pendingEntries as entry (entry.id)}
             {@const isExpertiseEntry = entry.itemTag === 'expertise'}
@@ -1109,7 +1106,7 @@
           {/each}
         </ul>
       {:else if hasLoaded}
-        <p class="empty-state" in:reveal>{$t('admin.pending_empty')}</p>
+        <p class="empty-state">{$t('admin.pending_empty')}</p>
       {/if}
 
       {#if pendingError}
@@ -1131,7 +1128,6 @@
           class="admin-item-list"
           class:list-refreshing={loading}
           aria-busy={(loading && !followUpOpenId) || undefined}
-          in:reveal
         >
           {#each reservationEntries as entry (entry.id)}
             {@const followUpAllowed = followUpAllowedFor(entry)}
@@ -1265,7 +1261,7 @@
           {/each}
         </ul>
       {:else if hasLoaded}
-        <p class="empty-state" in:reveal>{$t('admin.reservations_empty')}</p>
+        <p class="empty-state">{$t('admin.reservations_empty')}</p>
       {/if}
 
       {#if reservationError}

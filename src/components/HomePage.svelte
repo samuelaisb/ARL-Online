@@ -17,7 +17,7 @@
   import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { t } from '../lib/i18n.js';
   import { INVENTORY_TAGS } from '../lib/inventory.js';
-  import { reveal, revealOnLoad } from '../lib/motion.js';
+  import { revealOnLoad } from '../lib/motion.js';
   import {
     categoryToPath,
     isPlainLeftClick,
@@ -29,10 +29,6 @@
   let { items, loading, loadError = '', onOpenRegister } = $props();
 
   const FEATURED_EXPERT_COUNT = 4;
-  // When the inventory lands, the sections fade in one after another down the page:
-  // experts, then each shelf this much later. (in:reveal plays only on that flip, not
-  // when HomePage remounts with the inventory already loaded.)
-  const SECTION_REVEAL_STAGGER_MS = 150;
 
   // The sections under the experts, in INVENTORY_TAGS order. There are only a couple of
   // rooms, so they get two wide photos instead of four tiles.
@@ -184,7 +180,7 @@
           {/each}
         </ul>
       {:else}
-        <ul class="home-experts" in:reveal>
+        <ul class="home-experts">
           {#each featuredExperts as expert (expert.id)}
             <li>
               <a class="home-expert" href={itemToPath(expert)} onclick={(event) => openItem(event, expert)}>
@@ -212,7 +208,7 @@
     </section>
   {/if}
 
-  {#each shelves as shelf, shelfIndex (shelf.tag)}
+  {#each shelves as shelf (shelf.tag)}
     {#if loading || shelf.items.length > 0}
       <section class="home-section home-shelf home-shelf--{shelf.tag}" aria-labelledby="home-{shelf.tag}-heading">
         <div class="home-section__header">
@@ -242,7 +238,7 @@
             {/each}
           </ul>
         {:else}
-          <ul class="home-shelf__list" in:reveal={{ delay: (shelfIndex + 1) * SECTION_REVEAL_STAGGER_MS }}>
+          <ul class="home-shelf__list">
             {#each shelf.items as item (item.id)}
               <li>
                 <a class="home-item" href={itemToPath(item)} onclick={(event) => openItem(event, item)}>

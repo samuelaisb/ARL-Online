@@ -39,7 +39,6 @@
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
   import MeetingTimePicker, { parseMeetingTimeInput } from './MeetingTimePicker.svelte';
-  import { reveal } from '../lib/motion.js';
   import BusyLabel from './BusyLabel.svelte';
   import Skeleton from './Skeleton.svelte';
 
@@ -981,52 +980,49 @@
   {:else if loadError}
     <p class="admin-status admin-status-error" role="alert">{loadError}</p>
   {:else}
-    <!-- One wrapper so the whole section reveals once, when the load lands (not on row updates). -->
-    <div in:reveal>
-      {#if expertLists.active.length > 0 || expertLists.recent.length > 0 || expertLists.past.length > 0}
-        <h3 class="admin-subheading">{$t('account_consultations.heading_expert')}</h3>
-        {#if expertLists.active.length > 0}
-          <ul class="admin-item-list">
-            {#each expertLists.active as entry (`expert-${entry.id}`)}
-              {@render consultationRow(entry)}
-            {/each}
-          </ul>
-        {:else}
-          <p class="admin-status">{$t('account_consultations.active_empty')}</p>
-        {/if}
-        {@render recentConsultations(expertLists.recent)}
-        {@render pastConsultations(
-          expertLists.past,
-          showExpertPast,
-          PAST_LIST_IDS.expert,
-          () => (showExpertPast = !showExpertPast),
-        )}
-      {/if}
-
-      <h3 class="admin-subheading">{$t('account_consultations.heading_member')}</h3>
-      {#if memberLists.active.length > 0}
+    {#if expertLists.active.length > 0 || expertLists.recent.length > 0 || expertLists.past.length > 0}
+      <h3 class="admin-subheading">{$t('account_consultations.heading_expert')}</h3>
+      {#if expertLists.active.length > 0}
         <ul class="admin-item-list">
-          {#each memberLists.active as entry (`member-${entry.id}`)}
+          {#each expertLists.active as entry (`expert-${entry.id}`)}
             {@render consultationRow(entry)}
           {/each}
         </ul>
-      {:else if memberLists.recent.length === 0 && memberLists.past.length === 0}
-        <p class="empty-state">
-          {$t('account_consultations.member_empty')}
-          <a href="/expertise" onclick={(event) => openPath(event, '/expertise')}>
-            {$t('account_consultations.browse_expertise')}
-          </a>
-        </p>
       {:else}
         <p class="admin-status">{$t('account_consultations.active_empty')}</p>
       {/if}
-      {@render recentConsultations(memberLists.recent)}
+      {@render recentConsultations(expertLists.recent)}
       {@render pastConsultations(
-        memberLists.past,
-        showMemberPast,
-        PAST_LIST_IDS.member,
-        () => (showMemberPast = !showMemberPast),
+        expertLists.past,
+        showExpertPast,
+        PAST_LIST_IDS.expert,
+        () => (showExpertPast = !showExpertPast),
       )}
-    </div>
+    {/if}
+
+    <h3 class="admin-subheading">{$t('account_consultations.heading_member')}</h3>
+    {#if memberLists.active.length > 0}
+      <ul class="admin-item-list">
+        {#each memberLists.active as entry (`member-${entry.id}`)}
+          {@render consultationRow(entry)}
+        {/each}
+      </ul>
+    {:else if memberLists.recent.length === 0 && memberLists.past.length === 0}
+      <p class="empty-state">
+        {$t('account_consultations.member_empty')}
+        <a href="/expertise" onclick={(event) => openPath(event, '/expertise')}>
+          {$t('account_consultations.browse_expertise')}
+        </a>
+      </p>
+    {:else}
+      <p class="admin-status">{$t('account_consultations.active_empty')}</p>
+    {/if}
+    {@render recentConsultations(memberLists.recent)}
+    {@render pastConsultations(
+      memberLists.past,
+      showMemberPast,
+      PAST_LIST_IDS.member,
+      () => (showMemberPast = !showMemberPast),
+    )}
   {/if}
 </section>

@@ -383,8 +383,8 @@ a.btn-header {
    Every band has the same order and spacing, so titles sit at the same height on
    every page: the Ringold title, one intro line (.page-intro, .subtitle or the
    account email), any actions, then the back link (.page-header__back) last.
-   On a page change the band morphs into the next page's (view-transition-name; see
-   ::view-transition-group under Loading & motion). */
+   On a page change the band's colour and size morph into the next page's
+   (view-transition-name; see ::view-transition-group under Loading & motion). */
 .page-header {
   --color-skeleton: var(--band-bone);
   --skeleton-sheen: rgba(255, 255, 255, 0.25);
@@ -3405,21 +3405,23 @@ button:disabled {
 }
 
 /* Loading & motion
-   Every loader, busy state and reveal lives here ("Warm Shelf"). Placeholders are
-   in the DOM from the start at opacity 0 and fade in after --loader-delay, so fast
-   waits paint nothing; they leave instantly when content arrives. Components:
-   Skeleton, LoadingStatus, BusyLabel, RouteProgress and src/lib/motion.js. */
+   Every loader and busy state lives here ("Warm Shelf"). Placeholders are in the DOM
+   from the start at opacity 0 and appear in one step after --loader-delay, so fast
+   waits paint nothing; they leave instantly when content arrives. Content, images
+   and busy labels switch in at once, with no fade. On a page change only the title
+   band's colour and size animate (below). Components: Skeleton, LoadingStatus,
+   BusyLabel, RouteProgress and src/lib/motion.js. */
 :root {
   --color-skeleton: #efebe4;
   --skeleton-sheen: rgba(255, 255, 255, 0.7);
   --loader-delay: 300ms;
   --loader-delay-gate: 350ms;
-  --loader-fade: 200ms;
-  --ease-reveal: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-morph: cubic-bezier(0.2, 0.7, 0.3, 1);
   --ease-hop: cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
-@keyframes arl-fade-in {
+/* Run for 0s after a delay: hidden for the delay (fill "both"), then shown at once. */
+@keyframes arl-appear {
   from {
     opacity: 0;
   }
@@ -3489,22 +3491,10 @@ button:disabled {
   }
 }
 
-@keyframes content-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
-@keyframes content-in-fade {
-  from {
-    opacity: 0;
-  }
-}
-
-/* Skeleton wrapper: always aria-hidden; fades in only if the wait passes the delay. */
+/* Skeleton wrapper: always aria-hidden; appears in one step only if the wait passes
+   the delay. */
 .skeleton {
-  animation: arl-fade-in var(--loader-fade) ease-out var(--loader-delay) both;
+  animation: arl-appear 0s var(--loader-delay) both;
 }
 
 .skeleton--gate {
@@ -3586,11 +3576,6 @@ button:disabled {
 
 .skeleton-sheen:nth-child(6)::after {
   animation-delay: 450ms;
-}
-
-/* Content arriving after a loader (CSS twin of motion.js reveal). */
-.reveal-in {
-  animation: content-in 220ms var(--ease-reveal) backwards;
 }
 
 /* Skeleton rows: a real .admin-item-list with .admin-item-row children. */
@@ -3891,7 +3876,7 @@ button:disabled {
 .inventory-filter__count--loading {
   height: 1.1rem;
   background: var(--color-skeleton);
-  animation: arl-fade-in var(--loader-fade) ease-out var(--loader-delay) both;
+  animation: arl-appear 0s var(--loader-delay) both;
 }
 
 .inventory-filter__btn--active .inventory-filter__count--loading {
@@ -3913,24 +3898,33 @@ button:disabled {
   pointer-events: none;
 }
 
-/* Page change (router.js morphPage, a view transition): the band's group moves and
-   resizes from the old page's band to the new one's while the rest of the page
-   cross-fades. The old page stays up (hairline above) until the new one has loaded.
-   A press during the transition ends it (router.js), since every press lands on its
-   overlay whatever pointer-events says. */
+/* Page change (router.js morphPage, a view transition): only the title band's colour
+   and size animate. Its group moves and resizes from the old page's band to the new
+   one's; the band's words and the rest of the page switch at once (the old root
+   snapshot is hidden and the new one doesn't animate). The old page stays up
+   (hairline above) until the new one has loaded. A press during the transition ends
+   it (router.js), since every press lands on its overlay whatever pointer-events
+   says. With either band out of view, under Reduce Motion, or without match-element
+   support, router.js runs no transition and the page swaps at once. */
 ::view-transition-group(*) {
   animation-duration: 280ms;
-  animation-timing-function: var(--ease-reveal);
+  animation-timing-function: var(--ease-morph);
 }
 
-/* Where each element can get its own snapshot, the band's text fades out and in where
-   it stands (titles sit at the same height on every page), and the old text goes in
-   half the time, before a shrinking band slides out from under it. The transition
+::view-transition-old(root) {
+  display: none;
+}
+
+::view-transition-new(root) {
+  animation: none;
+}
+
+/* Each element in the band gets its own snapshot so the words paint above the band's
+   group; the old words are hidden and the new ones show at once. The transition
    paints the band itself (.band-morph, from router.js) as one block of colour, full
-   width, going from the old band's colour to the new one's as it resizes; a band on
-   one side only (the other out of view) fades in or out from transparent. The bands'
+   width, going from the old band's colour to the new one's as it resizes. The bands'
    own snapshots stay hidden: Safari flickered drawing them (their 100vmax
-   border-image sides are ink overflow). Elsewhere the two bands cross-fade whole. */
+   border-image sides are ink overflow). */
 @supports (view-transition-name: match-element) {
   .page-header > * {
     view-transition-name: match-element;
@@ -3938,7 +3932,11 @@ button:disabled {
   }
 
   ::view-transition-old(*.band-text) {
-    animation-duration: 140ms;
+    display: none;
+  }
+
+  ::view-transition-new(*.band-text) {
+    animation: none;
   }
 
   :root.band-morph::view-transition-old(page-band),
@@ -3948,7 +3946,7 @@ button:disabled {
 
   :root.band-morph::view-transition-image-pair(page-band) {
     inset: 0 -100vmax;
-    animation: arl-band-morph 280ms var(--ease-reveal) both;
+    animation: arl-band-morph 280ms var(--ease-morph) both;
   }
 }
 
@@ -3982,8 +3980,9 @@ button:disabled {
   pointer-events: none;
 }
 
-/* BusyLabel: idle and busy labels share one grid cell, so the button keeps its width.
-   The hidden one is visibility:hidden, which also drops it from the accessible name. */
+/* BusyLabel: idle and busy labels share one grid cell, so the button keeps its width,
+   and swap at once. The hidden one is visibility:hidden, which also drops it from the
+   accessible name. */
 .busy-label {
   position: relative;
   display: inline-grid;
@@ -3999,14 +3998,11 @@ button:disabled {
 .busy-label__idle,
 .busy-label__busy {
   grid-area: 1 / 1;
-  transition: opacity 160ms ease-out, visibility 0s;
 }
 
 .busy-label.is-busy .busy-label__idle,
 .busy-label:not(.is-busy) .busy-label__busy {
   visibility: hidden;
-  opacity: 0;
-  transition: opacity 160ms ease-out, visibility 0s linear 160ms;
 }
 
 .busy-dots {
@@ -4058,11 +4054,8 @@ button:disabled:has(.busy-label.is-busy) {
   cursor: progress;
 }
 
-/* Images: fade in when they load (revealOnLoad). Frames show a flat fill meanwhile. */
-:where(img) {
-  transition: opacity 280ms ease-out;
-}
-
+/* Images: hidden over their frame's flat fill while they load (revealOnLoad), then
+   swapped in within one frame, no fade. */
 img.img-pending {
   opacity: 0;
 }
@@ -4075,7 +4068,6 @@ img.img-pending {
   border-radius: 0.5rem;
   background: var(--color-skeleton);
   opacity: 0;
-  transition: opacity 280ms ease-out;
   pointer-events: none;
 }
 
@@ -4091,7 +4083,6 @@ img.img-pending {
   inset: 0;
   background: var(--color-skeleton);
   opacity: 0;
-  transition: opacity 280ms ease-out;
   pointer-events: none;
 }
 
@@ -4125,7 +4116,6 @@ img.img-pending {
   border-radius: 50%;
   background: var(--color-surface);
   opacity: 0;
-  transition: opacity 280ms ease-out;
   pointer-events: none;
 }
 
@@ -4167,7 +4157,6 @@ img.home-expert__photo {
   border-radius: 0.45rem;
   background: var(--color-surface);
   opacity: 0;
-  transition: opacity 280ms ease-out;
   pointer-events: none;
 }
 
@@ -4208,15 +4197,12 @@ img.expert-detail__avatar {
   margin-top: 0.75rem;
 }
 
+/* Reduce Motion: loaders hold still or breathe and tiles don't lift. Page changes need
+   nothing here: router.js runs no view transition, so the page swaps at once. */
 @media (prefers-reduced-motion: reduce) {
   /* Bones go flat: no sheen. */
   .skeleton-sheen::after {
     display: none;
-  }
-
-  /* Page changes keep only the cross-fade: the band doesn't move or resize. */
-  .page-header {
-    view-transition-name: none;
   }
 
   /* Hairline and refresh segment: a static full-width bar breathing in opacity. */
@@ -4244,10 +4230,6 @@ img.expert-detail__avatar {
 
   .busy-dots > span:nth-child(3) {
     opacity: 1;
-  }
-
-  .reveal-in {
-    animation: content-in-fade 160ms ease-out backwards;
   }
 
   .inventory-card,
