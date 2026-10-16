@@ -1573,11 +1573,53 @@ h1[tabindex='-1']:focus {
   margin-bottom: 0.35rem;
 }
 
+/* Photo column top right, beside name, email and short text. Phones stack it on
+   top (see the max-width: 640px block). The photo comes first in the markup, so
+   it is placed into column 2 here. */
+.account-share-expertise__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 11rem;
+  column-gap: 1.5rem;
+  align-items: start;
+}
+
+.account-share-expertise__photo-field {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.account-share-expertise__fields {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.account-share-expertise__photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  margin-bottom: 0.75rem;
+  border-radius: 0.5rem;
+}
+
 .account-share-expertise__photo.image-preview {
-  width: 6.5rem;
-  height: 6.5rem;
+  height: auto;
   max-height: none;
-  object-fit: cover;
+  margin-top: 0;
+}
+
+/* Placeholder until a photo is chosen, so the column keeps its shape. */
+.account-share-expertise__photo--empty {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.account-share-expertise__photo-field .image-upload-btn {
+  padding-inline: 0.75rem;
+  white-space: normal;
 }
 
 .account-share-expertise__success {
@@ -3967,6 +4009,14 @@ button:disabled {
 
   .account-share-expertise {
     padding: 1rem;
+  }
+
+  .account-share-expertise__top {
+    display: block;
+  }
+
+  .account-share-expertise__photo {
+    width: 8rem;
   }
 
   .inventory-grid {

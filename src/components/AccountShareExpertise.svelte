@@ -212,36 +212,95 @@
       {profile ? $t('share_expertise.intro_edit') : $t('share_expertise.intro')}
     </p>
     <form novalidate onsubmit={handleSubmit}>
-      <label for="mentor-name">{$t('share_expertise.name_label')}</label>
-      <input
-        id="mentor-name"
-        name="name"
-        type="text"
-        maxlength={EXPERT_NAME_MAX}
-        autocomplete="name"
-        placeholder={$t('share_expertise.name_placeholder')}
-        required
-        bind:value={name}
-      />
+      <!-- Photo first: top right beside name, email and short text on wide screens,
+           on top of the form on phones. -->
+      <div class="account-share-expertise__top">
+        <div class="account-share-expertise__photo-field">
+          <label for="mentor-image">{$t('share_expertise.photo_label')}</label>
+          <div class="image-upload">
+            {#if previewImage}
+              <img class="image-preview account-share-expertise__photo" src={previewImage} alt="" />
+            {:else}
+              <span class="account-share-expertise__photo account-share-expertise__photo--empty" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="32"
+                  height="32"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  focusable="false"
+                >
+                  <!-- Person -->
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21a8 8 0 0 1 16 0" />
+                </svg>
+              </span>
+            {/if}
+            <input
+              bind:this={imageInput}
+              id="mentor-image"
+              name="image"
+              type="file"
+              accept="image/*"
+              hidden
+              onchange={handleImageChange}
+            />
+            <button
+              type="button"
+              class="btn-secondary image-upload-btn"
+              disabled={processingImage || saving}
+              onclick={() => imageInput?.click()}
+            >
+              <BusyLabel
+                label={$t('add_item.choose_image')}
+                busyLabel={$t('add_item.processing')}
+                busy={processingImage}
+              />
+            </button>
+            {#if imageFileName}
+              <p class="image-file-name">{imageFileName}</p>
+            {:else if profile}
+              <p class="field-hint account-share-expertise__photo-hint">{$t('share_expertise.photo_hint_edit')}</p>
+            {/if}
+          </div>
+        </div>
 
-      <span class="consultation-field account-share-expertise__email">
-        <span class="consultation-field__label">{$t('share_expertise.email_label')}</span>
-        <span class="consultation-field__value">{accountEmail}</span>
-      </span>
-      <p class="field-hint account-share-expertise__email-hint">{$t('share_expertise.email_hint')}</p>
+        <div class="account-share-expertise__fields">
+          <label for="mentor-name">{$t('share_expertise.name_label')}</label>
+          <input
+            id="mentor-name"
+            name="name"
+            type="text"
+            maxlength={EXPERT_NAME_MAX}
+            autocomplete="name"
+            placeholder={$t('share_expertise.name_placeholder')}
+            required
+            bind:value={name}
+          />
 
-      <label for="mentor-short-text">{$t('add_item.short_text_label')}</label>
-      <textarea
-        id="mentor-short-text"
-        class="add-item-short-text"
-        name="body"
-        rows="2"
-        maxlength={EXPERT_SHORT_TEXT_MAX}
-        placeholder={$t('add_item.short_text_placeholder')}
-        required
-        bind:value={shortText}
-      ></textarea>
-      <p class="field-hint">{$t('add_item.short_text_hint')}</p>
+          <span class="consultation-field account-share-expertise__email">
+            <span class="consultation-field__label">{$t('share_expertise.email_label')}</span>
+            <span class="consultation-field__value">{accountEmail}</span>
+          </span>
+          <p class="field-hint account-share-expertise__email-hint">{$t('share_expertise.email_hint')}</p>
+
+          <label for="mentor-short-text">{$t('add_item.short_text_label')}</label>
+          <textarea
+            id="mentor-short-text"
+            class="add-item-short-text"
+            name="body"
+            rows="2"
+            maxlength={EXPERT_SHORT_TEXT_MAX}
+            placeholder={$t('add_item.short_text_placeholder')}
+            required
+            bind:value={shortText}
+          ></textarea>
+          <p class="field-hint">{$t('add_item.short_text_hint')}</p>
+        </div>
+      </div>
 
       <label for="mentor-long-text">{$t('add_item.long_text_label')}</label>
       <textarea
@@ -254,39 +313,6 @@
         bind:value={longText}
       ></textarea>
       <p class="field-hint">{$t('add_item.long_text_hint')}</p>
-
-      <label for="mentor-image">{$t('share_expertise.photo_label')}</label>
-      <div class="image-upload">
-        <input
-          bind:this={imageInput}
-          id="mentor-image"
-          name="image"
-          type="file"
-          accept="image/*"
-          hidden
-          onchange={handleImageChange}
-        />
-        <button
-          type="button"
-          class="btn-secondary image-upload-btn"
-          disabled={processingImage || saving}
-          onclick={() => imageInput?.click()}
-        >
-          <BusyLabel
-            label={$t('add_item.choose_image')}
-            busyLabel={$t('add_item.processing')}
-            busy={processingImage}
-          />
-        </button>
-        {#if imageFileName}
-          <p class="image-file-name">{imageFileName}</p>
-        {:else if profile}
-          <p class="field-hint account-share-expertise__photo-hint">{$t('share_expertise.photo_hint_edit')}</p>
-        {/if}
-        {#if previewImage}
-          <img class="image-preview account-share-expertise__photo" src={previewImage} alt="" />
-        {/if}
-      </div>
 
       {#if formStatus}
         <p
