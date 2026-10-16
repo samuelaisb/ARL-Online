@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import compression from 'compression';
 import express from 'express';
-import rateLimit, { MemoryStore } from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator, MemoryStore } from 'express-rate-limit';
 import helmet from 'helmet';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -11,23 +11,27 @@ import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
 import { compareDateKeys, libraryTodayKey, parseDateKey, toDateKey } from './src/lib/calendar.js';
 import {
+  CONFIRMATION_MESSAGE_MAX,
   EXPERT_LONG_TEXT_MAX,
   EXPERT_NAME_MAX,
   EXPERT_SHORT_TEXT_MAX,
   FOLLOW_UP_NOTE_MAX,
 } from './src/lib/expertise-fields.js';
-import { isConsultationHeld, validateReservationDates } from './src/lib/reservation-rules.js';
+import { addDays, isConsultationHeld, validateReservationDates } from './src/lib/reservation-rules.js';
 import {
   addReservation,
+  anonymizeReservationsForEmail,
   approveReservation,
   cancelConsultation,
   bookFollowUpConsultation,
+  cancelReservationByAdmin,
   cancelReservationForMember,
   checkReservationSchema,
   countPendingReservationsByEmail,
   createInventoryItem,
   createMentorProfileForEmail,
   deleteInventoryItem,
+  emailsMatch,
   updateExpertiseItem,
   ensureInventory,
   fetchInventoryItems,
@@ -43,9 +47,11 @@ import {
   isValidTag,
   listConsultationsForUser,
   listReservationsForMember,
+  loadItemViewStats,
   normalizeInventoryItem,
   reservationSchemaErrorMessage,
   patchReservation,
+  recordItemView,
   refuseReservation,
   removeReservation,
   scheduleConsultation,
@@ -266,6 +272,12 @@ async function requireAuth(req, res, next) {
   try {
     const { data, error } = await getSupabaseAdmin().auth.getUser(token);
 
+    // Supabase stops a banned account from signing in or refreshing, but an access token issued
+    // before the ban may keep working until it expires; this makes an admin suspension immediate.
+    if (error?.code === 'user_banned' || (!error && isUserSuspended(data.user))) {
+      return res.status(403).json({ error: 'This account is suspended.', code: 'account_suspended' });
+    }
+
     if (error || !data.user) {
       return res.status(401).json({ error: 'Invalid or expired session.' });
     }
@@ -280,6 +292,12 @@ async function requireAuth(req, res, next) {
 
 function isConfirmedUser(user) {
   return Boolean(user?.email_confirmed_at || user?.confirmed_at);
+}
+
+/** True while a Supabase ban (`banned_until`, set by the admin Suspend action) is in force. */
+function isUserSuspended(user) {
+  const until = Date.parse(user?.banned_until ?? '');
+  return !Number.isNaN(until) && until > Date.now();
 }
 
 function isAdminUser(user) {
@@ -441,6 +459,8 @@ const EMAIL_WHY = {
     'You are receiving this because your email is listed as the expert for an Activist Resource Library consultation.',
   welcome:
     'You are receiving this because you created an Activist Resource Library member account.',
+  passwordReset:
+    'You are receiving this because the Activist Resource Library team sent a password reset link to your member account.',
   contact: 'This message was sent from the Activist Resource Library About page.',
 };
 
@@ -648,9 +668,12 @@ function buildExpertRequestEmailPayload(item, reservation) {
 /**
  * Scheduled → member and expert, each with the Zoom link and a calendar invite. A follow-up
  * booked by the expert says so, and its optional note replaces the member's request summary.
+ * `message` is the optional note the expert (`messageFrom: 'expert'`) or staff (`'admin'`)
+ * wrote when scheduling; both emails show it.
  */
-function buildConsultationScheduledEmailPayloads(item, reservation) {
+function buildConsultationScheduledEmailPayloads(item, reservation, { message = '', messageFrom = 'expert' } = {}) {
   const title = consultationTitle(item);
+  const fromStaff = messageFrom === 'admin';
   const followUp = Boolean(reservation.followUpOf);
   const kind = followUp ? 'Follow-up consultation' : 'Consultation';
   const noteRow = followUp
@@ -675,6 +698,7 @@ function buildConsultationScheduledEmailPayloads(item, reservation) {
         details: [
           ['Consultation', title, itemPageUrl(item)],
           ['When', meetingTime],
+          [fromStaff ? 'Message from the library team' : `Message from ${title}`, message],
           ...(followUp ? [noteRow] : []),
           ...zoomDetailRows(reservation),
         ],
@@ -703,6 +727,7 @@ function buildConsultationScheduledEmailPayloads(item, reservation) {
           ['Consultation', title],
           ['When', meetingTime],
           ['Member', memberEmail],
+          [fromStaff ? 'Message from the library team to the member' : 'Your message to the member', message],
           noteRow,
           ...zoomDetailRows(reservation),
         ],
@@ -912,14 +937,15 @@ async function sendConsultationRequestEmails(item, reservation) {
 }
 
 /** Member "confirmed" + expert "scheduled", each with the Zoom link and `.ics`. */
-async function sendConsultationScheduledEmails(item, reservation) {
+async function sendConsultationScheduledEmails(item, reservation, messageOptions) {
   return sendEmailPayloads(
-    buildConsultationScheduledEmailPayloads(item, reservation),
+    buildConsultationScheduledEmailPayloads(item, reservation, messageOptions),
     'Consultation scheduled',
   );
 }
 
-function buildMemberDecisionEmailPayload(item, reservation, decision) {
+/** `message`: the optional note staff wrote when approving; only approvals show it. */
+function buildMemberDecisionEmailPayload(item, reservation, decision, message = '') {
   if (item?.tag === 'expertise') {
     // Approved consultations send buildConsultationScheduledEmailPayloads instead.
     return decision === 'refused' ? buildConsultationDecisionEmailPayload(item, reservation) : null;
@@ -963,6 +989,7 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
       [isRoom ? 'Room' : 'Item', title, itemUrl],
       ['Dates', formatReservationDates(reservation)],
       ['Where', approved && isRoom ? ROOM_LOCATION : ''],
+      ['Message from the library team', approved ? message : ''],
     ],
     paragraphs,
     cta: {
@@ -985,8 +1012,8 @@ function buildMemberDecisionEmailPayload(item, reservation, decision) {
 }
 
 /** Resolves false when the reservation has no member email or the send failed (logged). */
-async function sendMemberDecisionEmail(item, reservation, decision) {
-  const emailPayload = buildMemberDecisionEmailPayload(item, reservation, decision);
+async function sendMemberDecisionEmail(item, reservation, decision, message = '') {
+  const emailPayload = buildMemberDecisionEmailPayload(item, reservation, decision, message);
 
   if (!emailPayload) {
     console.warn(`Skipping ${decision} email: no member email on reservation ${reservation?.id}.`);
@@ -1114,6 +1141,27 @@ function buildWelcomeEmailPayload(email) {
     html: rendered.html,
     attachments: rendered.attachments,
   };
+}
+
+/** Admin "Send password reset" → the member, with Supabase's one-time recovery link as the CTA. */
+function buildPasswordResetEmailPayload(email, actionLink) {
+  const to = trimmedOrNull(email);
+  if (!to || !actionLink) {
+    return null;
+  }
+
+  return buildConsultationEmail({
+    to,
+    subject: 'Set a new password for the Activist Resource Library',
+    heading: 'Set a new password',
+    intro: 'The Activist Resource Library team sent you a link to choose a new password for your member account.',
+    paragraphs: [
+      'The link works once and expires after a short while. If it has expired, choose "Forgot password?" when you log in to get a new one.',
+      "If you weren't expecting this email, you can ignore it. Your password stays the same until you choose a new one.",
+    ],
+    cta: { label: 'Choose a new password', href: actionLink },
+    why: EMAIL_WHY.passwordReset,
+  });
 }
 
 /** In-process per-user lock — safe for single-instance Cloud Run only, not across replicas. */
@@ -1303,10 +1351,23 @@ function validateMeetingAt(meetingAt) {
 }
 
 /**
+ * The optional confirmation message from a request body: `{ message }` trimmed, or `{ error }`
+ * when it is too long. Anything that isn't a string counts as no message.
+ */
+function readConfirmationMessage(body) {
+  const message = typeof body?.message === 'string' ? body.message.trim() : '';
+  if (message.length > CONFIRMATION_MESSAGE_MAX) {
+    return { error: `The message must be ${CONFIRMATION_MESSAGE_MAX} characters or fewer.` };
+  }
+  return { message };
+}
+
+/**
  * Shared by the expert account panel and the admin approve route. Returns
  * `{ status, body, result, emailSent }` so each route can shape its own success payload.
+ * `message` / `messageFrom` go into the scheduled emails (see buildConsultationScheduledEmailPayloads).
  */
-async function runScheduleConsultation({ itemId, reservationId, meetingAt }) {
+async function runScheduleConsultation({ itemId, reservationId, meetingAt, message = '', messageFrom = 'expert' }) {
   const meetingError = validateMeetingAt(meetingAt);
   if (meetingError) {
     return { status: 400, body: { error: meetingError } };
@@ -1345,7 +1406,7 @@ async function runScheduleConsultation({ itemId, reservationId, meetingAt }) {
   }
 
   const emailSent = await settleNotifications('Consultation scheduled', [
-    sendConsultationScheduledEmails(result.item, result.reservation),
+    sendConsultationScheduledEmails(result.item, result.reservation, { message, messageFrom }),
   ]);
 
   return { status: 200, result, emailSent };
@@ -2244,6 +2305,115 @@ app.get('/api/inventory', async (_req, res) => {
   }
 });
 
+// View counter for /admin Stats. Every outcome is a bare 204, so the client never retries or
+// learns what was counted. Seed ids (myturn-123) and UUIDs both match the id pattern.
+const ITEM_VIEW_ID_PATTERN = /^[\w-]{1,200}$/;
+// Crawlers, link previews and audit tools. `(?<!cu)` keeps CUBOT phones (their Android
+// user agent names the model) out of the `bot` match; normal browsers match none of these.
+const ITEM_VIEW_BOT_PATTERN =
+  /(?<!cu)bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|facebookexternalhit|embedly|whatsapp|inspectiontool/i;
+const ITEM_VIEW_DEDUPE_MAX = 50_000;
+// One view per address, item and library day. In-memory: single Cloud Run instance, reset on deploy.
+const itemViewDedupe = new Set();
+let itemViewDedupeDay = '';
+let itemViewDedupeFullDay = '';
+// Local .env is the production database, so only the deployed service counts views: the
+// Dockerfile sets NODE_ENV=production and Cloud Run sets K_SERVICE. `npm run dev`, `npm start`
+// and `npm run preview` on a laptop never write a count.
+const ITEM_VIEWS_RECORDED_HERE =
+  process.env.NODE_ENV === 'production' || Boolean(process.env.K_SERVICE);
+let itemViewLocalNoticeLogged = false;
+let itemViewSchemaNoticeLogged = false;
+
+const itemViewLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(204).end();
+  },
+});
+
+/**
+ * False when this key was already counted today, or when today's set is full: counting then
+ * stops until the next library day, since clearing early would count everyone again. The set
+ * starts over each day.
+ */
+function claimItemView(key, day) {
+  if (day !== itemViewDedupeDay) {
+    itemViewDedupe.clear();
+    itemViewDedupeDay = day;
+  }
+
+  if (itemViewDedupe.has(key)) {
+    return false;
+  }
+
+  if (itemViewDedupe.size >= ITEM_VIEW_DEDUPE_MAX) {
+    if (itemViewDedupeFullDay !== day) {
+      itemViewDedupeFullDay = day;
+      console.warn('[item-views] Views are not recorded for the rest of the day: the dedupe list is full.');
+    }
+    return false;
+  }
+
+  itemViewDedupe.add(key);
+  return true;
+}
+
+app.post('/api/inventory/:id/view', itemViewLimiter, async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  const userAgent = req.get('user-agent') ?? '';
+  const fetchSite = req.get('sec-fetch-site');
+
+  if (!ITEM_VIEW_ID_PATTERN.test(id) || !userAgent || ITEM_VIEW_BOT_PATTERN.test(userAgent)) {
+    return res.status(204).end();
+  }
+
+  // Browsers send Sec-Fetch-Site; only the site's own pages may count a view.
+  if (fetchSite && fetchSite !== 'same-origin') {
+    return res.status(204).end();
+  }
+
+  if (!ITEM_VIEWS_RECORDED_HERE) {
+    if (!itemViewLocalNoticeLogged) {
+      itemViewLocalNoticeLogged = true;
+      console.log(
+        '[item-views] Views are not recorded here: only the deployed service counts them (local .env is production).',
+      );
+    }
+    return res.status(204).end();
+  }
+
+  const day = libraryTodayKey();
+  const dedupeKey = `${ipKeyGenerator(req.ip)}|${id}|${day}`;
+  if (!claimItemView(dedupeKey, day)) {
+    return res.status(204).end();
+  }
+
+  // Awaited before responding: Cloud Run throttles CPU once the response is out.
+  try {
+    const result = await recordItemView(id, day);
+    // Ids that aren't items give their slot back, so made-up ids can't fill the dedupe list.
+    if (result.unknownItem) {
+      itemViewDedupe.delete(dedupeKey);
+    }
+    if (result.schemaMissing && !itemViewSchemaNoticeLogged) {
+      itemViewSchemaNoticeLogged = true;
+      console.warn(
+        '[item-views] Views are not recorded: apply supabase/migrations/009_admin_stats.sql in the Supabase SQL Editor.',
+      );
+    }
+  } catch (error) {
+    // Not counted, so a later open by the same address may try again.
+    itemViewDedupe.delete(dedupeKey);
+    console.error('Failed to record item view:', error);
+  }
+
+  res.status(204).end();
+});
+
 app.get('/api/admin/inventory', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const items = await ensureInventory();
@@ -2252,6 +2422,46 @@ app.get('/api/admin/inventory', requireAuth, requireAdmin, async (_req, res) => 
   } catch (error) {
     console.error('Failed to read admin inventory:', error);
     res.status(500).json({ error: 'Could not load inventory.' });
+  }
+});
+
+const ITEM_VIEW_DAILY_DAYS = 30;
+
+/**
+ * View counts for /admin Stats. `daily` always has 30 entries, `since30` through `today`
+ * (Montréal days), zero-filled. `{ available: false, today }` until migration 009 is applied.
+ */
+app.get('/api/admin/item-views', requireAuth, requireAdmin, async (_req, res) => {
+  const today = libraryTodayKey();
+  const since30 = addDays(today, -(ITEM_VIEW_DAILY_DAYS - 1));
+  const since60 = addDays(today, -59);
+
+  try {
+    const stats = await loadItemViewStats({ since30, since60, dailySince: since30 });
+    res.set('Cache-Control', 'no-store');
+
+    if (!stats.available) {
+      return res.json({ available: false, today });
+    }
+
+    const viewsByDay = new Map(stats.daily.map((entry) => [entry.day, entry.views]));
+    const daily = Array.from({ length: ITEM_VIEW_DAILY_DAYS }, (_, index) => {
+      const day = addDays(since30, index);
+      return { day, views: viewsByDay.get(day) ?? 0 };
+    });
+
+    res.json({
+      available: true,
+      today,
+      since30,
+      since60,
+      firstDay: stats.firstDay,
+      items: stats.items,
+      daily,
+    });
+  } catch (error) {
+    console.error('Failed to load item views:', error);
+    res.status(500).json({ error: 'Could not load view counts.' });
   }
 });
 
@@ -2511,6 +2721,11 @@ app.post('/api/inventory/:id/reservations/:reservationId/approve', requireAuth, 
     return res.status(400).json({ error: 'Item id and reservation id are required.' });
   }
 
+  const { message, error: messageError } = readConfirmationMessage(req.body);
+  if (messageError) {
+    return res.status(400).json({ error: messageError });
+  }
+
   try {
     const result = await approveReservation(itemId, reservationId);
 
@@ -2519,6 +2734,8 @@ app.post('/api/inventory/:id/reservations/:reservationId/approve', requireAuth, 
         itemId,
         reservationId,
         meetingAt: typeof req.body?.meetingAt === 'string' ? req.body.meetingAt : '',
+        message,
+        messageFrom: 'admin',
       });
 
       if (scheduled.status !== 200) {
@@ -2550,7 +2767,7 @@ app.post('/api/inventory/:id/reservations/:reservationId/approve', requireAuth, 
     }
 
     const emailSent = await settleNotifications('Reservation approval', [
-      sendMemberDecisionEmail(result.item, result.reservation, 'approved'),
+      sendMemberDecisionEmail(result.item, result.reservation, 'approved', message),
     ]);
 
     auditAdminAction(req, 'approve_reservation', { itemId, reservationId });
@@ -2644,6 +2861,591 @@ app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => 
   } catch (error) {
     console.error('Failed to delete inventory item:', error);
     res.status(500).json({ error: 'Could not delete inventory item.' });
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// /admin Users: member accounts from Supabase Auth (list, name, suspend, password reset, delete).
+
+// Supabase user ids are lowercase UUIDs. auth.admin.getUserById, updateUserById and deleteUser
+// throw (rather than return an error) on anything else, so ids are checked first.
+const AUTH_USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const ADMIN_USERS_PAGE_SIZE = 1000;
+const ADMIN_USERS_MAX_PAGES = 50;
+// About 100 years. GoTrue durations go up to hours (no d or y); 'none' lifts the ban.
+const SUSPEND_BAN_DURATION = '876000h';
+// Same flag as PASSWORD_RESET_RETURN_PARAM in src/lib/supabase.js (browser-only module): it tells
+// the client an expired link came from a reset email.
+const PASSWORD_RESET_RETURN_PARAM = 'password_reset';
+
+function parseAuthUserId(raw) {
+  const id = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return AUTH_USER_ID_PATTERN.test(id) ? id : '';
+}
+
+/** GoTrue timestamps (microseconds) as `toISOString()`, or null when missing. */
+function isoTimestampOrNull(value) {
+  const ms = typeof value === 'string' && value ? Date.parse(value) : NaN;
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+/** Same rule as userHasPasswordLogin in src/lib/auth.js: the account has an email/password login. */
+function userHasPasswordLogin(user) {
+  const providers = user?.app_metadata?.providers ?? [user?.app_metadata?.provider];
+  return (
+    (Array.isArray(providers) && providers.includes('email')) ||
+    (user?.identities ?? []).some((identity) => identity?.provider === 'email')
+  );
+}
+
+/** The staff-set name first, then what Google or Discord sent. */
+function adminUserName(metadata) {
+  return (
+    trimmedOrNull(metadata.display_name) ??
+    trimmedOrNull(metadata.full_name) ??
+    trimmedOrNull(metadata.name) ??
+    trimmedOrNull(metadata.custom_claims?.global_name) ??
+    null
+  );
+}
+
+/** Staff can't suspend or delete their own account or any @apathyisboring.com one (confirmed or not). */
+function isProtectedAccount(user, currentUser) {
+  const email = user?.email?.trim().toLowerCase() ?? '';
+  return user?.id === currentUser?.id || email.endsWith(APATHY_ADMIN_DOMAIN);
+}
+
+/** The /admin Users row for a Supabase user (camelCase, no tokens or raw metadata). */
+function serializeAdminUser(user, currentUserId) {
+  const metadata = user?.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+  const appMetadata = user?.app_metadata && typeof user.app_metadata === 'object' ? user.app_metadata : {};
+  const email = trimmedOrNull(user?.email);
+
+  return {
+    id: user.id,
+    email,
+    name: adminUserName(metadata),
+    createdAt: isoTimestampOrNull(user.created_at),
+    lastSignInAt: isoTimestampOrNull(user.last_sign_in_at),
+    provider: trimmedOrNull(appMetadata.provider) ?? 'email',
+    providers: Array.isArray(appMetadata.providers)
+      ? appMetadata.providers.filter((provider) => typeof provider === 'string')
+      : [],
+    confirmed: isConfirmedUser(user),
+    suspended: isUserSuspended(user),
+    bannedUntil: isoTimestampOrNull(user.banned_until),
+    passwordLogin: userHasPasswordLogin(user),
+    isAdmin: (email ?? '').toLowerCase().endsWith(APATHY_ADMIN_DOMAIN),
+    isSelf: user.id === currentUserId,
+  };
+}
+
+/**
+ * Every Supabase Auth user. auth-js reads nextPage from only the first digit of the Link header,
+ * so this pages until a short page instead of trusting it.
+ */
+async function listAllAuthUsers() {
+  const users = [];
+
+  for (let page = 1; page <= ADMIN_USERS_MAX_PAGES; page += 1) {
+    const { data, error } = await getSupabaseAdmin().auth.admin.listUsers({
+      page,
+      perPage: ADMIN_USERS_PAGE_SIZE,
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Could not list users.');
+    }
+
+    const batch = data?.users ?? [];
+    users.push(...batch);
+
+    if (batch.length < ADMIN_USERS_PAGE_SIZE) {
+      return users;
+    }
+  }
+
+  console.warn(`Admin users list stopped at ${ADMIN_USERS_MAX_PAGES * ADMIN_USERS_PAGE_SIZE} accounts.`);
+  return users;
+}
+
+/** A fresh copy of the user, or null when the id doesn't exist. `id` must pass parseAuthUserId. */
+async function loadAuthUser(id) {
+  const { data, error } = await getSupabaseAdmin().auth.admin.getUserById(id);
+
+  if (error) {
+    if (error.status === 404 || error.code === 'user_not_found') {
+      return null;
+    }
+    throw new Error(error.message || 'Could not load the user.');
+  }
+
+  return data?.user ?? null;
+}
+
+/**
+ * One admin action per account at a time, so a double click can't suspend, email or delete
+ * twice. In-process — safe for single-instance Cloud Run only, not across replicas.
+ */
+const adminUserLocks = new Map();
+
+async function withAdminUserLock(userId, fn) {
+  const waitFor = adminUserLocks.get(userId) ?? Promise.resolve();
+  let release;
+  const next = new Promise((resolve) => {
+    release = resolve;
+  });
+  const tail = waitFor.then(() => next);
+  adminUserLocks.set(userId, tail);
+
+  await waitFor;
+  try {
+    return await fn();
+  } finally {
+    release();
+    // The last action queued for this account clears the entry.
+    if (adminUserLocks.get(userId) === tail) {
+      adminUserLocks.delete(userId);
+    }
+  }
+}
+
+const USER_NOT_FOUND_BODY = { error: 'User not found.' };
+const INVALID_USER_ID_BODY = { error: 'A valid user id is required.' };
+const PROTECTED_USER_BODY = {
+  error: "Staff accounts can't be suspended or deleted here.",
+  code: 'user_protected',
+};
+
+/** 409 for suspending or deleting a member who mentors an expertise item. */
+function userIsMentorBody(title) {
+  return {
+    error: `This member is the mentor on "${title}". Change or remove that mentor profile first.`,
+    code: 'user_is_mentor',
+    title,
+  };
+}
+
+/** The expertise item this auth user mentors (matched on their email), or null. */
+async function findMentorItemForUser(user) {
+  const email = trimmedOrNull(user?.email);
+  return email ? findMentorProfileByEmail(email) : null;
+}
+
+app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const users = (await listAllAuthUsers())
+      .map((user) => serializeAdminUser(user, req.user.id))
+      .sort((a, b) => (Date.parse(b.createdAt ?? '') || 0) - (Date.parse(a.createdAt ?? '') || 0));
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ users });
+  } catch (error) {
+    console.error('Failed to list users:', error);
+    res.status(500).json({ error: 'Could not load members.' });
+  }
+});
+
+// The name is staff-facing only. It lives in user_metadata.display_name: Google and Discord
+// fill full_name and name, so a later sign-in with them leaves it alone. An empty name clears it.
+app.patch('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = parseAuthUserId(req.params.id);
+  const rawName = req.body?.name;
+
+  if (!id) {
+    return res.status(400).json(INVALID_USER_ID_BODY);
+  }
+
+  if (rawName !== null && typeof rawName !== 'string') {
+    return res.status(400).json({ error: 'Name must be text.' });
+  }
+
+  const name = typeof rawName === 'string' ? rawName.trim() : '';
+
+  if (name.length > EXPERT_NAME_MAX) {
+    return res.status(400).json({
+      error: `Name must be ${EXPERT_NAME_MAX} characters or fewer.`,
+      code: 'user_name_too_long',
+    });
+  }
+
+  try {
+    const result = await withAdminUserLock(id, async () => {
+      const user = await loadAuthUser(id);
+
+      if (!user) {
+        return { notFound: true };
+      }
+
+      const existingMetadata =
+        user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+      const { data, error } = await getSupabaseAdmin().auth.admin.updateUserById(id, {
+        user_metadata: { ...existingMetadata, display_name: name || null },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Could not update the user.');
+      }
+
+      return { user: data.user };
+    });
+
+    if (result.notFound) {
+      return res.status(404).json(USER_NOT_FOUND_BODY);
+    }
+
+    auditAdminAction(req, 'update_user_name', { userId: id });
+    res.json({ user: serializeAdminUser(result.user, req.user.id) });
+  } catch (error) {
+    console.error('Failed to update user:', error);
+    res.status(500).json({ error: 'Could not save the member.' });
+  }
+});
+
+// A Supabase ban: the member can't sign in or refresh, and requireAuth refuses their current token.
+// A mentor can't be suspended (as with delete): their profile would keep taking requests that
+// they could no longer schedule. Lifting a suspension is always allowed.
+app.post('/api/admin/users/:id/suspend', requireAuth, requireAdmin, async (req, res) => {
+  const id = parseAuthUserId(req.params.id);
+  const suspended = req.body?.suspended;
+
+  if (!id) {
+    return res.status(400).json(INVALID_USER_ID_BODY);
+  }
+
+  if (typeof suspended !== 'boolean') {
+    return res.status(400).json({ error: 'suspended must be true or false.' });
+  }
+
+  try {
+    const result = await withAdminUserLock(id, async () => {
+      const user = await loadAuthUser(id);
+
+      if (!user) {
+        return { notFound: true };
+      }
+
+      if (isProtectedAccount(user, req.user)) {
+        return { isProtected: true };
+      }
+
+      if (suspended) {
+        const mentorItem = await findMentorItemForUser(user);
+
+        if (mentorItem) {
+          return { mentorTitle: mentorItem.title };
+        }
+      }
+
+      const { data, error } = await getSupabaseAdmin().auth.admin.updateUserById(id, {
+        ban_duration: suspended ? SUSPEND_BAN_DURATION : 'none',
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Could not update the user.');
+      }
+
+      return { user: data.user };
+    });
+
+    if (result.notFound) {
+      return res.status(404).json(USER_NOT_FOUND_BODY);
+    }
+
+    if (result.isProtected) {
+      return res.status(403).json(PROTECTED_USER_BODY);
+    }
+
+    if (result.mentorTitle !== undefined) {
+      return res.status(409).json(userIsMentorBody(result.mentorTitle));
+    }
+
+    auditAdminAction(req, suspended ? 'suspend_user' : 'unsuspend_user', { userId: id });
+    res.json({ user: serializeAdminUser(result.user, req.user.id) });
+  } catch (error) {
+    console.error('Failed to change user suspension:', error);
+    res.status(500).json({
+      error: suspended ? 'Could not suspend the member.' : 'Could not lift the suspension.',
+    });
+  }
+});
+
+// Per target account, so staff can't flood one inbox. Failed attempts (unavailable, send failed)
+// are handed back. In-memory: single Cloud Run instance, reset on deploy.
+const adminPasswordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  keyGenerator: (req) => `user:${parseAuthUserId(req.params.id) || 'invalid'}`,
+  store: new MemoryStore(),
+  skipFailedRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'This member already got 3 password reset emails in the last hour. Please try again later.',
+    code: 'password_reset_limited',
+  },
+});
+
+const PASSWORD_RESET_FAILED_BODY = {
+  error: 'Could not send the password reset email.',
+  code: 'password_reset_failed',
+};
+
+// Supabase makes the one-time recovery link (generating one invalidates the previous link);
+// the email itself is ours, through Resend, like every other member email.
+app.post(
+  '/api/admin/users/:id/password-reset',
+  requireAuth,
+  requireAdmin,
+  adminPasswordResetLimiter,
+  async (req, res) => {
+    const id = parseAuthUserId(req.params.id);
+
+    if (!id) {
+      return res.status(400).json(INVALID_USER_ID_BODY);
+    }
+
+    try {
+      const result = await withAdminUserLock(id, async () => {
+        const user = await loadAuthUser(id);
+
+        if (!user) {
+          return { notFound: true };
+        }
+
+        const email = trimmedOrNull(user.email);
+
+        if (!email || !userHasPasswordLogin(user) || isUserSuspended(user)) {
+          return { unavailable: true };
+        }
+
+        // Without Resend the link could never be delivered, so don't make one.
+        if (!apiKey) {
+          console.error('Password reset email not sent: RESEND_API_KEY is not configured.');
+          return { sendFailed: true };
+        }
+
+        const { data, error } = await getSupabaseAdmin().auth.admin.generateLink({
+          type: 'recovery',
+          email,
+          options: { redirectTo: `${EMAIL_SITE_ORIGIN}/?${PASSWORD_RESET_RETURN_PARAM}=1` },
+        });
+        const actionLink = data?.properties?.action_link;
+
+        if (error || !actionLink) {
+          console.error('Password reset link failed:', error ?? 'no action_link returned');
+          return { sendFailed: true };
+        }
+
+        const emailSent = await sendEmailPayloads(
+          [buildPasswordResetEmailPayload(email, actionLink)],
+          'Password reset',
+        );
+        return emailSent ? { emailSent } : { sendFailed: true };
+      });
+
+      if (result.notFound) {
+        return res.status(404).json(USER_NOT_FOUND_BODY);
+      }
+
+      if (result.unavailable) {
+        return res.status(400).json({
+          error: 'This member has no password login, or the account is suspended.',
+          code: 'password_reset_unavailable',
+        });
+      }
+
+      if (result.sendFailed) {
+        return res.status(502).json(PASSWORD_RESET_FAILED_BODY);
+      }
+
+      auditAdminAction(req, 'send_password_reset', { userId: id });
+      res.json({ emailSent: true });
+    } catch (error) {
+      console.error('Failed to send password reset:', error);
+      res.status(500).json(PASSWORD_RESET_FAILED_BODY);
+    }
+  },
+);
+
+/**
+ * Deletes a member account. Order: suspend (no new requests mid-way), cancel their active
+ * bookings and email them as an admin cancel does, strip their email from every reservation row,
+ * then hard-delete the auth user. Held consultations and past bookings stay as history.
+ * Equipment, book and room requests still pending after their dates passed are cancelled too,
+ * without an email and outside `cancelled` (`staleCancelled`), so no open request is left
+ * without a member.
+ * Results: `{ notFound }`, `{ isProtected }`, `{ mentorTitle }` (they mentor an expertise item;
+ * nothing changed), `{ incomplete, cancelled, staleCancelled }` (a store call or the delete
+ * failed; the account stays suspended and a retry skips rows already cancelled), or
+ * `{ deleted, cancelled, staleCancelled, emailSent }`.
+ */
+async function deleteMemberAccount(id, currentUser) {
+  const user = await loadAuthUser(id);
+
+  if (!user) {
+    return { notFound: true };
+  }
+
+  if (isProtectedAccount(user, currentUser)) {
+    return { isProtected: true };
+  }
+
+  const email = trimmedOrNull(user.email);
+  const mentorItem = await findMentorItemForUser(user);
+
+  if (mentorItem) {
+    return { mentorTitle: mentorItem.title };
+  }
+
+  const { error: suspendError } = await getSupabaseAdmin().auth.admin.updateUserById(id, {
+    ban_duration: SUSPEND_BAN_DURATION,
+  });
+
+  if (suspendError) {
+    throw new Error(suspendError.message || 'Could not suspend the user before deleting.');
+  }
+
+  // Store calls run one at a time (each takes its item's lock) and the first one that throws
+  // stops the pass. Flag results (notFound, invalidStatus, alreadyHeld) mean someone got there
+  // first: skipped, not failed.
+  const today = libraryTodayKey();
+  const cancelledConsultations = [];
+  const cancelledReservations = [];
+  let staleCancelled = 0;
+  let failure = null;
+
+  if (email) {
+    try {
+      const items = await fetchInventoryItems();
+
+      for (const item of items) {
+        for (const reservation of item.reservations) {
+          if (!emailsMatch(reservation.userEmail, email)) {
+            continue;
+          }
+
+          if (item.tag === 'expertise') {
+            if (
+              (reservation.status === 'pending' || reservation.status === 'reserved') &&
+              !isConsultationHeld(reservation)
+            ) {
+              const result = await cancelConsultation(item.id, reservation.id, { cancelledBy: 'admin' });
+              if (result.reservation) {
+                cancelledConsultations.push(result);
+              }
+            }
+          } else if (isUpcomingMemberReservation(reservation, today)) {
+            const result = await cancelReservationByAdmin(item.id, reservation.id);
+            if (result.reservation) {
+              cancelledReservations.push(result);
+            }
+          } else if (reservation.status === 'pending') {
+            // Its dates are over: nothing to tell the member, but it must not stay open.
+            const result = await cancelReservationByAdmin(item.id, reservation.id);
+            if (result.reservation) {
+              staleCancelled += 1;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      failure = error;
+    }
+  }
+
+  // Everyone whose booking was cancelled is told, even when a later store call failed: a retry
+  // won't see those rows as active again. Paced rounds keep the batch under Resend's rate limit.
+  const consultationEmailSent = await settleNotificationRounds(
+    'Consultation cancelled',
+    cancelledConsultations,
+    2,
+    (result) => handleConsultationCancelled(result.item, result.reservation, result.previousStatus),
+  );
+  // The team email words itself from the status before the cancel (request vs. booking, pickup).
+  const reservationEmailSent = await settleNotificationRounds(
+    'Reservation cancelled',
+    cancelledReservations,
+    1,
+    (result) =>
+      sendReservationCancelledByTeamEmail(
+        result.item,
+        { ...result.reservation, status: result.previousStatus },
+        today,
+      ),
+  );
+  const settled = [consultationEmailSent, reservationEmailSent].filter((sent) => sent !== undefined);
+  const emailSent = settled.length ? settled.every(Boolean) : undefined;
+  const cancelled = cancelledConsultations.length + cancelledReservations.length;
+
+  if (failure) {
+    console.error('Delete user: cancelling bookings failed:', failure);
+    return { incomplete: true, cancelled, staleCancelled };
+  }
+
+  try {
+    await anonymizeReservationsForEmail(email ?? '');
+
+    const { error: deleteError } = await getSupabaseAdmin().auth.admin.deleteUser(id);
+
+    if (deleteError) {
+      throw new Error(deleteError.message || 'Could not delete the user.');
+    }
+  } catch (error) {
+    console.error('Delete user: removing the account failed:', error);
+    return { incomplete: true, cancelled, staleCancelled };
+  }
+
+  return { deleted: true, cancelled, staleCancelled, emailSent };
+}
+
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = parseAuthUserId(req.params.id);
+
+  if (!id) {
+    return res.status(400).json(INVALID_USER_ID_BODY);
+  }
+
+  try {
+    const result = await withAdminUserLock(id, () => deleteMemberAccount(id, req.user));
+
+    if (result.notFound) {
+      return res.status(404).json(USER_NOT_FOUND_BODY);
+    }
+
+    if (result.isProtected) {
+      return res.status(403).json(PROTECTED_USER_BODY);
+    }
+
+    if (result.mentorTitle !== undefined) {
+      return res.status(409).json(userIsMentorBody(result.mentorTitle));
+    }
+
+    if (result.incomplete) {
+      auditAdminAction(req, 'delete_user_incomplete', {
+        userId: id,
+        cancelled: result.cancelled,
+        staleCancelled: result.staleCancelled,
+      });
+      return res.status(500).json({
+        error: 'The account is suspended, but deleting it did not finish. Please try again.',
+        code: 'user_delete_incomplete',
+      });
+    }
+
+    auditAdminAction(req, 'delete_user', {
+      userId: id,
+      cancelled: result.cancelled,
+      staleCancelled: result.staleCancelled,
+    });
+    res.json({
+      success: true,
+      cancelled: result.cancelled,
+      ...(result.emailSent === undefined ? {} : { emailSent: result.emailSent }),
+    });
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    res.status(500).json({ error: 'Could not delete the member.' });
   }
 });
 
@@ -2850,10 +3652,17 @@ app.post(
         return res.status(403).json({ error: 'Only the expert can schedule this consultation.' });
       }
 
+      const { message, error: messageError } = readConfirmationMessage(req.body);
+      if (messageError) {
+        return res.status(400).json({ error: messageError });
+      }
+
       const scheduled = await runScheduleConsultation({
         itemId: found.item.id,
         reservationId,
         meetingAt: typeof req.body?.meetingAt === 'string' ? req.body.meetingAt : '',
+        message,
+        messageFrom: found.isExpert ? 'expert' : 'admin',
       });
 
       if (scheduled.status !== 200) {

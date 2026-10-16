@@ -191,6 +191,10 @@ All in `AccountConsultations.svelte`. Texts are in [Consultation messages](#cons
 | Admin arrival (B2) | `kimchi.admin_arrival.staff_only` / `pending_due` / `consult_waiting` (`{count}`) | **9000 ms** | The first successful `GET /api/admin/inventory` of a page load. First match wins: pending consultations for a mentor with no email; pending equipment, book or room requests starting on or before today (Montréal); consultation requests made 7 or more days ago. Not ambient; `notifyWhenIdle`, kind `admin-arrival`. Once per Montréal day (`arl-kimchi-day:admin-arrival`), spent only when shown. The pending rows carry the same facts as pills (`admin.no_mentor_email`, `admin.starts_today`, `admin.start_overdue`) |
 | Pickup day (B2) | `kimchi.admin_arrival.pickup_day` (`{pickups}`, `{returns}`) | **9000 ms** | Tuesdays only, after the arrival check: reserved equipment and books starting or ending today, when there is at least one. About 1 s after the arrival note. Ambient, `notifyWhenIdle`, kind `admin-arrival`. Once per Montréal day (`arl-kimchi-day:admin-pickup-day`). Both B2 notes are dismissed when `AdminPanel` unmounts |
 | Pending queue cleared (D10) | `kimchi.pending_queue_clear` | **5000 ms** | 1.2 s after the admin's own approve or refuse empties Pending, when the queue held 3 or more requests during the visit. Ambient. Once per Montréal day (`arl-kimchi-day:admin-queue-clear`) |
+| Member display name saved | `kimchi.user_saved` | **5000 ms** | `AdminUsers.svelte` (**Members**), after `PATCH /api/admin/users/:id` succeeds. Saving an unchanged name just closes the editor (no request, no bubble) |
+| Member suspended / suspension lifted | `kimchi.user_suspended` / `kimchi.user_unsuspended` | **5000 ms** | `AdminUsers.svelte`, after `POST /api/admin/users/:id/suspend` succeeds. Nothing is emailed, and neither line says so |
+| Password reset sent | `kimchi.user_reset_sent` | **5000 ms** | `AdminUsers.svelte`, only when `POST /api/admin/users/:id/password-reset` returns `emailSent === true`. Anything else shows the row error (`admin.users_reset_failed` / `_unavailable` / `_limited`) and no bubble |
+| Member deleted | `kimchi.user_deleted_notified` (`{count}`), else `kimchi.user_deleted` | **9000 ms** (notified) / **5000 ms** | `AdminUsers.svelte`, after `DELETE /api/admin/users/:id` succeeds. The "emailed" version only when the response has `emailSent === true` and `cancelled > 0`; `{count}` is `cancelled` (the past-dated pending requests cancelled silently aren't in it). A mentor, a staff account or a delete that stops part-way (`user_delete_incomplete`) gets the row error and no bubble |
 
 ---
 
@@ -305,6 +309,14 @@ The older `kimchi.consultation_cancelled` ("…everyone has been notified") is n
 | `kimchi.admin_arrival.consult_waiting` | Psst! Consultation requests waiting a week or more: {count}. Time to nudge the mentors? | Psst ! Demandes de consultation en attente depuis une semaine ou plus : {count}. Un petit rappel aux mentors ? |
 | `kimchi.admin_arrival.pickup_day` | Meow! It's pickup day 🐾 Going out today: {pickups}. Coming back today: {returns}. | Miaou ! C'est jour de cueillette 🐾 À remettre aujourd'hui : {pickups}. À récupérer aujourd'hui : {returns}. |
 | `kimchi.pending_queue_clear` | Purr… no requests left to review. All caught up! 🐾 | Ronron… plus aucune demande à examiner. Tout est à jour ! 🐾 |
+| `kimchi.user_saved` | Meow! Display name saved. | Miaou ! Nom affiché enregistré. |
+| `kimchi.user_suspended` | Meow! Account suspended. No signing in until you lift it. | Miaou ! Compte suspendu. Plus de connexion possible tant que tu ne lèves pas la suspension. |
+| `kimchi.user_unsuspended` | Meow! Suspension lifted, they can sign in again. | Miaou ! Suspension levée, ce compte peut se reconnecter. |
+| `kimchi.user_reset_sent` | Meow! The password reset link is on its way. | Miaou ! Le lien pour choisir un nouveau mot de passe est en route. |
+| `kimchi.user_deleted` | Meow! Account deleted. | Miaou ! Compte supprimé. |
+| `kimchi.user_deleted_notified` | Meow! Account deleted. Active bookings cancelled: {count}. Everyone affected has been emailed. | Miaou ! Compte supprimé. Réservations actives annulées : {count}. Toutes les personnes concernées ont reçu un courriel. |
+
+The `kimchi.user_*` bubbles name no member and carry no email address: `{count}` is their only variable.
 
 ---
 
@@ -368,11 +380,15 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `AdminPanel.svelte` | `admin.approved_status`, `consultation_scheduled_status`, `refused_status`, `consultation_refused_status`, `deleted_status`, `consultation_deleted_status`, `held_consultation_deleted_status`, `follow_up_booked_status`, `removed_status` (`{title}`), plus a note only when `emailSent === true`: `admin.status_member_emailed`, `status_both_emailed`, `status_only_member_emailed` or `status_removed_emailed`. Mentors with no email: `admin.status_mentor_no_email` and, with a Zoom link, `admin.status_zoom_link_here` | One permanent visually hidden `role="status"` line for every approve, refuse, delete, removal and follow-up result (F8) |
 | `AdminPanel.svelte` | `admin.starts_today` / `admin.start_overdue` / `admin.no_mentor_email` | Pills on pending rows (and `no_mentor_email` on scheduled, not-held consultations in Edit Reservations): what the B2 arrival note counts |
 | `AddItemModal.svelte` | `admin.item_added_status` (`{title}`) | Visually hidden `role="status"` line outside the dialog, set once it has closed |
+| `AdminUsers.svelte` | `admin.users_saved_status` (the name the server kept), `users_suspended_status`, `users_unsuspended_status`, `users_reset_sent_status`, `users_deleted_status` (`{name}`), then `admin.users_cancelled_status` (`{count}`) and `admin.status_removed_emailed` only when the bubble says "emailed" | One permanent visually hidden `role="status"` line in **Members**, so each `kimchi.user_*` result is announced while Kimchi sleeps. Errors show per row (`role="alert"`) |
+| `AdminStats.svelte` | `admin.stats_kimchi_top_one` / `_other` (`{category}`, `{count}`), `stats_kimchi_quiet_month`, `stats_kimchi_none` | Kimchi's line at the top of **Stats**, next to the awake photo (`alt=""`): plain text in the page, not a bubble, so it shows while Kimchi sleeps. Until migration 009 is applied, the plain notice `admin.stats_views_unavailable` replaces it |
+| `AdminAttention.svelte` | `admin.attention_*` | **Needs attention** tiles on `/admin`: count, label and hint (`_hint`, or `_none` at zero). The Overdue tile's "waiting a week" rule (`isOverdueRequest`) is the one B2's `consult_waiting` note and the Pending list's `admin.waiting_week` chip use |
 | `KimchiNotification.svelte` | `kimchi.signup_complete` / `kimchi.email_confirmed` | Its own hidden `role="status"` line, outside every dialog, only when that bubble couldn't show |
 | `HomePage.svelte` | `home.load_error` | `role="alert"` under the intro when the inventory failed to load |
 | `HeaderAuth.svelte` | `auth.sign_out_error` | `role="alert"` under the header buttons after a failed sign-out (`.header-auth__error`) |
+| `HeaderAuth.svelte` | `auth.account_suspended` | Login dialog opened after a Google or Discord sign-in that Supabase refused with `error_code=user_banned` (a member suspended in **Members**) |
 | `AboutPage.svelte` | `about.contact_success` | Contact form status after a send |
-| `AuthModal.svelte` | Various `auth.*` keys | Login/register errors and “check your email” (Supabase-driven); reset view: neutral `auth.reset_sent` after **Send reset link**, `auth.rate_limited` / `auth.enter_valid_email` / `auth.reset_send_failed` on real failures, `auth.reset_link_expired` when an expired reset link opens the view |
+| `AuthModal.svelte` | Various `auth.*` keys | Login/register errors and “check your email” (Supabase-driven; a login refused with `user_banned` shows `auth.account_suspended`); reset view: neutral `auth.reset_sent` after **Send reset link**, `auth.rate_limited` / `auth.enter_valid_email` / `auth.reset_send_failed` on real failures, `auth.reset_link_expired` when an expired reset link opens the view |
 | `SetPasswordModal.svelte` | `auth.password_updated` (+ `auth.password_*` errors) | Visually hidden `role="status"` line after a new password is saved, so screen readers hear it even while Kimchi is asleep; errors show inline in the dialog's status line, which (like `AuthModal`'s) stays in the page between messages so each one is announced |
 
 ---
@@ -414,3 +430,4 @@ These are **not** queued via `notify()` but are automated UI feedback on the sam
 | `src/components/AddItemModal.svelte` | Item added confirmation (by category) |
 | `src/components/MentorBrowser.svelte` | Mentor details saved |
 | `src/components/AdminPanel.svelte` | Admin action confirmations; arrival and pickup-day notes (B2); "all caught up" (D10) |
+| `src/components/AdminUsers.svelte` | Members confirmations: display name saved, suspended, suspension lifted, password reset sent, account deleted |

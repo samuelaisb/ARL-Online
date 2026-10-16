@@ -11,6 +11,12 @@ export const EXPERT_LONG_TEXT_MAX = 4000;
 export const FOLLOW_UP_NOTE_MAX = 1000;
 
 /**
+ * Optional message the expert or staff add when they schedule a consultation or approve a
+ * reservation. It only goes into the confirmation emails; nothing stores it.
+ */
+export const CONFIRMATION_MESSAGE_MAX = 1000;
+
+/**
  * List text vs overlay text.
  * New items store them separately. Older bios keep a short first paragraph in
  * `body`, then a blank line, then the long text — that split is used until

@@ -40,6 +40,7 @@
   } from '../lib/availability-clock.js';
   import MeetingTimePicker, { parseMeetingTimeInput } from './MeetingTimePicker.svelte';
   import BusyLabel from './BusyLabel.svelte';
+  import ConfirmationMessage from './ConfirmationMessage.svelte';
   import Skeleton from './Skeleton.svelte';
 
   const STATUS_ORDER = { pending: 0, reserved: 1, cancelled: 2, refused: 3 };
@@ -99,6 +100,8 @@
   let asExpert = $state([]);
   let meetingTimes = $state({});
   let meetingTimeErrors = $state({});
+  /** Optional message to the member, sent with Schedule (per pending row). */
+  let scheduleMessages = $state({});
   const meetingPickers = {};
   // The running request: { id: rowKey(entry), kind: 'schedule' | 'cancel' | 'follow-up' }.
   // Every action button stays disabled while it runs; only the clicked one shows busy.
@@ -142,11 +145,13 @@
   }
 
   function followUpAllowedFor(entry, now) {
-    if (entry.role !== 'expert') {
+    // No member email: the member's account was deleted (admin Members), so there's no one
+    // to meet again. Same guard as AdminPanel; the server refuses it too.
+    const member = (entry.memberEmail ?? '').toLowerCase();
+    if (entry.role !== 'expert' || !member) {
       return false;
     }
 
-    const member = (entry.memberEmail ?? '').toLowerCase();
     const others = asExpert.filter(
       (other) => other.itemId === entry.itemId && (other.memberEmail ?? '').toLowerCase() === member,
     );
@@ -536,7 +541,12 @@
     let failed = false;
 
     try {
-      const { consultation, emailSent } = await scheduleConsultation(entry.id, meetingAt);
+      const { consultation, emailSent } = await scheduleConsultation(
+        entry.id,
+        meetingAt,
+        scheduleMessages[entry.id] ?? '',
+      );
+      scheduleMessages[entry.id] = '';
       replaceEntry(consultation);
       rememberStatuses();
       // Only claim the invitations went out when the server didn't say otherwise.
@@ -792,10 +802,13 @@
         </span>
       {/if}
 
-      {#if entry.role === 'expert' && entry.memberEmail}
+      {#if entry.role === 'expert'}
+        <!-- A deleted member's rows stay in the records without their email. -->
         <span class="consultation-field">
           <span class="consultation-field__label">{$t('account_consultations.member_label')}</span>
-          <span class="consultation-field__value">{entry.memberEmail}</span>
+          <span class="consultation-field__value">
+            {entry.memberEmail || $t('account_consultations.member_deleted')}
+          </span>
         </span>
       {/if}
       {#if entry.role === 'member' && entry.expertEmail}
@@ -836,6 +849,13 @@
           label={$t('account_consultations.meeting_time_label')}
           hint={$t('account_consultations.meeting_time_hint')}
         />
+        {#if entry.memberEmail}
+          <ConfirmationMessage
+            bind:value={scheduleMessages[entry.id]}
+            label={$t('account_consultations.schedule_message_label')}
+            hint={$t('account_consultations.schedule_message_hint')}
+          />
+        {/if}
       {/if}
 
       {#if followUpAllowed}

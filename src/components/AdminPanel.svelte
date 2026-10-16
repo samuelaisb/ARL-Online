@@ -15,7 +15,7 @@
     refuseReservation,
   } from '../lib/inventory.js';
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
-  import { addDays, canBookFollowUp, isConsultationHeld, isTuesday } from '../lib/reservation-rules.js';
+  import { canBookFollowUp, isConsultationHeld, isTuesday } from '../lib/reservation-rules.js';
   import { FOLLOW_UP_NOTE_MAX } from '../lib/expertise-fields.js';
   import { locale, t } from '../lib/i18n.js';
   import {
@@ -32,7 +32,11 @@
   } from '../lib/availability-clock.js';
   import MeetingTimePicker, { parseMeetingTimeInput } from './MeetingTimePicker.svelte';
   import MentorBrowser from './MentorBrowser.svelte';
+  import AdminAttention, { isOverdueRequest } from './AdminAttention.svelte';
+  import AdminUsers from './AdminUsers.svelte';
+  import AdminStats from './AdminStats.svelte';
   import BusyLabel from './BusyLabel.svelte';
+  import ConfirmationMessage from './ConfirmationMessage.svelte';
   import Skeleton from './Skeleton.svelte';
 
   // `loading` here is App's public inventory load (AdminPage passes it through).
@@ -63,6 +67,8 @@
   let showMentorList = $state(false);
   let showPendingList = $state(false);
   let showReservationList = $state(false);
+  let showUserList = $state(false);
+  let showStats = $state(false);
   let deletingReservationId = $state('');
   // { id, kind: 'approve' | 'refuse' } while a pending row's action runs: every Approve
   // and Refuse stays disabled, but only the clicked button shows busy.
@@ -72,6 +78,8 @@
   // Per-entry datetime-local values for approving expertise consultations.
   let meetingTimes = $state({});
   let meetingTimeErrors = $state({});
+  /** Optional message to the member, sent with Approve (per pending row). */
+  let approveMessages = $state({});
   const meetingPickers = {};
   // Follow-up booking on scheduled consultations in Edit Reservations (same per-row maps).
   let followUpOpenId = $state('');
@@ -100,7 +108,6 @@
   const ARRIVAL_DAY_FLAG = 'admin-arrival';
   const PICKUP_DAY_FLAG = 'admin-pickup-day';
   const PICKUP_DAY_DELAY_MS = 1000;
-  const CONSULTATION_WAIT_DAYS = 7;
   // D10: "all caught up" once the admin's own action empties a queue that held 3 or more.
   const QUEUE_CLEAR_DAY_FLAG = 'admin-queue-clear';
   const QUEUE_CLEAR_MIN_PEAK = 3;
@@ -175,6 +182,18 @@
         status,
       })),
     };
+  }
+
+  /**
+   * Members changed bookings server side (a delete cancels the member's active ones): refetch,
+   * then pass every item to App like the other admin actions do, so the catalogue's cards
+   * don't keep showing those bookings until a reload.
+   */
+  async function handleUsersChanged() {
+    await refreshAdminItems();
+    for (const item of adminItems) {
+      onItemUpdated?.(sanitizeItemForPublicSync(item));
+    }
   }
 
   function handleMentorUpdated(item) {
@@ -434,6 +453,37 @@
     (rowRefs[next?.id] ?? toggle)?.focus();
   }
 
+  /**
+   * A "Needs attention" tile: open the list it counts (Pending, or Edit Reservations for the
+   * week's consultations) and focus its toggle, scrolled to the top so the focus ring shows
+   * and the list starts under it (only the action grid's last buttons are in between).
+   * When another open list sits between them (Mentors, Remove items, Pending), the list's
+   * top would be out of view: scroll to the list and focus its first row instead.
+   */
+  async function openFromAttention(kind) {
+    const upcoming = kind === 'upcoming';
+    if (upcoming) {
+      showReservationList = true;
+    } else {
+      showPendingList = true;
+    }
+
+    await tick();
+    const toggle = upcoming ? reservationToggle : pendingToggle;
+    const list = document.getElementById(upcoming ? 'admin-reservation-list' : 'admin-pending-list');
+    toggle?.scrollIntoView({ block: 'start' });
+    if (!list || list.getBoundingClientRect().top < window.innerHeight * 0.75) {
+      toggle?.focus({ preventScroll: true });
+      return;
+    }
+
+    const entries = upcoming ? reservationEntries : pendingEntries;
+    const firstRow = (upcoming ? reservationRows : pendingRows)[entries[0]?.id];
+    list.scrollIntoView({ block: 'start' });
+    // No rows (skeleton or empty state): the toggle, scrolled back into view.
+    (firstRow ?? toggle)?.focus({ preventScroll: Boolean(firstRow) });
+  }
+
   // Approving a consultation or booking a follow-up creates the Zoom meeting and emails the
   // member and the mentor. A mentor with no email on file isn't invited (A3), and when the
   // response says the email didn't go out the bubble drops its email claim.
@@ -511,9 +561,9 @@
     const due = pending.filter(
       (entry) => entry.itemTag !== 'expertise' && compareDateKeys(entry.startDate, today) <= 0,
     ).length;
-    const waitingSince = addDays(today, -CONSULTATION_WAIT_DAYS);
+    // Same rule as the "Needs attention" Overdue count and the "Waiting a week+" chip.
     const waiting = pending.filter(
-      (entry) => entry.itemTag === 'expertise' && compareDateKeys(entry.startDate, waitingSince) <= 0,
+      (entry) => entry.itemTag === 'expertise' && isOverdueRequest(entry, today),
     ).length;
 
     let attention = null;
@@ -778,11 +828,11 @@
     let failed = false;
 
     try {
-      const result = await approveReservation(
-        entry.itemId,
-        entry.id,
-        meetingAt ? { meetingAt } : {},
-      );
+      const result = await approveReservation(entry.itemId, entry.id, {
+        meetingAt,
+        message: approveMessages[entry.id] ?? '',
+      });
+      approveMessages[entry.id] = '';
       applyItemUpdate(entry, result);
       if (isExpertise) {
         // Approving a consultation schedules it (A3): say "scheduled", not "approved".
@@ -890,6 +940,18 @@
 <section id="admin-panel" class="panel active" aria-labelledby="admin-panel-heading">
   <h2 id="admin-panel-heading" class="visually-hidden">{$t('admin.heading')}</h2>
 
+  <!-- Hidden after a failed first load: there is nothing to count (the lists show the error). -->
+  {#if hasLoaded || loading}
+    <AdminAttention
+      {pendingEntries}
+      {reservationEntries}
+      {todayKey}
+      {now}
+      {hasLoaded}
+      onopen={openFromAttention}
+    />
+  {/if}
+
   <div class="admin-actions">
     <button type="button" class="btn-primary" onclick={onAddItem}>
       {$t('admin.add_item')}
@@ -938,6 +1000,24 @@
       onclick={() => (showReservationList = !showReservationList)}
     >
       {$t('admin.edit_reservations')}
+    </button>
+    <button
+      type="button"
+      class="btn-primary"
+      aria-expanded={showUserList}
+      aria-controls="admin-users"
+      onclick={() => (showUserList = !showUserList)}
+    >
+      {$t('admin.users')}
+    </button>
+    <button
+      type="button"
+      class="btn-primary"
+      aria-expanded={showStats}
+      aria-controls="admin-stats"
+      onclick={() => (showStats = !showStats)}
+    >
+      {$t('admin.stats')}
     </button>
   </div>
 
@@ -1029,6 +1109,11 @@
                         {$t('admin.no_mentor_email')}
                       </span>
                     {/if}
+                    {#if isOverdueRequest(entry, todayKey)}
+                      <span class="consultation-status consultation-status--overdue">
+                        {$t('admin.waiting_week')}
+                      </span>
+                    {/if}
                   </span>
                   {#if entry.timeSlots}
                     <span class="consultation-field">
@@ -1073,6 +1158,13 @@
                     bind:error={meetingTimeErrors[entry.id]}
                     label={$t('admin.meeting_time_label')}
                     hint={$t('admin.meeting_time_hint')}
+                  />
+                {/if}
+                {#if entry.userEmail}
+                  <ConfirmationMessage
+                    bind:value={approveMessages[entry.id]}
+                    label={$t('admin.approve_message_label')}
+                    hint={$t('admin.approve_message_hint')}
                   />
                 {/if}
               </div>
@@ -1268,6 +1360,14 @@
         <p class="admin-status admin-status-error" role="alert">{reservationError}</p>
       {/if}
     </div>
+  {/if}
+
+  {#if showUserList}
+    <AdminUsers items={adminItems} itemsLoaded={hasLoaded} {now} {todayKey} onchanged={handleUsersChanged} />
+  {/if}
+
+  {#if showStats}
+    <AdminStats items={adminItems} {loading} {hasLoaded} {loadError} {now} {todayKey} />
   {/if}
 
   <!-- Always in the page, so each result is announced (Kimchi may be asleep). -->

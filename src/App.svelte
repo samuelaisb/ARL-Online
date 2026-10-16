@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { loadInventoryItems } from './lib/inventory.js';
+  import { recordItemView } from './lib/item-views.js';
   import { locale, t } from './lib/i18n.js';
   import {
     getItemRouteParams,
@@ -207,6 +208,10 @@
     itemDetailSeoItem = loadedItem;
     itemDetailNotFound = notFound;
     itemDetailSeoPath = loadedPath;
+    // Counts toward the admin Stats (once per item per tab session and day; staff skipped).
+    if (loadedItem?.id && !notFound) {
+      recordItemView(loadedItem.id);
+    }
   }
 
   function handleReserveSuccess(detail) {

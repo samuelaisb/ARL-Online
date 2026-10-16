@@ -4,6 +4,7 @@
   import {
     authReady,
     authRedirectError,
+    authRedirectErrorCode,
     authRedirectFromPasswordReset,
     initAuth,
     session,
@@ -40,17 +41,21 @@
         authModal?.open('reset', $t('auth.reset_link_expired'));
       }
     });
-    if (authRedirectError && !authRedirectFromPasswordReset) {
-      authModal?.open('login', formatRedirectError(authRedirectError));
+    if ((authRedirectError || authRedirectErrorCode) && !authRedirectFromPasswordReset) {
+      authModal?.open('login', formatRedirectError(authRedirectError, authRedirectErrorCode));
     }
   });
 
   /** Supabase redirect errors are English and technical; lead with a localized message. */
-  function formatRedirectError(message) {
+  function formatRedirectError(message, code) {
+    // A suspended member (admin Members) signing in with Google or Discord.
+    if (code === 'user_banned') {
+      return $t('auth.account_suspended');
+    }
     if (/email/i.test(message) && /provider/i.test(message)) {
       return $t('auth.oauth_no_email');
     }
-    return `${$t('auth.oauth_failed')} (${message})`;
+    return message ? `${$t('auth.oauth_failed')} (${message})` : $t('auth.oauth_failed');
   }
 
   export function openLogin() {

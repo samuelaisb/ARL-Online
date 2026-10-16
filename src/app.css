@@ -1706,10 +1706,134 @@ h1[tabindex='-1']:focus {
   color: var(--color-light);
 }
 
+/* Admin section toggles: a grid of Lemon buttons (2 columns on phones). The toggle of an open
+   section turns Dark with Lemon text. */
 .admin-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
   gap: 0.75rem;
+}
+
+.admin-actions .btn-primary {
+  width: auto;
+  /* A Needs attention tile scrolls the list's toggle to the top: keep its focus ring in view. */
+  scroll-margin-top: 0.75rem;
+}
+
+.admin-actions button[aria-expanded='true'] {
+  background: var(--color-dark);
+  color: var(--color-lemon);
+}
+
+.admin-actions button[aria-expanded='true']:hover:not(:disabled) {
+  background: #110f10;
+}
+
+/* Admin → Needs attention (AdminAttention.svelte): three count tiles above the toggles, each a
+   button that opens its list. Lemon while requests wait, Plum when some are late, white for the
+   week's consultations; a tile at zero is white and muted. No motion but the colour ease. */
+.admin-attention {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-attention > li {
+  display: flex;
+  min-width: 0;
+}
+
+.admin-attention__tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.875rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.admin-attention__tile:focus-visible {
+  outline: 2px solid var(--color-grape);
+  outline-offset: 2px;
+}
+
+.admin-attention__count {
+  grid-row: span 2;
+  min-width: 1.25ch;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-attention__label {
+  align-self: end;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.admin-attention__hint {
+  align-self: start;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.admin-attention__tile--plain .admin-attention__hint,
+.admin-attention__tile--zero {
+  color: var(--color-text-muted);
+}
+
+.admin-attention__tile--plain:hover,
+.admin-attention__tile--zero:hover {
+  background: #f0eeea;
+}
+
+.admin-attention__tile--lemon {
+  border-color: var(--color-lemon);
+  background: var(--color-lemon);
+  color: var(--color-dark);
+}
+
+.admin-attention__tile--lemon:hover {
+  border-color: #f5d000;
+  background: #f5d000;
+}
+
+.admin-attention__tile--plum {
+  border-color: var(--color-plum);
+  background: var(--color-plum);
+  color: var(--color-light);
+}
+
+.admin-attention__tile--plum:hover {
+  border-color: #2d0000;
+  background: #2d0000;
+}
+
+@media (max-width: 640px) {
+  .admin-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-attention {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .admin-attention__tile {
+    padding: 0.75rem 1rem;
+  }
 }
 
 .admin-subheading {
@@ -1810,6 +1934,26 @@ h1[tabindex='-1']:focus {
   width: 100%;
   min-height: 4.5rem;
   font-size: 0.9rem;
+}
+
+/* Optional message to the member under the time picker (or alone on item approvals). */
+.confirmation-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 28rem;
+  margin-top: 0.35rem;
+}
+
+/* 1rem keeps iOS from zooming on focus, as on the time picker. */
+.confirmation-message__input {
+  width: 100%;
+  min-height: 3.5rem;
+  font-size: 1rem;
+  line-height: 1.4;
 }
 
 .meeting-time-picker {
@@ -1979,6 +2123,312 @@ h1[tabindex='-1']:focus {
   white-space: nowrap;
 }
 
+/* Admin → Stats (AdminStats.svelte): Kimchi's line, four flat number tiles, the 30-day views
+   sparkline, then ranked lists (.admin-rank) under small caps titles. Lines and bars on white
+   are Mint: Lemon, Lavender and Pear fail 3:1 as marks. */
+.admin-stats {
+  margin-top: 1.5rem;
+}
+
+.admin-stats > .admin-subheading {
+  margin-top: 0;
+}
+
+.admin-stats__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-status-error + .admin-stats__body {
+  margin-top: 0.75rem;
+}
+
+.admin-stats__kimchi {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+}
+
+.admin-stats__kimchi-photo {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.admin-stats__kimchi-line {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+/* Plain notice (not Kimchi) while view counting is off: the migration path must wrap. */
+.admin-stats__notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-stats__tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-stat,
+.skeleton-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 1.125rem 1.125rem 1.25rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+}
+
+/* Same recipe as .consultation-field__label. */
+.admin-stat__label {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.admin-stat__value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.admin-stat__note {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.admin-stat__part {
+  white-space: nowrap;
+}
+
+/* Sub-block header (.home-section__header): small caps title, its control on the right. */
+.admin-stats__header {
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.admin-stats__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-stats__period {
+  margin-bottom: 0;
+}
+
+.admin-stats__period .inventory-filter__btn {
+  min-width: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.admin-stats__intro {
+  max-width: 44rem;
+  margin: -0.25rem 0 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.admin-stats__more {
+  margin-top: 0.75rem;
+}
+
+/* 30-day views: one Mint line over a faint Mint wash, stretched to the card's width
+   (the stroke stays 2px: vector-effect on the path). */
+.admin-spark {
+  padding: 1rem 1.125rem 0.875rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+}
+
+.admin-spark__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.admin-spark__peak {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.admin-spark__chart {
+  display: block;
+  width: 100%;
+  height: 5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-spark__area {
+  fill: var(--color-mint);
+  fill-opacity: 0.1;
+}
+
+.admin-spark__line {
+  fill: none;
+  stroke: var(--color-mint);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.admin-spark__axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.375rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+/* Ranked rows: rank chip (.home-step__number recipe), the title link over its category and a
+   Mint bar, the count on the right. Quiet items use the same rows without chip, bar or count. */
+.admin-rank__row {
+  gap: 0.75rem;
+}
+
+.admin-rank__number {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--color-lemon);
+  color: var(--color-dark);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.admin-rank__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.admin-rank__title {
+  /* Contains its visually hidden "(opens in a new tab)": cut off with a long title, it
+     would otherwise sit past the phone's edge and scroll the page sideways. */
+  position: relative;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-rank__title:hover {
+  color: var(--color-mint);
+  text-decoration: underline;
+}
+
+.admin-rank__title:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.admin-rank__meta {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.admin-rank__bar {
+  display: block;
+  height: 0.5rem;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(35, 31, 32, 0.06);
+}
+
+.admin-rank__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-mint);
+}
+
+.admin-rank__value {
+  flex-shrink: 0;
+  min-width: 3ch;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media (min-width: 900px) {
+  .admin-stats__tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-stats__tiles {
+    gap: 0.75rem;
+  }
+
+  .admin-stat,
+  .skeleton-stat {
+    padding: 0.875rem;
+  }
+
+  .admin-stat__value {
+    font-size: 1.625rem;
+  }
+
+  /* Two columns wrap some labels: every label keeps two lines so the numbers line up. */
+  .admin-stat__label {
+    min-height: 2.6em;
+  }
+
+  .admin-spark {
+    padding: 0.875rem;
+  }
+}
+
 .admin-mentor-list {
   margin-top: 1rem;
 }
@@ -2067,6 +2517,305 @@ h1[tabindex='-1']:focus {
 .admin-mentor-actions .btn-primary {
   width: auto;
   padding: 0.55rem 0.9rem;
+}
+
+/* Admin → Users (AdminUsers.svelte): a search and filter toolbar over .admin-item-list rows.
+   Each row is an initials avatar with the member's details, the actions to the right (they
+   wrap under the details when the row is narrow), then the open Bookings panel or the name
+   editor on their own line, lined up with the text past the avatar. */
+.admin-users {
+  margin-top: 1.5rem;
+}
+
+.admin-users__heading {
+  margin-top: 0;
+}
+
+/* Takes focus from script when the last row in view is deleted. */
+.admin-users__heading:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.admin-users__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-users__search {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.admin-users__search input {
+  margin-bottom: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* The segments size to their labels, so "With active bookings" stays on one line. */
+.admin-users__filter {
+  flex: 0 1 auto;
+  margin-bottom: 0;
+}
+
+.admin-users__filter .inventory-filter__btn {
+  flex: 1 1 auto;
+}
+
+.admin-users__row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+}
+
+.admin-users__summary {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.admin-users__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.admin-users__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
+}
+
+/* Names and emails wrap rather than cut off: the email is how staff tell members apart. */
+.admin-users__name .admin-item-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.admin-users__email,
+.admin-users__detail {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-users__detail {
+  font-size: 0.8125rem;
+}
+
+.admin-users__fact {
+  white-space: nowrap;
+}
+
+.admin-users__note {
+  font-style: italic;
+}
+
+/* Status pills beside the name, on .consultation-status: You keeps its Lavender. Each pill
+   wraps as a whole. */
+.admin-users__pill {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.admin-users__pill--admin {
+  background: var(--color-grape);
+  color: var(--color-light);
+}
+
+.admin-users__pill--mentor {
+  background: var(--color-lemon);
+}
+
+.admin-users__pill--suspended {
+  background: var(--color-plum);
+  color: var(--color-light);
+}
+
+.admin-users__pill--unconfirmed {
+  background: var(--color-border);
+}
+
+.admin-users__actions .admin-pending-actions {
+  justify-content: flex-end;
+}
+
+/* Five actions fit beside the details: compact, one height for every kind of button. */
+.admin-users__actions button {
+  padding: 0.45rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+/* Holds the name editor or the Bookings list on a line of its own (flex-basis 100%, no
+   max-width, so it never sits beside the details), indented past the avatar. */
+.admin-users__panel {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-left: 3.5rem;
+}
+
+.admin-users__editor {
+  max-width: 28rem;
+}
+
+.admin-users__bookings {
+  max-width: 40rem;
+  margin: 0;
+  list-style: none;
+}
+
+.admin-users__booking {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.admin-users__booking + .admin-users__booking {
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.admin-users__booking-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.admin-users__bookings-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.admin-users__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.admin-users__showing {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* Initials avatar: Dark on Lavender, Pear or Lemon, Light on Mint. */
+.admin-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: var(--color-lavender);
+  color: var(--color-dark);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+.admin-avatar--pear {
+  background: var(--color-pear);
+}
+
+.admin-avatar--mint {
+  background: var(--color-mint);
+  color: var(--color-light);
+}
+
+.admin-avatar--lemon {
+  background: var(--color-lemon);
+}
+
+/* The loading rows' avatar bone matches the avatar. */
+.admin-users .skeleton-row__avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+/* Tablets: every row puts its actions (and a row error) on a line under the details, lined
+   up with the name, whether it has three buttons or five. */
+@media (max-width: 960px) {
+  .admin-users__actions {
+    flex-basis: 100%;
+    align-items: flex-start;
+    padding-left: 3.5rem;
+  }
+
+  .admin-users__actions .admin-pending-actions {
+    justify-content: flex-start;
+  }
+
+  .admin-users__actions .consultation-row__error {
+    max-width: 100%;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-users__actions {
+    width: 100%;
+    padding-left: 0;
+  }
+
+  /* Phones: the actions wrap in lines that fill the row edge to edge, a little shorter, and
+     Suspend, Lift suspension and Delete turn to outlines (filled again on hover), so five
+     buttons per member don't stack into dark blocks. */
+  .admin-users__actions .admin-pending-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .admin-users__actions button {
+    flex: 1 1 auto;
+    padding-block: 0.4rem;
+  }
+
+  .admin-users__actions .btn-remove {
+    background: var(--color-bg);
+    color: var(--color-plum);
+  }
+
+  .admin-users__actions .btn-approve {
+    background: var(--color-bg);
+    color: var(--color-mint);
+  }
+
+  .admin-users__actions .btn-remove:hover:not(:disabled) {
+    background: var(--color-plum);
+    border-color: var(--color-plum);
+    color: var(--color-light);
+  }
+
+  /* Instead of the inventory filter's even phone grid, where "With active bookings" would
+     break over two lines: the segments wrap whole and each line fills the width. */
+  .inventory-filter.admin-users__filter {
+    display: flex;
+  }
+
+  .admin-users__search,
+  .admin-users__filter {
+    flex-basis: 100%;
+  }
+
+  .admin-users__panel {
+    padding-left: 0;
+  }
 }
 
 .btn-remove {
@@ -3320,6 +4069,11 @@ button:disabled {
   .inventory-filter {
     grid-template-columns: 1fr;
   }
+
+  /* Two short labels: they stay side by side. */
+  .inventory-filter.admin-stats__period {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Phones and small tablets: French account labels do not fit on one row with the logo and nav. */
@@ -3629,6 +4383,124 @@ button:disabled {
 
 .skeleton-row__actions .bone--pill:nth-child(2) {
   width: 4.75rem;
+}
+
+/* Skeleton tiles: flat cards inside the real tile grid (Skeleton's `listClass`), sized like
+   the tiles they stand in for: the attention tiles put the count beside two lines. */
+.skeleton-tiles {
+  padding: 0;
+  list-style: none;
+}
+
+.skeleton-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  min-width: 0;
+  padding: 1.125rem 1.125rem 1.25rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.75rem;
+  background: var(--color-bg);
+}
+
+.skeleton-tile__value {
+  width: 4.5rem;
+  height: 2.2rem;
+}
+
+.skeleton-tile__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.admin-attention .skeleton-tile {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+}
+
+.admin-attention .skeleton-tile__value {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.admin-attention .skeleton-tile__text {
+  gap: 0.7rem;
+}
+
+/* Skeleton stats (admin Stats): Kimchi's card and the stat tiles in their real containers
+   (.admin-stats__kimchi, .admin-stats__tiles; .skeleton-stat shares .admin-stat's box), each
+   bone as tall as the line it stands for: the label (two lines on phones, where the labels
+   wrap), the value, and a two-line note (the categories tile's note wraps, and the grid row
+   stretches every tile to it). */
+.skeleton-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Same size as .admin-stats__kimchi-photo. */
+.skeleton-stats__photo {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.skeleton-stats__line {
+  width: 60%;
+}
+
+.skeleton-stat__label,
+.skeleton-stat__note {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 0.7rem on a 1.3 line. */
+.skeleton-stat__label .bone {
+  width: 60%;
+  height: 0.7rem;
+  margin-block: 0.105rem;
+}
+
+.skeleton-stat__label .bone + .bone {
+  display: none;
+  width: 35%;
+}
+
+/* 2rem on a 1.1 line. */
+.skeleton-stat__value {
+  width: 4.5rem;
+  height: 2.2rem;
+}
+
+/* Two 0.8125rem lines on a 1.4 line height. */
+.skeleton-stat__note {
+  gap: 0.3875rem;
+  padding-block: 0.19375rem;
+}
+
+@media (max-width: 640px) {
+  .admin-attention .skeleton-tile {
+    padding: 0.75rem 1rem;
+  }
+
+  /* Kimchi's line wraps to two lines on phones. */
+  .skeleton-stats .admin-stats__kimchi {
+    min-height: 4.375rem;
+  }
+
+  .skeleton-stat__label .bone + .bone {
+    display: block;
+  }
+
+  .skeleton-stat__value {
+    height: 1.8rem;
+  }
 }
 
 /* Skeleton form (share expertise): intro, label + field pairs, submit. */

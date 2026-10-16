@@ -146,7 +146,13 @@
 
       close();
     } catch (error) {
-      showFormStatus(error.message || $t('auth.auth_failed'), 'error');
+      // Suspended accounts (admin Members): Supabase's own message is English and vague.
+      showFormStatus(
+        error?.code === 'user_banned'
+          ? $t('auth.account_suspended')
+          : error.message || $t('auth.auth_failed'),
+        'error',
+      );
     } finally {
       submitting = false;
     }

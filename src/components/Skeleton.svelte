@@ -10,6 +10,10 @@
   //   page   — page header (h1 + one line); use with `gate` for auth gates.
   //   detail — the .item-detail grid (media, title, badge, lines, calendar);
   //            `expert` = avatar, name, bio and consultation form.
+  //   tiles  — `count` flat cards (a value bone and two lines) in the real tile grid
+  //            named by `listClass` (.admin-attention).
+  //   stats  — admin Stats' top: Kimchi's card, then `count` tiles shaped like .admin-stat
+  //            (label, value, note) in .admin-stats__tiles.
   import LoadingStatus from './LoadingStatus.svelte';
 
   let {
@@ -21,6 +25,7 @@
     fields = 3,
     gate = false,
     expert = false,
+    listClass = '',
     label = '',
   } = $props();
 
@@ -74,6 +79,39 @@
       <span class="bone {index === fields - 1 ? 'bone--textarea' : 'bone--input'}"></span>
     {/each}
     <span class="bone skeleton-form__submit"></span>
+  </div>
+{:else if variant === 'tiles'}
+  <div class="skeleton" class:skeleton--gate={gate} aria-hidden="true">
+    <ul class="skeleton-tiles {listClass}">
+      {#each Array(count) as _, index (index)}
+        <li class="skeleton-tile skeleton-sheen">
+          <span class="bone skeleton-tile__value"></span>
+          <span class="skeleton-tile__text">
+            <span class="bone bone--line" style:width="70%"></span>
+            <span class="bone bone--line" style:width="45%"></span>
+          </span>
+        </li>
+      {/each}
+    </ul>
+  </div>
+{:else if variant === 'stats'}
+  <div class="skeleton skeleton-stats" class:skeleton--gate={gate} aria-hidden="true">
+    <div class="admin-stats__kimchi skeleton-sheen">
+      <span class="bone bone--circle skeleton-stats__photo"></span>
+      <span class="bone bone--line skeleton-stats__line"></span>
+    </div>
+    <ul class="admin-stats__tiles">
+      {#each Array(count) as _, index (index)}
+        <li class="skeleton-stat skeleton-sheen">
+          <span class="skeleton-stat__label"><span class="bone"></span><span class="bone"></span></span>
+          <span class="bone skeleton-stat__value"></span>
+          <span class="skeleton-stat__note">
+            <span class="bone bone--line" style:width="85%"></span>
+            <span class="bone bone--line" style:width="50%"></span>
+          </span>
+        </li>
+      {/each}
+    </ul>
   </div>
 {:else if variant === 'page'}
   <div class="skeleton skeleton-page" class:skeleton--gate={gate} aria-hidden="true">

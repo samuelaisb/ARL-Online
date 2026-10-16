@@ -204,6 +204,12 @@ export function normalizeInventoryItem(raw, { requireAll = true } = {}) {
   return { id, title, body, image, createdAt, reservations, tag, slug, expertEmail, longBody };
 }
 
+/** A timestamptz from PostgREST (`…+00:00`, microseconds) as `toISOString()`, or null. */
+function timestampToIso(value) {
+  const ms = typeof value === 'string' && value ? Date.parse(value) : NaN;
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
 function reservationRowToApi(row) {
   return {
     id: row.id,
@@ -220,6 +226,10 @@ function reservationRowToApi(row) {
     cancelledAt: row.cancelled_at ?? null,
     cancelledBy: row.cancelled_by ?? null,
     followUpOf: row.follow_up_of ?? null,
+    // When the request was made (009; the DB default fills it). Older rows are null.
+    createdAt: timestampToIso(row.created_at),
+    // When a deleted account's email was stripped from the row (009); null otherwise. Admin only.
+    anonymizedAt: timestampToIso(row.anonymized_at),
   };
 }
 
@@ -937,7 +947,8 @@ export async function approveReservation(itemId, reservationId) {
   });
 }
 
-function emailsMatch(a, b) {
+/** Same account email: trimmed, case-insensitive, and never two empty values. */
+export function emailsMatch(a, b) {
   return (
     typeof a === 'string' &&
     typeof b === 'string' &&
@@ -1270,8 +1281,9 @@ export async function cancelConsultation(itemId, reservationId, { cancelledBy })
  * Books a follow-up to a scheduled consultation whose meeting has started: a new row for the
  * same member and expert, written straight as `reserved` with its own Zoom meeting and
  * `follow_up_of` set to the source. The one-open-request rule still holds, ignoring the source
- * itself (so the follow-up can be booked at the end of the call). `createMeeting` and
- * `deleteMeeting` work as in scheduleConsultation.
+ * itself (so the follow-up can be booked at the end of the call). A source without a member
+ * email (the account was deleted) is `invalidStatus`, before any Zoom meeting is made.
+ * `createMeeting` and `deleteMeeting` work as in scheduleConsultation.
  */
 export async function bookFollowUpConsultation(
   itemId,
@@ -1292,8 +1304,15 @@ export async function bookFollowUpConsultation(
     }
 
     const sourceStart = Date.parse(source.meetingAt ?? '');
+    // A deleted member's held consultation stays as history with no email: no one to meet again.
+    const sourceMember = typeof source.userEmail === 'string' ? source.userEmail.trim() : '';
 
-    if (source.status !== 'reserved' || Number.isNaN(sourceStart) || sourceStart > Date.now()) {
+    if (
+      source.status !== 'reserved' ||
+      Number.isNaN(sourceStart) ||
+      sourceStart > Date.now() ||
+      !sourceMember
+    ) {
       return { invalidStatus: true };
     }
 
@@ -1550,6 +1569,120 @@ export async function cancelReservationForMember(reservationId, email, { today }
   });
 }
 
+/**
+ * Staff cancel an equipment, book or room reservation (deleting a member account): `pending`
+ * or `reserved` → `cancelled`, `cancelled_by: 'admin'`, even once the loan has started. The row
+ * stays as history. Consultations go through cancelConsultation instead (`isConsultation`).
+ */
+export async function cancelReservationByAdmin(itemId, reservationId) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item) {
+      return { notFound: true };
+    }
+
+    if (item.tag === 'expertise') {
+      return { isConsultation: true };
+    }
+
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+
+    if (existing.status !== 'pending' && existing.status !== 'reserved') {
+      return { invalidStatus: true };
+    }
+
+    const cancelledAt = new Date().toISOString();
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled', cancelled_at: cancelledAt, cancelled_by: 'admin' })
+      .eq('id', reservationId)
+      .eq('item_id', itemId);
+
+    if (error) {
+      throw new Error(error.message || 'Could not cancel reservation.');
+    }
+
+    const updated = { ...existing, status: 'cancelled', cancelledAt, cancelledBy: 'admin' };
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated, previousStatus: existing.status };
+  });
+}
+
+/**
+ * Strips a deleted account from its reservation history: every row whose `user_email` matches
+ * (case-insensitively, any tag, any status) keeps its item, dates and status but loses
+ * `user_email`, `time_slots` and `request_summary`, and gets `anonymized_at` (009) so Stats
+ * still counts it as a member's request. A later account with the same email then inherits
+ * nothing. Rows are updated by id, one item at a time under that item's lock.
+ */
+export async function anonymizeReservationsForEmail(email) {
+  const memberEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!memberEmail) {
+    return { count: 0 };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, item_id, user_email')
+    .ilike('user_email', literalLikePattern(memberEmail));
+
+  if (error) {
+    throw new Error(error.message || 'Could not load reservations.');
+  }
+
+  const idsByItem = new Map();
+
+  for (const row of data ?? []) {
+    // The ilike only narrows the query; ownership is decided here.
+    if (!emailsMatch(row.user_email, memberEmail)) {
+      continue;
+    }
+
+    const ids = idsByItem.get(row.item_id) ?? [];
+    ids.push(row.id);
+    idsByItem.set(row.item_id, ids);
+  }
+
+  let count = 0;
+  const anonymizedAt = new Date().toISOString();
+
+  for (const [itemId, ids] of idsByItem) {
+    count += await withItemLock(itemId, async () => {
+      const { data: updated, error: updateError } = await supabase
+        .from('reservations')
+        .update({
+          user_email: null,
+          time_slots: null,
+          request_summary: null,
+          anonymized_at: anonymizedAt,
+        })
+        .in('id', ids)
+        .eq('item_id', itemId)
+        .ilike('user_email', literalLikePattern(memberEmail))
+        .select('id');
+
+      if (updateError) {
+        throw new Error(updateError.message || 'Could not anonymize reservations.');
+      }
+
+      return updated?.length ?? 0;
+    });
+  }
+
+  return { count };
+}
+
 export async function refuseReservation(itemId, reservationId) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
@@ -1587,6 +1720,81 @@ export async function refuseReservation(itemId, reservationId) {
     item.reservations[reservationIndex] = updated;
     return { item, reservation: updated };
   });
+}
+
+const ITEM_VIEWS_SCHEMA_ERROR_CODES = new Set(['PGRST205', 'PGRST202', '42P01', '42883']);
+
+/**
+ * Migration 009 (item_views and its functions) isn't applied. Kept apart from
+ * isReservationSchemaError, whose "schema cache" match would name migrations 002–008.
+ */
+function isItemViewsSchemaError(error) {
+  return (
+    ITEM_VIEWS_SCHEMA_ERROR_CODES.has(error?.code) ||
+    /item_views|increment_item_view|item_view_summary|item_view_daily/i.test(error?.message ?? '')
+  );
+}
+
+/**
+ * Adds one view of the item on `day` (a libraryTodayKey()). Resolves `{ recorded }`,
+ * `{ unknownItem }` (no such item: the foreign key failed) or `{ schemaMissing }` (009 not
+ * applied); other Supabase errors throw.
+ */
+export async function recordItemView(itemId, day) {
+  const { error } = await getSupabaseAdmin().rpc('increment_item_view', {
+    p_item_id: itemId,
+    p_day: day,
+  });
+
+  if (!error) {
+    return { recorded: true };
+  }
+
+  // Checked first: the foreign-key message also names item_views.
+  if (error.code === '23503') {
+    return { unknownItem: true };
+  }
+
+  if (isItemViewsSchemaError(error)) {
+    return { schemaMissing: true };
+  }
+
+  throw new Error(error.message || 'Could not record the item view.');
+}
+
+/**
+ * View counts for /admin Stats: per item (all time, since `since30`, since `since60`), views per
+ * day since `dailySince` (days without views are left out), and the first day counted. All dates
+ * are `YYYY-MM-DD`. Resolves `{ available: false }` when migration 009 isn't applied.
+ */
+export async function loadItemViewStats({ since30, since60, dailySince }) {
+  const supabase = getSupabaseAdmin();
+  const [summary, daily, started] = await Promise.all([
+    supabase.rpc('item_view_summary', { p_since_30: since30, p_since_60: since60 }),
+    supabase.rpc('item_view_daily', { p_since: dailySince }),
+    supabase.rpc('item_views_started'),
+  ]);
+  const errors = [summary.error, daily.error, started.error].filter(Boolean);
+
+  if (errors.some(isItemViewsSchemaError)) {
+    return { available: false };
+  }
+
+  if (errors.length) {
+    throw new Error(errors[0].message || 'Could not load item views.');
+  }
+
+  return {
+    available: true,
+    items: (summary.data ?? []).map((row) => ({
+      itemId: row.item_id,
+      total: Number(row.views_total) || 0,
+      last30: Number(row.views_30) || 0,
+      last60: Number(row.views_60) || 0,
+    })),
+    daily: (daily.data ?? []).map((row) => ({ day: row.day, views: Number(row.views) || 0 })),
+    firstDay: typeof started.data === 'string' && started.data ? started.data : null,
+  };
 }
 
 /** Upsert all items from a legacy JSON array (manual migration script). */

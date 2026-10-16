@@ -43,8 +43,8 @@ export const PASSWORD_RESET_RETURN_PARAM = 'password_reset';
 /**
  * Reads the auth redirect that loaded this page, before the client initializes:
  * - strips an auth error Supabase appended to the URL (cancelled OAuth consent, provider
- *   without an email, expired email link); supabase-js leaves these in the URL and never
- *   surfaces them;
+ *   without an email, expired email link, suspended account); supabase-js leaves these in
+ *   the URL and never surfaces them;
  * - strips the password-reset flag;
  * - notes a recovery session in the hash (`type=recovery`), which supabase-js then reads.
  *   Its PASSWORD_RECOVERY event fires on a timer that can beat the auth listener;
@@ -52,7 +52,13 @@ export const PASSWORD_RESET_RETURN_PARAM = 'password_reset';
  *   the email is confirmed. supabase-js strips the hash once it has read the session.
  */
 function takeAuthCallback() {
-  const result = { error: '', passwordReset: false, recovery: false, signupConfirmed: false };
+  const result = {
+    error: '',
+    errorCode: '',
+    passwordReset: false,
+    recovery: false,
+    signupConfirmed: false,
+  };
   if (typeof window === 'undefined') return result;
   const url = new URL(window.location.href);
   const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
@@ -69,6 +75,7 @@ function takeAuthCallback() {
   if (source) {
     const message = source.get('error_description') || source.get('error') || '';
     result.error = message.replace(/\+/g, ' ');
+    result.errorCode = source.get('error_code') || '';
     for (const key of AUTH_ERROR_PARAMS) {
       source.delete(key);
     }
@@ -83,10 +90,16 @@ function takeAuthCallback() {
 
 const authCallback = supabaseConfigured
   ? takeAuthCallback()
-  : { error: '', passwordReset: false, recovery: false, signupConfirmed: false };
+  : { error: '', errorCode: '', passwordReset: false, recovery: false, signupConfirmed: false };
 
 /** Auth error message from the redirect that loaded this page, if any. */
 export const authCallbackError = authCallback.error;
+
+/**
+ * Supabase's `error_code` from that redirect ('' when none), e.g. `user_banned` when a
+ * suspended member signs in with Google or Discord.
+ */
+export const authCallbackErrorCode = authCallback.errorCode;
 
 /** True when this page was opened from a password-reset email (success or error). */
 export const authCallbackPasswordReset = authCallback.passwordReset;

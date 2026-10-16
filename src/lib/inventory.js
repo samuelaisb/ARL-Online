@@ -43,11 +43,29 @@ const ERROR_CODE_KEYS = {
   reservation_already_started: 'account_reservations.already_started',
   reservation_not_active: 'account_reservations.not_active',
   reservation_action_limit: 'account_reservations.rate_limited',
+  account_suspended: 'auth.account_suspended',
+  user_protected: 'admin.users_protected_error',
+  password_reset_unavailable: 'admin.users_reset_unavailable',
+  password_reset_limited: 'admin.users_reset_limited',
+  password_reset_failed: 'admin.users_reset_failed',
+  user_delete_incomplete: 'admin.users_delete_incomplete',
+  user_name_too_long: 'admin.users_name_too_long',
 };
 
 function apiErrorMessage(result, fallbackKey, code = result.code) {
   const key = ERROR_CODE_KEYS[code];
   return key ? translateKey(key) : result.error || translateKey(fallbackKey);
+}
+
+/**
+ * A failed admin call, translated like `apiErrorMessage`, with the server's `code` (and the
+ * mentor item's `title` for `user_is_mentor`) kept so the caller can word its own message.
+ */
+function adminApiError(result, fallbackKey) {
+  const error = new Error(apiErrorMessage(result, fallbackKey));
+  error.code = result.code;
+  error.title = result.title;
+  return error;
 }
 
 function imageWriteErrorMessage(response, result, fallbackKey) {
@@ -142,7 +160,7 @@ export async function fetchMentorProfile() {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('share_expertise.load_error'));
+    throw new Error(apiErrorMessage(result, 'share_expertise.load_error'));
   }
 
   return {
@@ -286,14 +304,18 @@ export async function deleteReservation(itemId, reservationId) {
   return result;
 }
 
-export async function approveReservation(itemId, reservationId, { meetingAt = null } = {}) {
+export async function approveReservation(itemId, reservationId, { meetingAt = null, message = '' } = {}) {
+  const body = {
+    ...(meetingAt ? { meetingAt } : {}),
+    ...(message.trim() ? { message: message.trim() } : {}),
+  };
   const response = await fetch(
     `/api/inventory/${encodeURIComponent(itemId)}/reservations/${encodeURIComponent(reservationId)}/approve`,
-    meetingAt
+    Object.keys(body).length > 0
       ? {
           method: 'POST',
           headers: await authHeaders(true),
-          body: JSON.stringify({ meetingAt }),
+          body: JSON.stringify(body),
         }
       : { method: 'POST', headers: await authHeaders() },
   );
@@ -315,7 +337,7 @@ export async function fetchAccountConsultations() {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('account_consultations.load_error'));
+    throw new Error(apiErrorMessage(result, 'account_consultations.load_error'));
   }
 
   return {
@@ -325,20 +347,21 @@ export async function fetchAccountConsultations() {
 }
 
 /**
- * Expert picks the meeting time; the server creates the Zoom meeting and emails both.
+ * Expert picks the meeting time; the server creates the Zoom meeting and emails both, with the
+ * optional `message` to the member in both emails.
  * Returns `{ consultation, emailSent }`: `emailSent` is false when an invitation didn't go out
  * (undefined if the server didn't say).
  */
-export async function scheduleConsultation(reservationId, meetingAt) {
+export async function scheduleConsultation(reservationId, meetingAt, message = '') {
   const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/schedule`, {
     method: 'POST',
     headers: await authHeaders(true),
-    body: JSON.stringify({ meetingAt }),
+    body: JSON.stringify({ meetingAt, message: message.trim() }),
   });
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('account_consultations.schedule_error'));
+    throw new Error(apiErrorMessage(result, 'account_consultations.schedule_error'));
   }
 
   return { consultation: result.consultation, emailSent: result.emailSent };
@@ -396,7 +419,7 @@ export async function fetchAccountReservations() {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.error || translateKey('account_reservations.load_error'));
+    throw new Error(apiErrorMessage(result, 'account_reservations.load_error'));
   }
 
   return Array.isArray(result.reservations) ? result.reservations : [];
@@ -427,6 +450,111 @@ export async function refuseReservation(itemId, reservationId) {
 
   if (!response.ok) {
     throw new Error(result.error || translateKey('admin.refuse_reservation_error'));
+  }
+
+  return result;
+}
+
+/**
+ * Admin Stats: item page views from the view beacon. `{ available: true, today, since30,
+ * since60, firstDay, items: [{ itemId, total, last30, last60 }], daily: [{ day, views }] }`
+ * (`daily` is the last 30 days, oldest first, zero-filled), or `{ available: false, today }`
+ * until migration 009 is applied.
+ */
+export async function fetchAdminItemViews() {
+  const response = await fetch('/api/admin/item-views', {
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw adminApiError(result, 'admin.stats_views_error');
+  }
+
+  return {
+    ...result,
+    available: result.available === true,
+    items: Array.isArray(result.items) ? result.items : [],
+    daily: Array.isArray(result.daily) ? result.daily : [],
+  };
+}
+
+/** Admin Members: every account, newest first (the server's AdminUser shape). */
+export async function fetchAdminUsers() {
+  const response = await fetch('/api/admin/users', {
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw adminApiError(result, 'admin.users_load_error');
+  }
+
+  return Array.isArray(result.users) ? result.users : [];
+}
+
+/** Sets (or, when empty, clears) a member's display name. Returns the updated user. */
+export async function updateAdminUser(id, { name }) {
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ name }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw adminApiError(result, 'admin.users_save_error');
+  }
+
+  return result.user;
+}
+
+/** Suspends a member's account, or lifts the suspension. Returns the updated user. */
+export async function setAdminUserSuspended(id, suspended) {
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}/suspend`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ suspended: Boolean(suspended) }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw adminApiError(result, 'admin.users_suspend_error');
+  }
+
+  return result.user;
+}
+
+/** Emails a member a link to set a new password. Returns `{ emailSent }`. */
+export async function sendAdminUserPasswordReset(id) {
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}/password-reset`, {
+    method: 'POST',
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw adminApiError(result, 'admin.users_reset_error');
+  }
+
+  return { emailSent: result.emailSent };
+}
+
+/**
+ * Deletes a member's account for good. The server cancels their active bookings first (and
+ * emails about them), then strips their email from past ones. Returns `{ success, cancelled,
+ * emailSent? }`: `emailSent` is left out when nothing needed an email. A mentor's account
+ * fails with `code: 'user_is_mentor'` and the item's `title` on the error.
+ */
+export async function deleteAdminUser(id) {
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw adminApiError(result, 'admin.users_delete_error');
   }
 
   return result;

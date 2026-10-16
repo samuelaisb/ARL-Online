@@ -9,6 +9,7 @@ import { categoryToPath, getItemRouteParams } from './item-routes.js';
 import {
   PASSWORD_RESET_RETURN_PARAM,
   authCallbackError,
+  authCallbackErrorCode,
   authCallbackPasswordReset,
   authCallbackRecovery,
   fetchAuthSettings,
@@ -59,6 +60,9 @@ export const oauthProviders = writable([]);
 
 /** Error message from an OAuth / email-link redirect that loaded this page ('' when none). */
 export const authRedirectError = authCallbackError;
+
+/** Supabase's `error_code` from that redirect ('' when none); `user_banned` = suspended. */
+export const authRedirectErrorCode = authCallbackErrorCode;
 
 /** True when that redirect came from a password-reset email (`initAuth` reports its failure). */
 export const authRedirectFromPasswordReset = authCallbackPasswordReset;
