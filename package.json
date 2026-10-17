@@ -15,7 +15,8 @@
     "cloud:build": "bash scripts/cloud-build.sh",
     "migrate:inventory": "node scripts/migrate-inventory-to-supabase.js",
     "backfill:slugs": "node scripts/backfill-slugs.js",
-    "zoom:check": "node scripts/zoom-check.js"
+    "zoom:check": "node scripts/zoom-check.js",
+    "place:stations": "node scripts/place-stations.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",

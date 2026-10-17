@@ -512,7 +512,9 @@
     "location_pending": "{area} · Adresse complète une fois la réservation confirmée",
     "get_directions": "Obtenir l'itinéraire",
     "directions_new_tab": "(ouvre Google Maps dans un nouvel onglet)",
-    "location_map_aria": "Carte : {address}"
+    "location_map_aria": "Carte : {address}",
+    "open_in_transit": "Ouvrir dans Transit",
+    "transit_new_tab": "(ouvre l'application Transit ou son site dans un nouvel onglet)"
   },
   "share_expertise": {
     "heading": "Partager votre expertise",
@@ -865,7 +867,12 @@
     "layers_aria": "Style de carte",
     "layer_streets": "Rues",
     "layer_transit": "Transport en commun",
-    "transit_unavailable": "La carte du transport en commun n'est pas disponible pour l'instant ; voici la carte des rues."
+    "transit_unavailable": "La carte du transport en commun n'est pas disponible pour l'instant ; voici la carte des rues.",
+    "elevator": "ascenseur",
+    "stations_label": "Métro et train :",
+    "bike_key": "Stations {system} : vélos / bornes libres, à {time}",
+    "bike_dock": "{name}, vélos : {bikes}, bornes libres : {docks}",
+    "bike_credit": "Vélos : {system}"
   },
   "not_found": {
     "heading": "Page introuvable",

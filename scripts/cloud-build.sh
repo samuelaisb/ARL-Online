@@ -98,6 +98,9 @@ fi
 if [[ -n "${EMAIL_FUNDER_LOGO_URL:-}" ]]; then
   RUNTIME_ENV+=",EMAIL_FUNDER_LOGO_URL=${EMAIL_FUNDER_LOGO_URL}"
 fi
+if [[ -n "${THUNDERFOREST_API_KEY:-}" ]]; then
+  RUNTIME_ENV+=",THUNDERFOREST_API_KEY=${THUNDERFOREST_API_KEY}"
+fi
 # ORG_ADDRESS contains a comma, which breaks gcloud's comma-separated --set-env-vars.
 # The office line defaults in src/lib/email-brand.js. Set ORG_ADDRESS on the Cloud Run
 # service directly if the office moves.

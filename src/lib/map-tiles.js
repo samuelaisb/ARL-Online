@@ -2,10 +2,12 @@
  * Map tile layers for LocationMap. server.js adds MAP_TILE_HOSTS to the CSP's img-src, so the
  * hosts here and the policy can't drift apart. Tiles load only after a visitor opens a map.
  *
- * - Streets: OpenStreetMap's standard tiles (free, no key; low traffic is fine with a visible
- *   credit and a Referer, https://operations.osmfoundation.org/policies/tiles/).
- * - Transit: ÖPNVKarte by memomaps.de (bus and metro lines with route numbers; free content on
- *   donated server capacity, so it's opt-in and falls back to Streets when its tiles fail).
+ * - Streets (default): OpenStreetMap's standard tiles (free, no key; low traffic is fine with a
+ *   visible credit and a Referer, https://operations.osmfoundation.org/policies/tiles/).
+ * - Transit: Thunderforest's Transport style (bus routes with their numbers, stops, stations).
+ *   Needs THUNDERFOREST_API_KEY (free Hobby plan, https://www.thunderforest.com/pricing/); the
+ *   key sits in the tile URL, so it is public. Without it the map offers Streets only.
+ *   Both carry our own stations and bike-share layer on top (LocationMap).
  */
 
 const NEW_TAB = 'target="_blank" rel="noopener noreferrer"';
@@ -21,18 +23,21 @@ export const MAP_TILE_LAYERS = Object.freeze({
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     maxZoom: 19,
     maxNativeZoom: 19,
+    needsKey: false,
     attribution: (locale) => osmCredit(locale),
   }),
   transit: Object.freeze({
-    url: 'https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png',
-    // The server has no z19 tiles (404), so the last zoom step upscales z18.
+    // {r} is "@2x" on high-density screens (Leaflet); {apikey} comes from the layer's options.
+    url: 'https://api.thunderforest.com/transport/{z}/{x}/{y}{r}.png?apikey={apikey}',
     maxZoom: 19,
-    maxNativeZoom: 18,
+    maxNativeZoom: 22,
+    needsKey: true,
+    // Thunderforest's terms ask for both credits.
     attribution: (locale) =>
-      `<a href="https://memomaps.de/" ${NEW_TAB}>memomaps.de</a> <a href="https://creativecommons.org/licenses/by-sa/2.0/" ${NEW_TAB}>CC BY-SA</a> · ${osmCredit(locale)}`,
+      `${locale === 'fr' ? 'Cartes' : 'Maps'} &copy; <a href="https://www.thunderforest.com/" ${NEW_TAB}>Thunderforest</a> · ${osmCredit(locale)}`,
   }),
 });
 
 export const MAP_TILE_HOSTS = Object.freeze(
-  Object.values(MAP_TILE_LAYERS).map((layer) => new URL(layer.url.replace(/\{[a-z]\}/g, '0')).origin),
+  Object.values(MAP_TILE_LAYERS).map((layer) => new URL(layer.url.replace(/\{[a-z]+\}/g, '0')).origin),
 );

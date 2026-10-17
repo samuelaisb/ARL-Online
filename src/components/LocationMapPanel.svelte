@@ -42,7 +42,7 @@
   import { t } from '../lib/i18n.js';
 
   /** The opened map (see LocationMap for the props). `id` is what the toggle's aria-controls names. */
-  let { id, latitude, longitude, radiusMetres = 0, label, caption = '' } = $props();
+  let { id, latitude, longitude, radiusMetres = 0, label, caption = '', stations = [] } = $props();
 
   let panel = $state();
   let loading = $state(loadLocationMap());
@@ -61,7 +61,7 @@
       <span class="location-map__loading-text">{$t('map.loading')}</span>
     </div>
   {:then { default: LocationMap }}
-    <LocationMap {latitude} {longitude} {radiusMetres} {label} {caption} />
+    <LocationMap {latitude} {longitude} {radiusMetres} {label} {caption} {stations} />
   {:catch}
     <div class="location-map__error">
       <p class="status error" role="alert">{$t('map.load_error')}</p>

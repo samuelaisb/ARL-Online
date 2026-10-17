@@ -512,7 +512,9 @@
     "location_pending": "{area} · Full address once confirmed",
     "get_directions": "Get directions",
     "directions_new_tab": "(opens Google Maps in a new tab)",
-    "location_map_aria": "Map of {address}"
+    "location_map_aria": "Map of {address}",
+    "open_in_transit": "Open in Transit",
+    "transit_new_tab": "(opens the Transit app or its website in a new tab)"
   },
   "share_expertise": {
     "heading": "Share Expertise",
@@ -865,7 +867,12 @@
     "layers_aria": "Map style",
     "layer_streets": "Streets",
     "layer_transit": "Transit",
-    "transit_unavailable": "The transit map isn't available right now, so this is the street map."
+    "transit_unavailable": "The transit map isn't available right now, so this is the street map.",
+    "elevator": "elevator",
+    "stations_label": "Métro and train:",
+    "bike_key": "{system} docks: bikes / free docks, as of {time}",
+    "bike_dock": "{name}, bikes: {bikes}, free docks: {docks}",
+    "bike_credit": "Bikes: {system}"
   },
   "not_found": {
     "heading": "Page not found",

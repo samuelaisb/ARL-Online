@@ -4,7 +4,12 @@
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
   import { itemToPath, navigate, navigateToItem } from '../lib/router.js';
   import { locale, t } from '../lib/i18n.js';
-  import { locationAddressLine, locationAreaLine, locationTransitNote } from '../lib/item-location.js';
+  import {
+    locationAddressLine,
+    locationAreaLine,
+    locationTransitNote,
+    transitAppUrl,
+  } from '../lib/item-location.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import {
     availabilityNow,
@@ -185,6 +190,11 @@
           {$t('account_reservations.get_directions')}<span class="visually-hidden"> {$t('account_reservations.directions_new_tab')}</span>
         </a>
       {/if}
+      {#if transitAppUrl(place, $locale)}
+        <a class="consultation-row__zoom" href={transitAppUrl(place, $locale)} target="_blank" rel="noopener noreferrer">
+          {$t('account_reservations.open_in_transit')}<span class="visually-hidden"> {$t('account_reservations.transit_new_tab')}</span>
+        </a>
+      {/if}
       {#if typeof place.latitude === 'number' && typeof place.longitude === 'number'}
         <button
           type="button"
@@ -202,6 +212,7 @@
         id={mapId}
         latitude={place.latitude}
         longitude={place.longitude}
+        stations={place.stations ?? []}
         label={$t('account_reservations.location_map_aria', { address })}
       />
     {/if}

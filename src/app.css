@@ -1671,6 +1671,220 @@ h1[tabindex='-1']:focus {
   margin: 0;
 }
 
+/* The stations and bike-share layer (src/lib/transit-overlay.js). Markers are DOM nodes inside
+   Leaflet's divIcons ('map-marker' replaces Leaflet's white-box default class). */
+.location-map .map-marker {
+  background: none;
+  border: none;
+}
+
+.map-station,
+.map-dock {
+  position: relative;
+  display: block;
+}
+
+.map-station {
+  width: 22px;
+  height: 22px;
+}
+
+.map-station__disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(35, 31, 32, 0.35);
+}
+
+.map-station__label,
+.map-dock__count,
+.map-edge {
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+
+.map-station__label {
+  position: absolute;
+  top: 50%;
+  left: 26px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 3px rgba(35, 31, 32, 0.25);
+  color: var(--color-dark);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  transform: translateY(-50%);
+}
+
+.map-station__lines {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.map-station__lines:empty {
+  display: none;
+}
+
+.map-station__line {
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-station__distance {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* Edge chips: above the markers, under Leaflet's controls (z-index 800 and up). */
+.map-edges {
+  position: absolute;
+  inset: 0;
+  z-index: 700;
+  pointer-events: none;
+}
+
+.map-edge {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 1px 4px rgba(35, 31, 32, 0.3);
+  color: var(--color-dark);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.map-edge .map-station__disc {
+  width: 18px;
+  height: 18px;
+  border-width: 1.5px;
+}
+
+.map-edge__arrow {
+  display: inline-block;
+  color: var(--color-mint);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.map-dock {
+  width: 20px;
+  height: 20px;
+}
+
+.map-dock__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-mint);
+  border-radius: 50%;
+  background: var(--color-lemon);
+  color: var(--color-mint);
+}
+
+.map-dock__count {
+  position: absolute;
+  top: 50%;
+  left: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--color-mint);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--color-mint);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  transform: translateY(-50%);
+}
+
+.map-dock__sep {
+  margin: 0 1px;
+  opacity: 0.55;
+}
+
+.map-dock--empty .map-dock__icon {
+  border-color: #8a8385;
+  background: #e8e5e0;
+  color: #5c5658;
+}
+
+/* Hidden by the layout: a station that doesn't fit (it gets an edge chip), a dock or count
+   that would cover something else. */
+.map-station[hidden],
+.map-dock[hidden],
+.map-dock__count[hidden] {
+  display: none;
+}
+
+/* At the map's right edge the label goes to the disc's left. */
+.map-station--left .map-station__label {
+  right: 26px;
+  left: auto;
+}
+
+/* No room for the full chip: arrow, disc, line and distance only. */
+.map-edge--compact .map-station__name {
+  display: none;
+}
+
+/* Under the map: what the markers mean, in text (the markers themselves are decorative). */
+.location-map__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.location-map__legend-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.location-map__key {
+  flex: none;
+  box-sizing: border-box;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  transform: translateY(0.1rem);
+}
+
+.location-map__key--station {
+  border: 2px solid #fff;
+  background: var(--color-dark);
+  box-shadow: 0 0 0 1px var(--color-border-strong);
+}
+
+.location-map__key--bike {
+  border: 1.5px solid var(--color-mint);
+  background: var(--color-lemon);
+}
+
 .inventory-card__title-link {
   color: inherit;
   text-decoration: none;

@@ -84,6 +84,7 @@ import {
   toPublicItem,
 } from './src/lib/item-location.js';
 import { isItemDetailRoute } from './src/lib/item-routes.js';
+import { bikeShareNear } from './src/lib/bike-share.js';
 import { MAP_TILE_HOSTS } from './src/lib/map-tiles.js';
 import { injectSeoIntoHtml, resolveRequestLocale } from './src/lib/seo-server.js';
 import { normalizeSeoPath, PRODUCTION_SITE_ORIGIN } from './src/lib/seo.js';
@@ -1674,6 +1675,8 @@ function getPublicClientConfig() {
       process.env.VITE_SUPABASE_ANON_KEY ||
       '',
     SITE_URL: (process.env.SITE_URL || process.env.VITE_SITE_URL || '').replace(/\/$/, ''),
+    // Public by design: it sits in every Transit map tile URL (src/lib/map-tiles.js).
+    THUNDERFOREST_API_KEY: process.env.THUNDERFOREST_API_KEY?.trim() || '',
   };
 }
 
@@ -1731,7 +1734,7 @@ if (PLAUSIBLE_DOMAIN) {
 scriptSrc.push('https://*.googletagmanager.com');
 
 // GA can fall back to image beacons when sendBeacon/fetch is unavailable. Map tiles are <img>s
-// (OpenStreetMap and ÖPNVKarte, src/lib/map-tiles.js), loaded only once someone opens a map.
+// (OpenStreetMap and Thunderforest, src/lib/map-tiles.js), loaded only once someone opens a map.
 const imgSrc = [
   "'self'",
   'data:',
@@ -2344,6 +2347,32 @@ app.get('/api/inventory', async (_req, res) => {
     console.error('Failed to read inventory:', error);
     res.status(500).json({ error: 'Could not load inventory.' });
   }
+});
+
+const bikeShareLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many map requests. Please try again later.', code: 'bike_share_limit' },
+});
+
+// Live bike-share docks near a point, for the item and booking maps (src/lib/bike-share.js).
+// Public: the item window sends its approximate area's centre, never the address. Always 200
+// with `{ system, updatedAt, docks }`; a feed that fails gives no docks.
+app.get('/api/bike-share', bikeShareLimiter, async (req, res) => {
+  const decimal = (value) => (typeof value === 'string' && /^-?\d{1,3}(\.\d{1,10})?$/.test(value) ? Number(value) : NaN);
+  const lat = decimal(req.query.lat);
+  const lon = decimal(req.query.lon);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+    return res.status(400).json({ error: 'lat and lon are required.', code: 'bike_share_invalid' });
+  }
+
+  const result = await bikeShareNear(lat, lon);
+  res.set('X-Robots-Tag', PUBLIC_INVENTORY_ROBOTS_TAG);
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json(result);
 });
 
 // View counter for /admin Stats. Every outcome is a bare 204, so the client never retries or

@@ -529,6 +529,7 @@
                     latitude={location.area.latitude}
                     longitude={location.area.longitude}
                     radiusMetres={location.area.radiusMetres}
+                    stations={location.stations ?? []}
                     label={$t('item_detail.location_map_aria', { area: locationArea })}
                     caption={$t('item_detail.location_map_caption')}
                   />

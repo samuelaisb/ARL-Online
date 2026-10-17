@@ -12,11 +12,20 @@
 
 export const OFFICE_LOCATION_ID = 'aisb-office';
 
+// The office's transit note (migration 011 writes the same text to its row).
+export const OFFICE_TRANSIT_NOTE_EN =
+  'Bus 55 (and night bus 363) stops about 60 m away at Saint-Laurent / Maguire going north; going south, it stops at Saint-Urbain / Fairmount, about a 5-minute walk. Bus 119 stops at Casgrain / Maguire (westbound) and at Saint-Viateur / Saint-Laurent (eastbound, to Laurier metro). Laurier metro (Orange line) is about a 12-minute walk and has no elevator; Rosemont (Orange line, with elevators) is about 15 minutes away.';
+export const OFFICE_TRANSIT_NOTE_FR =
+  "L'autobus 55 (et l'autobus de nuit 363) s'arrête à environ 60 m, à Saint-Laurent / Maguire, vers le nord ; vers le sud, il s'arrête à Saint-Urbain / Fairmount, à environ 5 minutes de marche. L'autobus 119 s'arrête à Casgrain / Maguire (vers l'ouest) et à Saint-Viateur / Saint-Laurent (vers l'est, jusqu'au métro Laurier). Le métro Laurier (ligne orange) est à environ 12 minutes de marche et n'a pas d'ascenseur ; la station Rosemont (ligne orange, avec ascenseurs) est à environ 15 minutes.";
+
 /**
- * Built-in copy of migration 010's office row. Used for every equipment, book and room item
- * until 010 is applied, and when the office row can't be loaded.
+ * Built-in copy of the office row (migrations 010 and 011). Used for every equipment, book and
+ * room item until 010 is applied, and when the office row can't be loaded; its stations also
+ * stand in until 011 is applied (the row's own transit note is shown until 011 replaces it).
  * Coordinates: the OpenStreetMap address point for 5310 (Geocoder.ca agrees within a metre).
- * Transit: OpenStreetMap stops and stations, straight-line distances (2026-10-16).
+ * Transit note: STM stops and routes after the May 2026 network redesign, walking times from
+ * OpenStreetMap routing (checked 2026-10-16). Stations: `npm run place:stations` (OpenStreetMap,
+ * 2026-10-17), with Mont-Royal's elevator taken from the STM's list (OpenStreetMap says none).
  */
 export const OFFICE_LOCATION = Object.freeze({
   id: OFFICE_LOCATION_ID,
@@ -28,10 +37,14 @@ export const OFFICE_LOCATION = Object.freeze({
   postalCode: 'H2T 1S1',
   latitude: 45.52448,
   longitude: -73.59644,
-  transitNoteEn:
-    'Bus 55 stops about 60 m away at Saint-Laurent / Maguire (northbound) and about 200 m away at Saint-Urbain / Fairmount (southbound). Laurier metro station (Orange line) is about 750 m away.',
-  transitNoteFr:
-    "L'autobus 55 s'arrête à environ 60 m, à Saint-Laurent / Maguire (vers le nord), et à environ 200 m, à Saint-Urbain / Fairmount (vers le sud). La station de métro Laurier (ligne orange) est à environ 750 m.",
+  transitNoteEn: OFFICE_TRANSIT_NOTE_EN,
+  transitNoteFr: OFFICE_TRANSIT_NOTE_FR,
+  nearbyStations: Object.freeze([
+    { name: 'Laurier', lat: 45.52808, lon: -73.588378, lines: [{ ref: '2', name: 'Ligne orange', colour: '#D06D07' }], wheelchair: false },
+    { name: 'Rosemont', lat: 45.531496, lon: -73.597338, lines: [{ ref: '2', name: 'Ligne orange', colour: '#D06D07' }], wheelchair: true },
+    { name: 'Mont-Royal', lat: 45.524599, lon: -73.581647, lines: [{ ref: '2', name: 'Ligne orange', colour: '#D06D07' }], wheelchair: true },
+    { name: 'Beaubien', lat: 45.535175, lon: -73.604959, lines: [{ ref: '2', name: 'Ligne orange', colour: '#D06D07' }], wheelchair: null },
+  ]),
 });
 
 /** The public map circles this area around the rounded point instead of pinning the address. */
@@ -53,6 +66,58 @@ export const PROVINCE_NAMES_FR = Object.freeze({
   NT: 'Territoires du Nord-Ouest',
   NU: 'Nunavut',
 });
+
+const MAX_STATIONS = 6;
+const MAX_LINES = 6;
+const HEX_COLOUR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function shortText(value, max) {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+/**
+ * Rapid-transit stations near a place (item_locations.nearby_stations, from OpenStreetMap):
+ * `[{ name, lat, lon, lines: [{ ref, name, colour }], wheelchair }]`. Anything malformed is
+ * dropped; a colour must be a hex colour (it ends up in a style), else ''. Public data.
+ */
+export function normalizeStations(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const stations = [];
+  for (const raw of value) {
+    const name = shortText(raw?.name, 80);
+    const lat = coordinate(raw?.lat, 90);
+    const lon = coordinate(raw?.lon, 180);
+    if (!name || lat === null || lon === null) {
+      continue;
+    }
+
+    const lines = (Array.isArray(raw.lines) ? raw.lines : [])
+      .map((line) => ({
+        ref: shortText(line?.ref, 12),
+        name: shortText(line?.name, 60),
+        colour: typeof line?.colour === 'string' && HEX_COLOUR_RE.test(line.colour) ? line.colour : '',
+      }))
+      .filter((line) => line.ref || line.name)
+      .slice(0, MAX_LINES);
+
+    stations.push({
+      name,
+      lat,
+      lon,
+      lines,
+      wheelchair: raw.wheelchair === true ? true : raw.wheelchair === false ? false : null,
+    });
+
+    if (stations.length === MAX_STATIONS) {
+      break;
+    }
+  }
+
+  return stations;
+}
 
 /** True for the tags that have a physical place (everything but expertise). */
 export function hasPhysicalLocation(tag) {
@@ -90,6 +155,11 @@ export function locationRowToApi(row) {
     longitude: coordinate(row.longitude, 180),
     transitNoteEn: text(row.transit_note_en) || null,
     transitNoteFr: text(row.transit_note_fr) || null,
+    // Migration 011. Undefined before it, when the office falls back to OFFICE_LOCATION's list.
+    nearbyStations:
+      row.nearby_stations === undefined && text(row.id) === OFFICE_LOCATION_ID
+        ? OFFICE_LOCATION.nearbyStations
+        : normalizeStations(row.nearby_stations),
   };
 
   if (!location.id || !location.streetAddress || !location.city || !location.province || !location.postalCode) {
@@ -182,7 +252,7 @@ export function publicLocation(location, { withArea = true } = {}) {
     city: text(location.city),
     province: text(location.province),
     postalCode: text(location.postalCode),
-    ...(withArea ? { area: publicArea(location) } : {}),
+    ...(withArea ? { area: publicArea(location), stations: normalizeStations(location.nearbyStations) } : {}),
   };
 }
 
@@ -205,8 +275,26 @@ export function memberLocation(location) {
       en: location.transitNoteEn ?? null,
       fr: location.transitNoteFr ?? null,
     },
+    stations: normalizeStations(location.nearbyStations),
     directionsUrl: directionsUrl(location),
   };
+}
+
+/**
+ * Transit's trip planner (the Montréal-made Transit app, most Canadian cities), with the place
+ * as the destination; opens the app on phones that have it. Its web parameters aren't
+ * documented: if the link stops landing on the place, drop it.
+ */
+export function transitAppUrl(location, locale = 'en') {
+  if (typeof location?.latitude !== 'number' || typeof location?.longitude !== 'number') {
+    return '';
+  }
+
+  const params = new URLSearchParams({
+    destination: `${location.latitude},${location.longitude}`,
+    destination_search: locationAddressLine(location, locale),
+  });
+  return `https://transitapp.com/${locale === 'fr' ? 'fr' : 'en'}/trip?${params}`;
 }
 
 /**
