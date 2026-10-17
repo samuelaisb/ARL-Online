@@ -99,7 +99,7 @@
     "daily_limit": "Vous avez atteint la limite de demandes de votre compte pour aujourd'hui. Veuillez réessayer demain.",
     "pending_limit": "Vous avez déjà trop de demandes en attente d'une réponse. Veuillez attendre qu'on réponde à l'une d'elles avant d'en envoyer une autre.",
     "rate_limited": "Trop de demandes en peu de temps. Veuillez patienter quelques minutes, puis réessayer.",
-    "pickup_dropoff_hours": "Le ramassage et le retour se font entre 10 h et 17 h le mardi.",
+    "pickup_dropoff_hours": "La cueillette et le retour se font le mardi, entre 10 h et 17 h.",
     "select_tuesday_equipment": "Choisissez un mardi pour réserver un bloc d'une semaine.",
     "select_tuesday_books": "Choisissez un mardi pour réserver un bloc d'un mois.",
     "block_unavailable": "Ce bloc chevauche une réservation existante."
@@ -507,7 +507,12 @@
     "not_active": "Cette réservation n'est plus active. Rechargez la page pour voir son statut actuel.",
     "rate_limited": "Trop de modifications en peu de temps. Veuillez réessayer plus tard.",
     "withdrawn_status": "Demande retirée.",
-    "cancelled_status": "Réservation annulée. L'équipe de la bibliothèque a été avisée."
+    "cancelled_status": "Réservation annulée. L'équipe de la bibliothèque a été avisée.",
+    "location_label": "Adresse",
+    "location_pending": "{area} · Adresse complète une fois la réservation confirmée",
+    "get_directions": "Obtenir l'itinéraire",
+    "directions_new_tab": "(ouvre Google Maps dans un nouvel onglet)",
+    "location_map_aria": "Carte : {address}"
   },
   "share_expertise": {
     "heading": "Partager votre expertise",
@@ -570,7 +575,8 @@
     "save_error": "Impossible d'enregistrer l'article.",
     "process_image_error": "Impossible de traiter l'image.",
     "image_too_large": "Cette photo est trop lourde. Veuillez choisir une image plus petite.",
-    "image_invalid": "Ce format de photo n'est pas pris en charge. Veuillez choisir une image JPEG, PNG, WebP ou GIF."
+    "image_invalid": "Ce format de photo n'est pas pris en charge. Veuillez choisir une image JPEG, PNG, WebP ou GIF.",
+    "location_hint": "Lieu : {address}. Les visiteurs ne voient que {area} jusqu'à ce que leur réservation soit confirmée."
   },
   "how_this_works": {
     "heading": "Comment ça marche",
@@ -840,7 +846,26 @@
     "loading": "On va chercher les détails…",
     "try_again": "Réessayer",
     "reserve": "Réserver l'inventaire",
-    "back_to_category": "Retour à la catégorie"
+    "back_to_category": "Retour à la catégorie",
+    "location_heading_pickup": "Lieu de cueillette",
+    "location_heading_room": "Lieu",
+    "location_full_address_note": "Vous recevrez l'adresse complète une fois votre réservation confirmée.",
+    "location_map_caption": "Secteur approximatif",
+    "location_map_aria": "Carte du secteur approximatif autour de {area}",
+    "meetings_online": "Rencontres offertes en ligne"
+  },
+  "map": {
+    "show": "Afficher la carte",
+    "hide": "Masquer la carte",
+    "loading": "On déplie la carte…",
+    "load_error": "Impossible de charger la carte.",
+    "zoom_in": "Zoom avant",
+    "zoom_out": "Zoom arrière",
+    "keyboard_hint": "Utilisez les flèches pour déplacer la carte, et + ou − pour zoomer.",
+    "layers_aria": "Style de carte",
+    "layer_streets": "Rues",
+    "layer_transit": "Transport en commun",
+    "transit_unavailable": "La carte du transport en commun n'est pas disponible pour l'instant ; voici la carte des rues."
   },
   "not_found": {
     "heading": "Page introuvable",

@@ -4,6 +4,7 @@
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
   import { itemToPath, navigate, navigateToItem } from '../lib/router.js';
   import { locale, t } from '../lib/i18n.js';
+  import { locationAddressLine, locationAreaLine, locationTransitNote } from '../lib/item-location.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import {
     availabilityNow,
@@ -11,6 +12,7 @@
     unsubscribeAvailabilityClock,
   } from '../lib/availability-clock.js';
   import BusyLabel from './BusyLabel.svelte';
+  import LocationMapPanel from './LocationMapPanel.svelte';
   import Skeleton from './Skeleton.svelte';
 
   let loading = $state(true);
@@ -22,6 +24,8 @@
   let showPast = $state(false);
   let pastToggle = $state();
   let cancelButtons = $state({});
+  // Reservation id → its map is open.
+  let openMaps = $state({});
   // Announced even when Kimchi is asleep (its bubbles are the only other confirmation).
   let statusMessage = $state('');
 
@@ -160,6 +164,50 @@
   const lists = $derived(splitEntries(reservations, todayKey));
 </script>
 
+{#snippet reservationLocation(entry, place)}
+  {@const address = locationAddressLine(place, $locale)}
+  {@const transitNote = locationTransitNote(place.transitNote, $locale)}
+  {@const mapId = `reservation-map-${entry.id}`}
+  <div class="reservation-location">
+    <span class="consultation-field">
+      <span class="consultation-field__label">{$t('account_reservations.location_label')}</span>
+      <span class="consultation-field__value">{place.name ? `${place.name}, ${address}` : address}</span>
+    </span>
+    {#if transitNote}
+      <span class="admin-consultation-detail">{transitNote}</span>
+    {/if}
+    {#if entry.tag !== 'rooms'}
+      <span class="admin-consultation-detail">{$t('calendar.pickup_dropoff_hours')}</span>
+    {/if}
+    <span class="reservation-location__links">
+      {#if place.directionsUrl}
+        <a class="consultation-row__zoom" href={place.directionsUrl} target="_blank" rel="noopener noreferrer">
+          {$t('account_reservations.get_directions')}<span class="visually-hidden"> {$t('account_reservations.directions_new_tab')}</span>
+        </a>
+      {/if}
+      {#if typeof place.latitude === 'number' && typeof place.longitude === 'number'}
+        <button
+          type="button"
+          class="link-btn reservation-location__toggle"
+          aria-expanded={Boolean(openMaps[entry.id])}
+          aria-controls={mapId}
+          onclick={() => (openMaps = { ...openMaps, [entry.id]: !openMaps[entry.id] })}
+        >
+          {$t(openMaps[entry.id] ? 'map.hide' : 'map.show')}
+        </button>
+      {/if}
+    </span>
+    {#if openMaps[entry.id] && typeof place.latitude === 'number' && typeof place.longitude === 'number'}
+      <LocationMapPanel
+        id={mapId}
+        latitude={place.latitude}
+        longitude={place.longitude}
+        label={$t('account_reservations.location_map_aria', { address })}
+      />
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet reservationRow(entry)}
   {@const statusKey = hasEnded(entry, todayKey) ? 'ended' : entry.status}
   {@const cancellable = canCancel(entry, todayKey)}
@@ -178,8 +226,17 @@
       </span>
       {#if entry.status === 'pending'}
         <span class="admin-consultation-detail">{$t('account_reservations.pending_hint')}</span>
+        {#if entry.location}
+          <span class="admin-consultation-detail">
+            {$t('account_reservations.location_pending', { area: locationAreaLine(entry.location, $locale) })}
+          </span>
+        {/if}
       {:else if statusKey === 'reserved' && !cancellable}
         <span class="admin-consultation-detail">{$t('account_reservations.started_hint')}</span>
+      {/if}
+      <!-- The server sends the full address only for a confirmed reservation that hasn't ended. -->
+      {#if statusKey === 'reserved' && entry.location?.streetAddress}
+        {@render reservationLocation(entry, entry.location)}
       {/if}
     </div>
 

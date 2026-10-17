@@ -4,7 +4,8 @@
   import { hasAvailabilityWithinDays, isCurrentlyReserved } from '../lib/calendar.js';
   import { splitExpertiseCopy } from '../lib/expertise-fields.js';
   import { fetchInventoryItem } from '../lib/inventory.js';
-  import { t } from '../lib/i18n.js';
+  import { locale, t } from '../lib/i18n.js';
+  import { locationAreaLine } from '../lib/item-location.js';
   import { revealOnLoad } from '../lib/motion.js';
   import {
     categoryToPath,
@@ -14,7 +15,8 @@
     hasReserveIntent,
     navigate,
     navigateToPage,
-    path,
+    // Renamed: a `path` binding would make the SVG <path> elements below read as components.
+    path as routePath,
     setReserveIntent,
   } from '../lib/router.js';
   import { authReady, session } from '../lib/auth.js';
@@ -25,6 +27,7 @@
   } from '../lib/availability-clock.js';
   import ConsultationRequestForm from './ConsultationRequestForm.svelte';
   import ItemCalendar from './ItemCalendar.svelte';
+  import LocationMapPanel from './LocationMapPanel.svelte';
   import ReserveAuthRequiredModal from './ReserveAuthRequiredModal.svelte';
   import Skeleton from './Skeleton.svelte';
 
@@ -50,12 +53,15 @@
   let calendarColumn = $state();
   let calendarHighlight = $state(false);
   let reserveIntentHandled = $state(false);
+  let showMap = $state(false);
+  // Set on a press that starts outside the dialog's box (see handleBackdropClick).
+  let pressStartedOnBackdrop = false;
 
   let fadeTimeout;
   let hideTimeout;
   let highlightTimeout;
 
-  const routeParams = $derived(getItemRouteParams($path));
+  const routeParams = $derived(getItemRouteParams($routePath));
 
   const tagLabels = {
     equipment: 'inventory.filter_equipment',
@@ -68,6 +74,9 @@
   const itemTag = $derived(item?.tag ?? routeParams?.tag ?? 'equipment');
   const isExpertise = $derived(itemTag === 'expertise');
   const expertiseCopy = $derived(splitExpertiseCopy(item));
+  // Public: city, province, postal code and an approximate area (never the street).
+  const location = $derived(isExpertise ? null : item?.location ?? null);
+  const locationArea = $derived(location ? locationAreaLine(location, $locale) : '');
 
   let unavailable = $derived(
     item ? isCurrentlyReserved(reservations, new Date($availabilityNow)) : false,
@@ -109,7 +118,7 @@
     const params = routeParams;
     // Tells App which URL this result is for, so a slow response can't land on the
     // next item's page tags.
-    const loadedFor = { path: $path };
+    const loadedFor = { path: $routePath };
 
     if (!params) {
       item = null;
@@ -160,8 +169,32 @@
     closeOverlay();
   }
 
+  // A click lands on the common ancestor of where the press started and where it ended, so a
+  // text selection or a map drag that ends on the backdrop also "clicks" the dialog. Close only
+  // when the press started and ended outside the dialog's box (its scrollbar is inside it).
+  function isOnBackdrop(event) {
+    if (event.target !== overlayDialog) {
+      return false;
+    }
+
+    const box = overlayDialog.getBoundingClientRect();
+    return (
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom
+    );
+  }
+
+  function handleDialogPointerDown(event) {
+    pressStartedOnBackdrop = isOnBackdrop(event);
+  }
+
   function handleBackdropClick(event) {
-    if (event.target === overlayDialog) {
+    const startedOnBackdrop = pressStartedOnBackdrop;
+    pressStartedOnBackdrop = false;
+
+    if (startedOnBackdrop && isOnBackdrop(event)) {
       closeOverlay();
     }
   }
@@ -252,6 +285,7 @@
     routeParams;
     reserveIntentHandled = false;
     calendarHighlight = false;
+    showMap = false;
     clearHighlightTimeout();
   });
 
@@ -311,6 +345,7 @@
   class:modal--expertise={routeParams?.tag === 'expertise'}
   aria-label={item ? item.title : $t('item_detail.breadcrumb_home')}
   oncancel={handleCancel}
+  onpointerdowncapture={handleDialogPointerDown}
   onclick={handleBackdropClick}
 >
   <div
@@ -413,6 +448,13 @@
           <h1>{item.title}</h1>
         </header>
         <p class="expert-detail__bio">{expertiseCopy.longText}</p>
+        <p class="item-location item-location--online">
+          <svg class="item-location__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+            <rect x="2" y="6" width="14" height="12" rx="2" />
+            <path d="m16 10 6-3v10l-6-3z" />
+          </svg>
+          {$t('item_detail.meetings_online')}
+        </p>
 
         {#if statusMessage}
           <p
@@ -459,6 +501,41 @@
           <div class="item-detail__body">
             <p>{item.body}</p>
           </div>
+
+          {#if location}
+            <section class="item-location" aria-labelledby="item-location-heading">
+              <h2 id="item-location-heading" class="item-location__heading">
+                <svg class="item-location__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                  <path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                {$t(itemTag === 'rooms' ? 'item_detail.location_heading_room' : 'item_detail.location_heading_pickup')}
+              </h2>
+              <p class="item-location__area">{locationArea}</p>
+              <p class="item-location__note">{$t('item_detail.location_full_address_note')}</p>
+              {#if location.area}
+                <button
+                  type="button"
+                  class="link-btn item-location__toggle"
+                  aria-expanded={showMap}
+                  aria-controls="item-location-map"
+                  onclick={() => (showMap = !showMap)}
+                >
+                  {$t(showMap ? 'map.hide' : 'map.show')}
+                </button>
+                {#if showMap}
+                  <LocationMapPanel
+                    id="item-location-map"
+                    latitude={location.area.latitude}
+                    longitude={location.area.longitude}
+                    radiusMetres={location.area.radiusMetres}
+                    label={$t('item_detail.location_map_aria', { area: locationArea })}
+                    caption={$t('item_detail.location_map_caption')}
+                  />
+                {/if}
+              {/if}
+            </section>
+          {/if}
 
           {#if statusMessage}
             <p

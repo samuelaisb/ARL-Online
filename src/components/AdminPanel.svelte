@@ -17,6 +17,7 @@
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
   import { canBookFollowUp, isConsultationHeld, isTuesday } from '../lib/reservation-rules.js';
   import { FOLLOW_UP_NOTE_MAX } from '../lib/expertise-fields.js';
+  import { toPublicItem } from '../lib/item-location.js';
   import { locale, t } from '../lib/i18n.js';
   import {
     dismissKind,
@@ -169,19 +170,10 @@
     }
   }
 
+  // The same whitelist as the server's public routes, so the catalogue never holds an admin
+  // item's expertEmail, member emails or full location.
   function sanitizeItemForPublicSync(item) {
-    const publicItem = { ...item };
-    delete publicItem.expertEmail;
-
-    return {
-      ...publicItem,
-      reservations: (item.reservations ?? []).map(({ id, startDate, endDate, status }) => ({
-        id,
-        startDate,
-        endDate,
-        status,
-      })),
-    };
+    return toPublicItem(item);
   }
 
   /**

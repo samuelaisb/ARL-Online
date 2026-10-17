@@ -5,6 +5,12 @@ import { randomUUID } from 'crypto';
 import { compareDateKeys, hasReservationCollision, normalizeReservationStatus, parseDateKey } from './calendar.js';
 import { isConsultationHeld, validateReservationDates } from './reservation-rules.js';
 import { EXPERT_LONG_TEXT_MAX, EXPERT_NAME_MAX, EXPERT_SHORT_TEXT_MAX } from './expertise-fields.js';
+import {
+  hasPhysicalLocation,
+  locationRowToApi,
+  OFFICE_LOCATION,
+  OFFICE_LOCATION_ID,
+} from './item-location.js';
 import { isStorableImageDataUrl } from './item-media.js';
 import { ensureUniqueSlug, slugifyTitle } from './slug.js';
 import { getSupabaseAdmin } from './supabase-server.js';
@@ -51,6 +57,7 @@ const EXPERTISE_SCHEMA_MIGRATION = 'supabase/migrations/005_expertise.sql';
 const SCHEDULING_SCHEMA_MIGRATION = 'supabase/migrations/006_consultation_scheduling.sql';
 const EXPERTISE_COPY_SCHEMA_MIGRATION = 'supabase/migrations/007_expertise_copy.sql';
 const FOLLOW_UP_SCHEMA_MIGRATION = 'supabase/migrations/008_consultation_follow_up.sql';
+const ITEM_LOCATIONS_SCHEMA_MIGRATION = 'supabase/migrations/010_item_locations.sql';
 
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE };
 
@@ -59,13 +66,178 @@ export function isReservationSchemaError(message) {
     return false;
   }
 
-  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|follow_up_of|zoom_|cancelled_|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
+  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|follow_up_of|zoom_|cancelled_|location_id|item_locations|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
     message,
   );
 }
 
 export function reservationSchemaErrorMessage() {
-  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, ${EXPERTISE_COPY_SCHEMA_MIGRATION}, and ${FOLLOW_UP_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, expertise long text, and follow-up consultations).`;
+  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, ${EXPERTISE_COPY_SCHEMA_MIGRATION}, ${FOLLOW_UP_SCHEMA_MIGRATION}, and ${ITEM_LOCATIONS_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, expertise long text, follow-up consultations, and item locations).`;
+}
+
+/*
+ * Item locations (migration 010). Read apart from the items, never as an embed, so a database
+ * without 010 keeps working: every equipment, book and room item then shows the office.
+ * Cached in process for 5 minutes (single Cloud Run instance; a stale copy only delays a change
+ * made in SQL). Once a copy exists, an expired one is served while the next load runs, so no
+ * request waits on it. A load never throws and gives up after 5 s: on an error the last good
+ * copy is kept and the next request after 30 s tries again. No timers: Cloud Run throttles the
+ * CPU between requests.
+ */
+const ITEM_LOCATIONS_TTL_MS = 5 * 60 * 1000;
+const ITEM_LOCATIONS_RETRY_MS = 30 * 1000;
+const ITEM_LOCATIONS_TIMEOUT_MS = 5 * 1000;
+// A forced reload (an item points at a place the cache doesn't have) waits at least this long.
+const ITEM_LOCATIONS_FORCED_RETRY_MS = 5 * 1000;
+const ITEM_LOCATIONS_SCHEMA_ERROR_CODES = new Set(['PGRST205', '42P01']);
+
+// `available`: true once a load worked, false once one found no table (010 not applied), null
+// until either: not knowing must never be read as "not applied".
+let itemLocations = { available: null, byId: new Map() };
+let itemLocationsNextLoadAt = 0;
+let itemLocationsNextForcedLoadAt = 0;
+let itemLocationsLoading = null;
+let itemLocationsFailing = false;
+const loggedMissingLocationIds = new Set();
+
+/**
+ * Migration 010 isn't applied: the table doesn't exist. Only that (not a permission or network
+ * error, which keep the last copy). Kept apart from isReservationSchemaError, like item views.
+ */
+function isItemLocationsSchemaError(error) {
+  return (
+    ITEM_LOCATIONS_SCHEMA_ERROR_CODES.has(error?.code) ||
+    /could not find the table '[^']*item_locations'|relation "[^"]*item_locations" does not exist/i.test(
+      error?.message ?? '',
+    )
+  );
+}
+
+async function fetchItemLocations() {
+  const { data, error } = await getSupabaseAdmin()
+    .from('item_locations')
+    .select('*')
+    .abortSignal(AbortSignal.timeout(ITEM_LOCATIONS_TIMEOUT_MS));
+
+  if (error) {
+    if (isItemLocationsSchemaError(error)) {
+      return { available: false, byId: new Map() };
+    }
+    throw new Error(error.message || 'Could not load item locations.');
+  }
+
+  const byId = new Map();
+  for (const row of data ?? []) {
+    const location = locationRowToApi(row);
+    if (location) {
+      byId.set(location.id, location);
+    }
+  }
+
+  return { available: true, byId };
+}
+
+function startItemLocationsLoad() {
+  itemLocationsLoading ??= (async () => {
+    try {
+      itemLocations = await fetchItemLocations();
+      itemLocationsFailing = false;
+      loggedMissingLocationIds.clear();
+      itemLocationsNextLoadAt = Date.now() + ITEM_LOCATIONS_TTL_MS;
+    } catch (error) {
+      // Keep the last good copy. Logged once per run of failures, not on every request.
+      if (!itemLocationsFailing) {
+        console.error('Item locations failed to load; keeping the last copy:', error?.message || error);
+      }
+      itemLocationsFailing = true;
+      itemLocationsNextLoadAt = Date.now() + ITEM_LOCATIONS_RETRY_MS;
+    } finally {
+      itemLocationsNextForcedLoadAt = Date.now() + ITEM_LOCATIONS_FORCED_RETRY_MS;
+      itemLocationsLoading = null;
+    }
+    return itemLocations;
+  })();
+  return itemLocationsLoading;
+}
+
+/**
+ * `{ available, byId }`: whether 010 is applied (true, false, or null while unknown), and its
+ * rows by id. One load at a time. `force` reloads before the 5 minutes are up (at most every
+ * 5 s) and waits for it, for an item that points at a place added since the last load.
+ */
+function loadItemLocations({ force = false } = {}) {
+  const now = Date.now();
+
+  if (itemLocationsLoading) {
+    // The first load, or a forced one, waits; anything else keeps using the copy it has.
+    return force || itemLocations.available === null ? itemLocationsLoading : Promise.resolve(itemLocations);
+  }
+
+  if (now < (force ? itemLocationsNextForcedLoadAt : itemLocationsNextLoadAt)) {
+    return Promise.resolve(itemLocations);
+  }
+
+  const loading = startItemLocationsLoad();
+  return force || itemLocations.available === null ? loading : Promise.resolve(itemLocations);
+}
+
+/** The cached locations, reloaded first when one of `locationIds` isn't in them yet. */
+async function itemLocationsCovering(locations, locationIds) {
+  const missing = locationIds.some((id) => id && !locations.byId.has(id));
+  return missing ? loadItemLocations({ force: true }) : locations;
+}
+
+/**
+ * An item's full location: null for expertise; its own row; or, when it has none (before 010,
+ * or a row written without one), the office. The office's id falls back to OFFICE_LOCATION (the
+ * same row) when the table can't be read. Any other id that still isn't known after a reload
+ * gives null rather than a guess, so no email sends a member to the wrong address.
+ */
+function resolveItemLocation(tag, locationId, locations = itemLocations) {
+  if (!hasPhysicalLocation(tag)) {
+    return null;
+  }
+
+  if (locationId) {
+    const location =
+      locations.byId.get(locationId) ?? (locationId === OFFICE_LOCATION_ID ? OFFICE_LOCATION : null);
+    if (!location && !loggedMissingLocationIds.has(locationId)) {
+      loggedMissingLocationIds.add(locationId);
+      console.warn(`Item location ${locationId} is not in item_locations; showing no location.`);
+    }
+    return location;
+  }
+
+  return locations.byId.get(OFFICE_LOCATION_ID) ?? OFFICE_LOCATION;
+}
+
+/** New equipment, books and rooms go to the office, once 010's office row exists. */
+function withDefaultLocation(item, locations) {
+  if (item.locationId || !hasPhysicalLocation(item.tag) || !locations.byId.has(OFFICE_LOCATION_ID)) {
+    return item;
+  }
+
+  return { ...item, locationId: OFFICE_LOCATION_ID };
+}
+
+/**
+ * Inserts item rows; if inventory_items.location_id doesn't exist (010 only half run by hand),
+ * inserts them again without it, as the item would read back as the office anyway.
+ */
+async function insertItemRows(supabase, rows) {
+  let { error } = await supabase.from('inventory_items').insert(rows);
+
+  if (
+    error &&
+    rows.some((row) => 'location_id' in row) &&
+    (error.code === 'PGRST204' || isMissingColumnError(error, 'location_id'))
+  ) {
+    ({ error } = await supabase
+      .from('inventory_items')
+      .insert(rows.map(({ location_id: _locationId, ...row }) => row)));
+  }
+
+  return error;
 }
 
 /** Warn at startup when migration 002 has not been applied. */
@@ -200,8 +372,11 @@ export function normalizeInventoryItem(raw, { requireAll = true } = {}) {
   const slug =
     typeof raw.slug === 'string' && raw.slug.trim() ? raw.slug.trim() : null;
   const expertEmail = tag === 'expertise' ? normalizeOptionalText(raw.expertEmail) : null;
+  // Not taken from the input: there's no location picker yet, and the store gives new
+  // equipment, books and rooms the office (withDefaultLocation). Imports keep their row's value.
+  const locationId = null;
 
-  return { id, title, body, image, createdAt, reservations, tag, slug, expertEmail, longBody };
+  return { id, title, body, image, createdAt, reservations, tag, slug, expertEmail, longBody, locationId };
 }
 
 /** A timestamptz from PostgREST (`…+00:00`, microseconds) as `toISOString()`, or null. */
@@ -233,7 +408,11 @@ function reservationRowToApi(row) {
   };
 }
 
-function itemRowToApi(itemRow, reservationRows = []) {
+/** `locations`: loadItemLocations()'s result (expertise rows need none: they have no location). */
+function itemRowToApi(itemRow, reservationRows = [], locations = itemLocations) {
+  // location_id is undefined before 010.
+  const locationId = hasPhysicalLocation(itemRow.tag) ? itemRow.location_id ?? null : null;
+
   return {
     id: itemRow.id,
     title: itemRow.title,
@@ -244,6 +423,9 @@ function itemRowToApi(itemRow, reservationRows = []) {
     createdAt: Number(itemRow.created_at),
     expertEmail: itemRow.expert_email ?? null,
     longBody: itemRow.tag === 'expertise' ? itemRow.long_body ?? null : null,
+    locationId,
+    // The full address and exact point: server side only. Public routes send toPublicItem().
+    location: resolveItemLocation(itemRow.tag, locationId, locations),
     reservations: reservationRows.map(reservationRowToApi),
   };
 }
@@ -267,6 +449,12 @@ function itemToRow(item) {
 
   if (item.longBody) {
     row.long_body = item.longBody;
+  }
+
+  // Only set once 010 exists (withDefaultLocation checks), and never cleared from here, so an
+  // import's upsert keeps the location an item already has.
+  if (item.locationId) {
+    row.location_id = item.locationId;
   }
 
   return row;
@@ -465,8 +653,9 @@ async function insertInventoryItems(items) {
   }
 
   const supabase = getSupabaseAdmin();
-  const itemRows = items.map(itemToRow);
-  const { error: itemError } = await supabase.from('inventory_items').insert(itemRows);
+  const locations = await loadItemLocations();
+  const itemRows = items.map((item) => itemToRow(withDefaultLocation(item, locations)));
+  const itemError = await insertItemRows(supabase, itemRows);
 
   if (itemError) {
     throw new Error(itemError.message || 'Could not insert inventory items.');
@@ -489,20 +678,34 @@ async function insertInventoryItems(items) {
 
 export async function fetchInventoryItems() {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select('*, reservations(*)')
-    .order('created_at', { ascending: false });
+  const [{ data, error }, cachedLocations] = await Promise.all([
+    supabase.from('inventory_items').select('*, reservations(*)').order('created_at', { ascending: false }),
+    loadItemLocations(),
+  ]);
 
   if (error) {
     throw new Error(error.message || 'Could not load inventory.');
   }
 
-  return (data ?? []).map((row) => {
+  const rows = data ?? [];
+  const locations = await itemLocationsCovering(
+    cachedLocations,
+    rows.map((row) => row.location_id),
+  );
+
+  return rows.map((row) => {
     const reservations = Array.isArray(row.reservations) ? row.reservations : [];
     reservations.sort((a, b) => compareDateKeys(a.start_date, b.start_date));
-    return itemRowToApi(row, reservations);
+    return itemRowToApi(row, reservations, locations);
   });
+}
+
+/** One item row as an API item, with its location (see fetchInventoryItems). */
+async function itemRowWithLocation(row, cachedLocations) {
+  const locations = await itemLocationsCovering(cachedLocations, [row.location_id]);
+  const reservations = Array.isArray(row.reservations) ? row.reservations : [];
+  reservations.sort((a, b) => compareDateKeys(a.start_date, b.start_date));
+  return itemRowToApi(row, reservations, locations);
 }
 
 async function seedInventoryIfEmpty() {
@@ -558,18 +761,21 @@ export async function ensureInventory() {
 }
 
 export async function createInventoryItem(item) {
-  const existingSlugs = await fetchSlugsForTag(item.tag);
+  const [existingSlugs, locations] = await Promise.all([fetchSlugsForTag(item.tag), loadItemLocations()]);
   const slug = ensureUniqueSlug(slugifyTitle(item.title), existingSlugs);
-  const itemWithSlug = { ...item, slug };
+  const itemWithSlug = withDefaultLocation({ ...item, slug }, locations);
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from('inventory_items').insert(itemToRow(itemWithSlug));
+  const error = await insertItemRows(supabase, [itemToRow(itemWithSlug)]);
 
   if (error) {
     throw new Error(error.message || 'Could not save inventory item.');
   }
 
-  return itemWithSlug;
+  return {
+    ...itemWithSlug,
+    location: resolveItemLocation(itemWithSlug.tag, itemWithSlug.locationId, locations),
+  };
 }
 
 /**
@@ -662,12 +868,15 @@ export async function findInventoryItemBySlug(tag, slug) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select('*, reservations(*)')
-    .eq('tag', normalizedTag)
-    .eq('slug', normalizedSlug)
-    .maybeSingle();
+  const [{ data, error }, locations] = await Promise.all([
+    supabase
+      .from('inventory_items')
+      .select('*, reservations(*)')
+      .eq('tag', normalizedTag)
+      .eq('slug', normalizedSlug)
+      .maybeSingle(),
+    loadItemLocations(),
+  ]);
 
   if (error) {
     throw new Error(error.message || 'Could not load inventory item.');
@@ -677,18 +886,15 @@ export async function findInventoryItemBySlug(tag, slug) {
     return null;
   }
 
-  const reservations = Array.isArray(data.reservations) ? data.reservations : [];
-  reservations.sort((a, b) => compareDateKeys(a.start_date, b.start_date));
-  return itemRowToApi(data, reservations);
+  return itemRowWithLocation(data, locations);
 }
 
 export async function findInventoryItem(id) {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select('*, reservations(*)')
-    .eq('id', id)
-    .maybeSingle();
+  const [{ data, error }, locations] = await Promise.all([
+    supabase.from('inventory_items').select('*, reservations(*)').eq('id', id).maybeSingle(),
+    loadItemLocations(),
+  ]);
 
   if (error) {
     throw new Error(error.message || 'Could not load inventory item.');
@@ -698,9 +904,7 @@ export async function findInventoryItem(id) {
     return null;
   }
 
-  const reservations = Array.isArray(data.reservations) ? data.reservations : [];
-  reservations.sort((a, b) => compareDateKeys(a.start_date, b.start_date));
-  return itemRowToApi(data, reservations);
+  return itemRowWithLocation(data, locations);
 }
 
 /** Only the stored `image` value of one item (for `GET /media/items/...`); null when the item is missing. */
@@ -1456,10 +1660,15 @@ function literalLikePattern(value) {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
+/** An undefined column, e.g. inventory_items.location_id before 010. */
+function isMissingColumnError(error, column) {
+  return error?.code === '42703' || new RegExp(column, 'i').test(error?.message ?? '');
+}
+
 /**
  * Equipment, book and room reservations made by this account email (compared
- * case-insensitively), each with its item's id, title, slug and tag, earliest start first.
- * Consultations are listed by listConsultationsForUser instead.
+ * case-insensitively), each with its item's id, title, slug, tag and full location, earliest
+ * start first. Consultations are listed by listConsultationsForUser instead.
  */
 export async function listReservationsForMember(email) {
   const memberEmail = typeof email === 'string' ? email.trim() : '';
@@ -1469,28 +1678,55 @@ export async function listReservationsForMember(email) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('reservations')
-    .select('id, item_id, start_date, end_date, status, user_email, inventory_items(id, title, slug, tag)')
-    .ilike('user_email', literalLikePattern(memberEmail))
-    .in('status', MEMBER_RESERVATION_STATUSES);
+  const cachedLocations = await loadItemLocations();
+  const selectReservations = (withLocation) =>
+    supabase
+      .from('reservations')
+      .select(
+        `id, item_id, start_date, end_date, status, user_email, inventory_items(id, title, slug, tag${withLocation ? ', location_id' : ''})`,
+      )
+      .ilike('user_email', literalLikePattern(memberEmail))
+      .in('status', MEMBER_RESERVATION_STATUSES);
+
+  // Leaves location_id out only when 010 is known to be missing. Otherwise asks for it (an item
+  // elsewhere must never fall back to the office), and asks again without it if the column
+  // turns out not to exist.
+  const askForLocation = cachedLocations.available !== false;
+  let { data, error } = await selectReservations(askForLocation);
+  if (error && askForLocation && isMissingColumnError(error, 'location_id')) {
+    ({ data, error } = await selectReservations(false));
+  }
 
   if (error) {
     throw new Error(error.message || 'Could not load reservations.');
   }
 
+  const itemRowOf = (row) =>
+    Array.isArray(row.inventory_items) ? row.inventory_items[0] : row.inventory_items;
+  const locations = await itemLocationsCovering(
+    cachedLocations,
+    (data ?? []).map((row) => itemRowOf(row)?.location_id),
+  );
   const entries = [];
 
   for (const row of data ?? []) {
-    const itemRow = Array.isArray(row.inventory_items) ? row.inventory_items[0] : row.inventory_items;
+    const itemRow = itemRowOf(row);
 
     // The ilike only narrows the query; ownership is decided here.
     if (!itemRow || itemRow.tag === 'expertise' || !emailsMatch(row.user_email, memberEmail)) {
       continue;
     }
 
+    const locationId = itemRow.location_id ?? null;
     entries.push({
-      item: { id: itemRow.id, title: itemRow.title, slug: itemRow.slug ?? null, tag: itemRow.tag },
+      item: {
+        id: itemRow.id,
+        title: itemRow.title,
+        slug: itemRow.slug ?? null,
+        tag: itemRow.tag,
+        locationId,
+        location: resolveItemLocation(itemRow.tag, locationId, locations),
+      },
       reservation: reservationRowToApi(row),
     });
   }

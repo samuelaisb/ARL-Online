@@ -6,7 +6,8 @@ import {
   DEFAULT_INVENTORY_TAG,
 } from '../lib/inventory.js';
   import { compressImageFile } from '../lib/image.js';
-  import { t } from '../lib/i18n.js';
+  import { locale, t } from '../lib/i18n.js';
+  import { locationAddressLine, locationAreaLine, OFFICE_LOCATION } from '../lib/item-location.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import BusyLabel from './BusyLabel.svelte';
 
@@ -248,6 +249,13 @@ import {
         required
         bind:value={body}
       ></textarea>
+      <!-- No location picker yet: the server puts new items at the office (migration 010). -->
+      <p class="field-hint">
+        {$t('add_item.location_hint', {
+          address: `${OFFICE_LOCATION.name}, ${locationAddressLine(OFFICE_LOCATION, $locale)}`,
+          area: locationAreaLine(OFFICE_LOCATION, $locale),
+        })}
+      </p>
     {/if}
 
     <label for="item-image">{$t('add_item.image_label')}</label>

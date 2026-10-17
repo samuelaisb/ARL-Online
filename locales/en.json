@@ -507,7 +507,12 @@
     "not_active": "This reservation is no longer active. Reload the page to see its current status.",
     "rate_limited": "Too many changes in a short time. Please try again later.",
     "withdrawn_status": "Request withdrawn.",
-    "cancelled_status": "Reservation cancelled. The library team has been notified."
+    "cancelled_status": "Reservation cancelled. The library team has been notified.",
+    "location_label": "Address",
+    "location_pending": "{area} · Full address once confirmed",
+    "get_directions": "Get directions",
+    "directions_new_tab": "(opens Google Maps in a new tab)",
+    "location_map_aria": "Map of {address}"
   },
   "share_expertise": {
     "heading": "Share Expertise",
@@ -570,7 +575,8 @@
     "save_error": "Could not save inventory item.",
     "process_image_error": "Could not process the image.",
     "image_too_large": "This photo is too large. Please choose a smaller image.",
-    "image_invalid": "This photo format is not supported. Please choose a JPEG, PNG, WebP, or GIF image."
+    "image_invalid": "This photo format is not supported. Please choose a JPEG, PNG, WebP, or GIF image.",
+    "location_hint": "Location: {address}. Visitors see only {area} until their reservation is confirmed."
   },
   "how_this_works": {
     "heading": "How it works",
@@ -840,7 +846,26 @@
     "loading": "Fetching the details…",
     "try_again": "Try again",
     "reserve": "Reserve Inventory",
-    "back_to_category": "Back to category"
+    "back_to_category": "Back to category",
+    "location_heading_pickup": "Pickup location",
+    "location_heading_room": "Location",
+    "location_full_address_note": "You'll get the full address once your reservation is confirmed.",
+    "location_map_caption": "Approximate area",
+    "location_map_aria": "Map of the approximate area around {area}",
+    "meetings_online": "Meetings available online"
+  },
+  "map": {
+    "show": "Show map",
+    "hide": "Hide map",
+    "loading": "Unfolding the map…",
+    "load_error": "The map couldn't load.",
+    "zoom_in": "Zoom in",
+    "zoom_out": "Zoom out",
+    "keyboard_hint": "Use the arrow keys to move the map, and + or − to zoom.",
+    "layers_aria": "Map style",
+    "layer_streets": "Streets",
+    "layer_transit": "Transit",
+    "transit_unavailable": "The transit map isn't available right now, so this is the street map."
   },
   "not_found": {
     "heading": "Page not found",

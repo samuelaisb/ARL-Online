@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { loadInventoryItems } from './lib/inventory.js';
+  import { toPublicItem } from './lib/item-location.js';
   import { recordItemView } from './lib/item-views.js';
   import { locale, t } from './lib/i18n.js';
   import {
@@ -161,8 +162,9 @@
     }
   }
 
+  // The admin's response has the full item; the catalogue gets the public whitelist.
   function handleItemCreated(item) {
-    items = [item, ...items];
+    items = [toPublicItem(item), ...items];
   }
 
   function handleItemRemoved(id) {

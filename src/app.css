@@ -1478,6 +1478,199 @@ h1[tabindex='-1']:focus {
   margin-top: 1rem;
 }
 
+/* Where the item is: a label, the public part of the address and a map toggle, under the
+   description (so it comes before the calendar on phones). Mentors get one "online" line. */
+.item-location {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.item-location__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.item-location__icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.item-location__area {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.item-location__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.item-location__toggle {
+  margin-top: 0.15rem;
+  font-size: 0.9rem;
+}
+
+.item-location .location-map {
+  margin-top: 0.4rem;
+}
+
+.item-location--online {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.item-location--online .item-location__icon {
+  color: var(--color-mint);
+}
+
+/* LocationMap: Leaflet inside a bordered frame. Leaflet's stylesheet is added when a map first
+   opens (LocationMapPanel), after this file, so the overrides below are one class deeper. */
+.location-map,
+.location-map__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Focused from script after Try again; not a control, so no ring. */
+.location-map:focus {
+  outline: none;
+}
+
+/* isolation keeps Leaflet's z-index 400–1000 layers inside the frame (Kimchi sits at 30). */
+.location-map__canvas {
+  isolation: isolate;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-skeleton, #efebe4);
+}
+
+/* Phones: taller than 16:9, so the area and its streets have room. */
+@media (max-width: 640px) {
+  .location-map__canvas {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.location-map__canvas--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.location-map .leaflet-container {
+  background: var(--color-skeleton, #efebe4);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.location-map .leaflet-container:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+.location-map .leaflet-control-attribution {
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.location-map .leaflet-control-attribution a {
+  color: var(--color-mint);
+}
+
+/* SVG presentation attributes lose to CSS, so the circle takes the brand colour here. */
+.location-map .location-map__area {
+  stroke: var(--color-mint);
+  stroke-width: 2;
+  fill: var(--color-mint);
+  fill-opacity: 0.14;
+}
+
+.location-map .location-map__pin {
+  background: none;
+  border: none;
+}
+
+.location-map__pin svg {
+  display: block;
+  overflow: visible;
+}
+
+.location-map__pin path {
+  fill: var(--color-mint);
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.location-map__pin circle {
+  fill: #fff;
+}
+
+.inventory-filter.location-map__layers {
+  align-self: flex-start;
+  margin-bottom: 0;
+  padding: 0.2rem;
+}
+
+.location-map__layers .inventory-filter__btn {
+  min-width: 0;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.location-map__note,
+.location-map__caption {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.location-map__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.location-map__error .status {
+  margin: 0;
+}
+
 .inventory-card__title-link {
   color: inherit;
   text-decoration: none;
@@ -1639,6 +1832,36 @@ h1[tabindex='-1']:focus {
 .account-reservations {
   max-width: 48rem;
   margin-top: 1rem;
+}
+
+/* The details column fills the row beside the actions, so a map in it has a width. */
+.account-reservations .admin-reservation-details {
+  flex: 1 1 auto;
+}
+
+.reservation-location {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+.reservation-location__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+}
+
+.reservation-location__toggle {
+  font-size: 0.9rem;
+}
+
+.account-reservations .location-map {
+  max-width: 32rem;
+  margin-top: 0.25rem;
 }
 
 .consultation-row__heading {
@@ -4118,6 +4341,11 @@ button:disabled {
 @media (max-width: 360px) {
   .inventory-filter {
     grid-template-columns: 1fr;
+  }
+
+  /* Streets / Transit stay side by side. */
+  .inventory-filter.location-map__layers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* Two short labels: they stay side by side. */

@@ -76,7 +76,15 @@ import {
   publicItemImageUrl,
   withPublicItemImage,
 } from './src/lib/item-media.js';
+import {
+  hasPhysicalLocation,
+  locationAreaLine,
+  memberLocation,
+  publicLocation,
+  toPublicItem,
+} from './src/lib/item-location.js';
 import { isItemDetailRoute } from './src/lib/item-routes.js';
+import { MAP_TILE_HOSTS } from './src/lib/map-tiles.js';
 import { injectSeoIntoHtml, resolveRequestLocale } from './src/lib/seo-server.js';
 import { normalizeSeoPath, PRODUCTION_SITE_ORIGIN } from './src/lib/seo.js';
 import { orgContact, renderBrandedEmail } from './src/lib/email-brand.js';
@@ -336,20 +344,21 @@ function sanitizeReservationForPublic(reservation) {
   };
 }
 
+/**
+ * A whitelist (toPublicItem): never expertEmail, the full location or the members' details.
+ * The location is only the city, province, postal code and an approximate area.
+ */
 function sanitizeItemForPublic(item) {
-  // expertEmail is admin-only contact info — never expose it on public routes.
-  const { expertEmail, ...publicItem } = item;
-  return {
-    ...publicItem,
-    image: publicItemImageUrl(item),
-    reservations: (item.reservations ?? []).map(sanitizeReservationForPublic),
-  };
+  return { ...toPublicItem(item), image: publicItemImageUrl(item) };
 }
 
-/** Item lookup for the SSR head: og:image, twitter:image and Product JSON-LD get the /media URL. */
+/**
+ * Item lookup for the SSR head: og:image, twitter:image and Product JSON-LD get the /media URL.
+ * The public item, so the server's head and the client's JSON-LD start from the same fields.
+ */
 async function findPublicItemBySlug(tag, slug) {
   const item = await findInventoryItemBySlug(tag, slug);
-  return item ? withPublicItemImage(item) : null;
+  return item ? sanitizeItemForPublic(item) : null;
 }
 
 const reservationCreateLimiter = rateLimit({
@@ -434,9 +443,12 @@ function escapeHtml(text) {
 }
 
 // Equipment and books only: rooms are booked for any dates and have no Tuesday handover.
-const APPROVAL_PICKUP_NOTICE = `Pickups and drop offs are between 10am and 5pm on Tuesdays at ${orgContact.address}.`;
-
-const ROOM_LOCATION = `Apathy is Boring office, ${orgContact.address}`;
+// The address is in the email's Where row; without one (see itemPlaceLines), the member is
+// asked to reply for it rather than sent to an address that may be wrong.
+const APPROVAL_PICKUP_NOTICE = 'Pickups and drop offs are between 10am and 5pm on Tuesdays at the address above.';
+const APPROVAL_PICKUP_NOTICE_NO_ADDRESS =
+  'Pickups and drop offs are between 10am and 5pm on Tuesdays. Reply to this email and we will send you the address.';
+const APPROVAL_ROOM_NO_ADDRESS = "Reply to this email and we will send you the room's address.";
 
 const RESERVATION_CHANGES_NOTICE = 'If anything changes, just reply to this email.';
 
@@ -944,6 +956,13 @@ async function sendConsultationScheduledEmails(item, reservation, messageOptions
   );
 }
 
+/** "Apathy is Boring\n5310 Boulevard Saint-Laurent\nMontréal QC H2T 1S1": the email's Where row. */
+function itemPlaceLines(location) {
+  return [location.name, location.streetAddress, locationAreaLine(location)]
+    .filter((line) => typeof line === 'string' && line.trim())
+    .join('\n');
+}
+
 /** `message`: the optional note staff wrote when approving; only approvals show it. */
 function buildMemberDecisionEmailPayload(item, reservation, decision, message = '') {
   if (item?.tag === 'expertise') {
@@ -963,6 +982,9 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
   }
 
   const approved = decision === 'approved';
+  // The full address only on an approval (the item's own place; see resolveItemLocation).
+  const location = approved && hasPhysicalLocation(item.tag) ? item.location ?? null : null;
+  const where = location ? itemPlaceLines(location) : '';
   const subject = approved
     ? `Reservation confirmed: ${title}`
     : `Reservation update: ${title}`;
@@ -975,10 +997,17 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
 
   if (approved) {
     // Rooms have no Tuesday pickup: confirm where and when instead.
-    paragraphs = isRoom
-      ? [RESERVATION_CHANGES_NOTICE]
-      : [APPROVAL_PICKUP_NOTICE, 'We look forward to seeing you at pickup.'];
+    if (isRoom) {
+      paragraphs = where ? [RESERVATION_CHANGES_NOTICE] : [APPROVAL_ROOM_NO_ADDRESS, RESERVATION_CHANGES_NOTICE];
+    } else {
+      paragraphs = [
+        where ? APPROVAL_PICKUP_NOTICE : APPROVAL_PICKUP_NOTICE_NO_ADDRESS,
+        'We look forward to seeing you at pickup.',
+      ];
+    }
   }
+
+  const directions = location ? memberLocation(location).directionsUrl : '';
 
   const rendered = renderBrandedEmail({
     subject,
@@ -988,7 +1017,8 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
     details: [
       [isRoom ? 'Room' : 'Item', title, itemUrl],
       ['Dates', formatReservationDates(reservation)],
-      ['Where', approved && isRoom ? ROOM_LOCATION : ''],
+      ['Where', where],
+      ['Getting there', location?.transitNoteEn ?? ''],
       ['Message from the library team', approved ? message : ''],
     ],
     paragraphs,
@@ -996,7 +1026,11 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
       label: approved ? (isRoom ? 'View the room' : 'View your item') : 'Choose different dates',
       href: itemUrl,
     },
-    links: [['Browse the library', libraryUrl]],
+    // In links, not on the Where row, so the plain-text part carries the URL too.
+    links: [
+      ...(directions ? [['Get directions', directions]] : []),
+      ['Browse the library', libraryUrl],
+    ],
     why: EMAIL_WHY.reservation,
   });
 
@@ -1696,8 +1730,15 @@ if (PLAUSIBLE_DOMAIN) {
 }
 scriptSrc.push('https://*.googletagmanager.com');
 
-// GA can fall back to image beacons when sendBeacon/fetch is unavailable.
-const imgSrc = ["'self'", 'data:', 'https://*.google-analytics.com', 'https://*.googletagmanager.com'];
+// GA can fall back to image beacons when sendBeacon/fetch is unavailable. Map tiles are <img>s
+// (OpenStreetMap and ÖPNVKarte, src/lib/map-tiles.js), loaded only once someone opens a map.
+const imgSrc = [
+  "'self'",
+  'data:',
+  'https://*.google-analytics.com',
+  'https://*.googletagmanager.com',
+  ...MAP_TILE_HOSTS,
+];
 
 app.use(
   helmet({
@@ -3546,8 +3587,29 @@ const accountReservationActionLimiter = rateLimit({
   },
 });
 
-/** Account-panel view of one equipment, book or room reservation (whitelisted fields only). */
-function serializeReservationForMember({ item, reservation }) {
+/**
+ * Where the member goes, by status: a confirmed reservation that hasn't ended gets the full
+ * address, exact point, transit note and directions (as in its approval email); a pending one
+ * only what the item window shows; refused, cancelled and ended ones nothing. Decided here, not
+ * in the page, because the location is the item's current one, not a copy kept with the booking.
+ */
+function memberReservationLocation(item, reservation, today) {
+  if (!hasPhysicalLocation(item.tag) || !item.location) {
+    return null;
+  }
+
+  if (reservation.status === 'reserved' && compareDateKeys(reservation.endDate, today) >= 0) {
+    return memberLocation(item.location);
+  }
+
+  return reservation.status === 'pending' ? publicLocation(item.location, { withArea: false }) : null;
+}
+
+/**
+ * Account-panel view of one equipment, book or room reservation (whitelisted fields only).
+ * `today`: libraryTodayKey(), for memberReservationLocation.
+ */
+function serializeReservationForMember({ item, reservation }, today) {
   return {
     id: reservation.id,
     itemId: item.id,
@@ -3557,6 +3619,7 @@ function serializeReservationForMember({ item, reservation }) {
     startDate: reservation.startDate,
     endDate: reservation.endDate,
     status: reservation.status,
+    location: memberReservationLocation(item, reservation, today),
   };
 }
 
@@ -3565,8 +3628,9 @@ app.get('/api/account/reservations', requireAuth, async (req, res) => {
 
   try {
     const entries = await listReservationsForMember(email);
+    const today = libraryTodayKey();
     res.set('Cache-Control', 'no-store');
-    res.json({ reservations: entries.map(serializeReservationForMember) });
+    res.json({ reservations: entries.map((entry) => serializeReservationForMember(entry, today)) });
   } catch (error) {
     console.error('Failed to load account reservations:', error);
     res.status(500).json({ error: 'Could not load your reservations.' });
@@ -3585,9 +3649,8 @@ app.post(
     const email = req.user?.email?.trim() ?? '';
 
     try {
-      const result = await cancelReservationForMember(reservationId, email, {
-        today: libraryTodayKey(),
-      });
+      const today = libraryTodayKey();
+      const result = await cancelReservationForMember(reservationId, email, { today });
 
       if (result.notFound) {
         return res.status(404).json({ error: 'Reservation not found.' });
@@ -3620,7 +3683,7 @@ app.post(
         reservationId,
         previousStatus: result.previousStatus,
       });
-      res.json({ reservation: serializeReservationForMember(result) });
+      res.json({ reservation: serializeReservationForMember(result, today) });
     } catch (error) {
       console.error('Failed to cancel reservation:', error);
       const detail = error?.message || '';

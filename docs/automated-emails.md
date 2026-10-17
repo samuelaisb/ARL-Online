@@ -20,7 +20,7 @@ Email dates are written out in English (`formatReservationDates()`: "Tuesday, Oc
 | `EMAIL_FROM` | No | `noreply@activistresourcelibrary.com` | Sender address on all app emails |
 | `EMAIL_REPLY_TO` | No | `samuel@apathyisboring.com` (`CONTACT_TO`) | `Reply-To` on every app email except the contact form. One address (no commas: `cloud:build` passes it in a comma-separated list) |
 | `SITE_URL` | Recommended (prod) | Falls back to `https://activistresourcelibrary.com` | Base origin for email links (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped). The header logo is an inline attachment (`cid:aisb-logo`) and does not depend on it |
-| `ORG_ADDRESS` | No | `5310 Boulevard Saint-Laurent, Montréal QC H2T 1S1` | Footer street address (`orgContact` in `src/lib/email-brand.js`). `cloud:build` does not pass it — the comma breaks gcloud's env list |
+| `ORG_ADDRESS` | No | `5310 Boulevard Saint-Laurent, Montréal QC H2T 1S1` | Footer street address (`orgContact` in `src/lib/email-brand.js`) and the welcome email's pickup line. An approved item's own address comes from `item_locations` (migration 010), not from this. `cloud:build` does not pass it — the comma breaks gcloud's env list |
 | `ORG_PHONE` | No | `514.844.2472` | Footer phone. Passed by `cloud:build` when set in `.env` |
 | `EMAIL_FUNDER_LOGO_URL` | No | unset | Absolute URL of a funder logo strip. When set, the member "consultation confirmed" email shows it above the footer |
 
@@ -64,12 +64,16 @@ Ringold and P22 Mackinac Pro are not loaded. Emails are English-only, so the Fre
 | Part | Equipment and books | Rooms |
 |------|---------------------|-------|
 | Intro | Your reservation request has been approved by Apathy is Boring. | Same |
-| Details | **Item** (linked) + **Dates** | **Room** (linked) + **Dates** + **Where**: Apathy is Boring office, the `orgContact` address |
+| Details | **Item** (linked) + **Dates** + **Where** + **Getting there** | **Room** (linked) + **Dates** + **Where** + **Getting there** |
+| Where | The item's own place (`item.location`, from `item_locations`; the office for every current item), on three lines: place name, street, `Montréal QC H2T 1S1` | Same |
+| Getting there | The place's English transit note (`transit_note_en`; the row is left out when empty). Office: "Bus 55 stops about 60 m away at Saint-Laurent / Maguire (northbound) and about 200 m away at Saint-Urbain / Fairmount (southbound). Laurier metro station (Orange line) is about 750 m away." | Same |
 | Message | **Message from the library team**: the optional note staff typed under **Approve** (body `message`, max 1000; the row is left out when empty) | Same |
-| Pickup | Pickups and drop offs are between 10am and 5pm on Tuesdays at the office address in `orgContact` | None (rooms can be booked on any day) |
+| Pickup | Pickups and drop offs are between 10am and 5pm on Tuesdays at the address above. | None (rooms can be booked on any day) |
 | Closing | We look forward to seeing you at pickup. | If anything changes, just reply to this email. |
-| Button | **View your item** (Lemon) plus a **Browse the library** link | **View the room** plus **Browse the library** |
+| Button | **View your item** (Lemon), then **Get directions** (Google Maps directions to the street address, transit selected: `https://www.google.com/maps/dir/?api=1&destination=…&travelmode=transit`) and **Browse the library** links; both URLs are in the plain-text part too | **View the room**, then **Get directions** and **Browse the library** |
 | Footer | Apathy is Boring office line, then why this email was sent | Same |
+
+If the item points at a place the server can't find (an id other than the office's that isn't in `item_locations`, even after a forced reload of the cache), the email has no **Where**, **Getting there** or **Get directions** rather than naming an address that may be wrong: equipment and books say "Pickups and drop offs are between 10am and 5pm on Tuesdays. Reply to this email and we will send you the address.", and rooms add "Reply to this email and we will send you the room's address." before the changes line. The office itself always resolves (from the built-in copy of its row when the table can't be read). The same full address is on the member's `/account` row while the reservation is confirmed and not over; the public site shows only the city, province and postal code.
 
 No room email promises access details (entrance, hours, on-site contact); the FAQ no longer does either. Members reply to the email (Reply-To) for anything else.
 
@@ -353,7 +357,7 @@ Exits with error if `RESEND_API_KEY` is missing. **Not invoked by the web app.**
 | **Supabase Auth** | Sign-up confirmation, magic links, and password reset emails are configured in the Supabase dashboard (**Authentication → Email Templates**, sent through Supabase's mailer or the custom SMTP set under **Authentication → SMTP Settings**) — not in this codebase, and not through Resend; recipients are always the account's own email. Since 2026-10-05 the app **requests** the **Reset Password** email itself: **Forgot password?** in the login dialog calls `supabase.auth.resetPasswordForEmail(email, { redirectTo })` (`requestPasswordReset` in `src/lib/auth.js`), where `redirectTo` is the current page (item pages become their category, `?reserve` dropped) plus `?password_reset=1`. Supabase answers the same whether or not the address has an account, and the form always shows the same neutral confirmation. The template is English-only (one template per project) and must keep `{{ .ConfirmationURL }}` so the link returns to that page with the recovery session. Supabase's built-in sender is meant for testing: a few emails per hour across the whole project, delivered only to addresses on the Supabase organization's team; production needs custom SMTP (for example Resend's SMTP) for reset emails to arrive reliably. The staff-sent reset from `/admin` → **Members** (trigger 9) is ours, through Resend: only the link comes from Supabase |
 | **Member welcome email** | Sent via Resend on sign-up / first sign-in (`POST /api/auth/welcome-email`); separate from Supabase confirmation email |
 | **No member “request received” email (equipment/books/rooms)** | Members see Kimchi and the calendar status, then the request on `/account` (**Upcoming and pending reservations**, where they can withdraw it); admins get the Slack webhook. Expertise consultations do send a confirmation email |
-| **Room access details** | Not sent by any email. The room approval email confirms the dates and the office address; anything else goes through a reply |
+| **Room access details** | Not sent by any email. The room approval email confirms the dates, the room's address and how to get there; anything else (entrance, on-site contact) goes through a reply |
 | **Zoom does not email invitations** | Zoom's API creates the meeting only; the invitation is our Resend email + `.ics` attachment (trigger 6) |
 | **Consultation data-sharing link is a placeholder** | `CONSULTATION_DATA_FORM_URL` in `server.js` is `https://REPLACE-ME.example/participant-info` until the real YES Employment form URL is provided |
 | **No i18n on emails** | All server email copy is English-only hardcoded strings in `server.js` |
@@ -366,6 +370,7 @@ Exits with error if `RESEND_API_KEY` is missing. **Not invoked by the web app.**
 |------|------|
 | `server.js` | Resend client, `EMAIL_REPLY_TO`, member decision + team-cancellation + consultation + password reset payload builders (`buildConsultationEmail`, `buildConsultationIcs`, `buildReservationCancelledByTeamEmailPayload`, `buildPasswordResetEmailPayload`), `EMAIL_WHY`, the member delete (`deleteMemberAccount`), `formatReservationDates`, send functions (`sendEmailPayloads`, 10 s cap), `settleNotifications` (routes await emails + Slack), route hooks |
 | `src/lib/email-brand.js` | Shared branded HTML + plain-text layout (`renderBrandedEmail`, `orgContact`) |
+| `src/lib/item-location.js` | Item places for the approval email: `locationAreaLine`, `memberLocation(...).directionsUrl` (`itemPlaceLines` in `server.js` builds the Where row) |
 | `src/assets/brand/apathy-is-boring-logo-light.png` | English light wordmark, flattened onto Mint, attached inline on every email |
 | `src/lib/zoom.js` | Zoom meeting create/delete used before scheduled/cancelled emails |
 | `.env.example` | Env var template |
