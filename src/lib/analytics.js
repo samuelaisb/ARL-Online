@@ -14,14 +14,14 @@ const INTERNAL_TRAFFIC_KEY = 'arl-ga-internal';
 const BOOKING_TYPES = { equipment: 'equipment', books: 'book', rooms: 'room', expertise: 'expertise' };
 
 /**
- * `booking_confirmed`, sent once a member's request saves (pending or confirmed at once).
+ * `booking_request_sent`, sent once a member's request saves (pending or confirmed at once).
  * Expertise listings are titled with the expert's name, so they send no `listing_name`.
  */
-export function trackBookingConfirmed(item) {
+export function trackBookingRequestSent(item) {
   if (typeof window.gtag !== 'function') return;
 
   const bookingType = BOOKING_TYPES[item?.tag] ?? 'equipment';
-  window.gtag('event', 'booking_confirmed', {
+  window.gtag('event', 'booking_request_sent', {
     booking_type: bookingType,
     ...(bookingType !== 'expertise' && item?.title ? { listing_name: item.title } : {}),
   });

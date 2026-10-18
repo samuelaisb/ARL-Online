@@ -1,6 +1,6 @@
 <script>
   import { createReservation } from '../lib/inventory.js';
-  import { trackBookingConfirmed } from '../lib/analytics.js';
+  import { trackBookingRequestSent } from '../lib/analytics.js';
   import { t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import BusyLabel from './BusyLabel.svelte';
@@ -49,7 +49,7 @@
         timeSlots: trimmedTimeSlots,
         summary: trimmedSummary,
       });
-      trackBookingConfirmed(item);
+      trackBookingRequestSent(item);
 
       const updatedItem =
         result.item?.reservations != null
