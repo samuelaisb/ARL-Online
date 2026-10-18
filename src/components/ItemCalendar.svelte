@@ -14,9 +14,11 @@
     toDateKey,
   } from '../lib/calendar.js';
   import {
+    ROOM_PURPOSE_MAX,
     getBlockEndDate,
     isFixedBlockTag,
     isTuesday,
+    validateRoomRequest,
   } from '../lib/reservation-rules.js';
   import BusyLabel from './BusyLabel.svelte';
 
@@ -26,6 +28,9 @@
   const itemTag = $derived(item?.tag ?? 'equipment');
   const fixedBlock = $derived(isFixedBlockTag(itemTag));
   const showPickupNotice = $derived(itemTag === 'equipment' || itemTag === 'books');
+  // Rooms also ask for the hours and what the room is for (stored privately with the request).
+  const isRoom = $derived(itemTag === 'rooms');
+  const roomFieldsId = $props.id();
 
   // Explicit reactive snapshot so Svelte 5 fine-grained tracking picks up
   // any change to item.reservations when the item prop updates.
@@ -38,6 +43,13 @@
   let saving = $state(false);
   let statusMessage = $state('');
   let statusType = $state('');
+  let startTime = $state('');
+  let endTime = $state('');
+  let purpose = $state('');
+  // { times, purpose }: the message under each room field after a rejected confirm.
+  let roomErrors = $state({});
+  let startTimeInput = $state(null);
+  let purposeInput = $state(null);
 
   let monthGrid = $derived(getCalendarMonthGrid(viewYear, viewMonth));
   let weekdayLabels = $derived(getWeekdayLabels($locale === 'fr' ? 'fr-CA' : 'en-CA'));
@@ -181,8 +193,27 @@
     clearStatus();
   }
 
+  /** The room hours and purpose ready to send, or null after showing what's missing. */
+  function checkRoomFields() {
+    const result = validateRoomRequest({ startTime, endTime, purpose });
+    if (result.ok) {
+      roomErrors = {};
+      return { startTime, endTime, purpose: result.purpose };
+    }
+
+    const purposeError = result.code.startsWith('room_purpose');
+    roomErrors = { [purposeError ? 'purpose' : 'times']: $t(`calendar.${result.code}`, { max: ROOM_PURPOSE_MAX }) };
+    (purposeError ? purposeInput : startTimeInput)?.focus();
+    return null;
+  }
+
   async function handleConfirm() {
     if (!selectedStart || !selectedEnd || saving) {
+      return;
+    }
+
+    const roomFields = isRoom ? checkRoomFields() : null;
+    if (isRoom && !roomFields) {
       return;
     }
 
@@ -197,6 +228,7 @@
       const result = await createReservation(item.id, {
         startDate: selectedStart,
         endDate: selectedEnd,
+        ...roomFields,
       });
 
       const updatedItem =
@@ -211,6 +243,9 @@
       }
       rangeStart = null;
       rangeEnd = null;
+      startTime = '';
+      endTime = '';
+      purpose = '';
       statusMessage =
         result.reservation?.status === 'pending'
           ? $t('calendar.reservation_pending')
@@ -323,6 +358,62 @@
     <p class="item-calendar__selection">{$t('calendar.select_end_date')}</p>
   {:else}
     <p class="item-calendar__selection item-calendar__selection--hint">{$t('calendar.select_start_date')}</p>
+  {/if}
+
+  {#if isRoom}
+    <div class="item-calendar__room">
+      <div class="item-calendar__times" role="group" aria-labelledby="{roomFieldsId}-times">
+        <span id="{roomFieldsId}-times" class="item-calendar__room-label">{$t('calendar.room_times_label')}</span>
+        <div class="item-calendar__time-pair">
+          <label class="item-calendar__time">
+            <span class="item-calendar__time-label">{$t('calendar.room_start_time')}</span>
+            <input
+              bind:this={startTimeInput}
+              type="time"
+              class="item-calendar__time-input"
+              step="900"
+              bind:value={startTime}
+              aria-invalid={roomErrors.times ? 'true' : undefined}
+              aria-describedby="{roomFieldsId}-times-hint{roomErrors.times ? ` ${roomFieldsId}-times-error` : ''}"
+              oninput={() => (roomErrors = { ...roomErrors, times: '' })}
+            />
+          </label>
+          <label class="item-calendar__time">
+            <span class="item-calendar__time-label">{$t('calendar.room_end_time')}</span>
+            <input
+              type="time"
+              class="item-calendar__time-input"
+              step="900"
+              bind:value={endTime}
+              aria-invalid={roomErrors.times ? 'true' : undefined}
+              aria-describedby="{roomFieldsId}-times-hint{roomErrors.times ? ` ${roomFieldsId}-times-error` : ''}"
+              oninput={() => (roomErrors = { ...roomErrors, times: '' })}
+            />
+          </label>
+        </div>
+        <span id="{roomFieldsId}-times-hint" class="item-calendar__room-hint">{$t('calendar.room_times_hint')}</span>
+        {#if roomErrors.times}
+          <span id="{roomFieldsId}-times-error" class="item-calendar__room-error">{roomErrors.times}</span>
+        {/if}
+      </div>
+
+      <label class="item-calendar__room-label" for="{roomFieldsId}-purpose">{$t('calendar.room_purpose_label')}</label>
+      <textarea
+        bind:this={purposeInput}
+        id="{roomFieldsId}-purpose"
+        class="item-calendar__purpose"
+        rows="3"
+        maxlength={ROOM_PURPOSE_MAX}
+        placeholder={$t('calendar.room_purpose_placeholder')}
+        bind:value={purpose}
+        aria-invalid={roomErrors.purpose ? 'true' : undefined}
+        aria-describedby={roomErrors.purpose ? `${roomFieldsId}-purpose-error` : undefined}
+        oninput={() => (roomErrors = { ...roomErrors, purpose: '' })}
+      ></textarea>
+      {#if roomErrors.purpose}
+        <span id="{roomFieldsId}-purpose-error" class="item-calendar__room-error">{roomErrors.purpose}</span>
+      {/if}
+    </div>
   {/if}
 
   <div class="item-calendar__actions">

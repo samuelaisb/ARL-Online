@@ -17,7 +17,14 @@ import {
   EXPERT_SHORT_TEXT_MAX,
   FOLLOW_UP_NOTE_MAX,
 } from './src/lib/expertise-fields.js';
-import { addDays, isConsultationHeld, validateReservationDates } from './src/lib/reservation-rules.js';
+import {
+  addDays,
+  formatTimeOfDay,
+  isConsultationHeld,
+  parseRoomTimes,
+  validateReservationDates,
+  validateRoomRequest,
+} from './src/lib/reservation-rules.js';
 import {
   addReservation,
   anonymizeReservationsForEmail,
@@ -521,6 +528,20 @@ function formatReservationDates(reservation) {
   }
 
   return formatReadableDate(start || end || '');
+}
+
+/**
+ * A room request's hours for emails and Slack ("6:00 p.m. to 9:00 p.m.", "… each day" over
+ * several days), or '' when it has none (other items, staff bookings, older requests).
+ */
+function formatRoomTimes(item, reservation) {
+  const times = item?.tag === 'rooms' ? parseRoomTimes(reservation?.timeSlots) : null;
+  if (!times) {
+    return '';
+  }
+
+  const range = `${formatTimeOfDay(times.start)} to ${formatTimeOfDay(times.end)}`;
+  return reservation.startDate !== reservation.endDate ? `${range}, each day` : range;
 }
 
 function consultationTitle(item) {
@@ -1038,6 +1059,7 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
     details: [
       [isRoom ? 'Room' : 'Item', title, itemUrl],
       ['Dates', formatReservationDates(reservation)],
+      ['Times', formatRoomTimes(item, reservation)],
       ['Where', where],
       ['Getting there', location?.transitNoteEn ?? ''],
       ['Message from the library team', approved ? message : ''],
@@ -1115,6 +1137,7 @@ function buildStaffReservationEmailPayload(item, reservation, { account, message
     details: [
       [isRoom ? 'Room' : 'Item', title, itemUrl],
       ['Dates', formatReservationDates(reservation)],
+      ['Times', formatRoomTimes(item, reservation)],
       ['Where', where],
       ['Getting there', location?.transitNoteEn ?? ''],
       ['Message from the library team', message],
@@ -1644,7 +1667,14 @@ function reservationSlackMessage(item, reservation) {
   }
 
   const kind = SLACK_REQUEST_KIND[item.tag] ?? 'reservation';
-  return [`📚 New ${kind} request: ${item.title}`, from, formatReservationDates(reservation)]
+  const roomTimes = formatRoomTimes(item, reservation);
+  return [
+    `📚 New ${kind} request: ${item.title}`,
+    from,
+    formatReservationDates(reservation),
+    roomTimes ? `Times: ${roomTimes}` : '',
+    item.tag === 'rooms' && reservation.requestSummary ? `For: ${reservation.requestSummary}` : '',
+  ]
     .filter(Boolean)
     .join('\n');
 }
@@ -2698,6 +2728,22 @@ app.post('/api/inventory/:id/reservations', reservationCreateLimiter, requireAut
 
       if (!tagValidation.ok) {
         return res.status(400).json({ error: tagValidation.error });
+      }
+
+      if (item.tag === 'rooms') {
+        // The hours and what the room is for, kept in the consultation columns (staff only).
+        const room = validateRoomRequest({
+          startTime: req.body?.startTime,
+          endTime: req.body?.endTime,
+          purpose: req.body?.purpose,
+        });
+
+        if (!room.ok) {
+          return res.status(400).json({ error: room.error, code: room.code });
+        }
+
+        timeSlots = room.timeSlots;
+        requestSummary = room.purpose;
       }
     }
 
@@ -3857,6 +3903,9 @@ function serializeReservationForMember({ item, reservation }, today) {
     startDate: reservation.startDate,
     endDate: reservation.endDate,
     status: reservation.status,
+    // Rooms: the hours (`HH:MM-HH:MM`) and what it's for, as the member wrote them.
+    timeSlots: item.tag === 'rooms' ? reservation.timeSlots ?? null : null,
+    purpose: item.tag === 'rooms' ? reservation.requestSummary ?? null : null,
     location: memberReservationLocation(item, reservation, today),
   };
 }

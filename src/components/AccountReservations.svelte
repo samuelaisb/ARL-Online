@@ -2,6 +2,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { cancelAccountReservation, fetchAccountReservations } from '../lib/inventory.js';
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
+  import { describeRoomTimes } from '../lib/reservation-rules.js';
   import { itemToPath, navigate, navigateToItem } from '../lib/router.js';
   import { locale, t } from '../lib/i18n.js';
   import {
@@ -222,6 +223,7 @@
 {#snippet reservationRow(entry)}
   {@const statusKey = hasEnded(entry, todayKey) ? 'ended' : entry.status}
   {@const cancellable = canCancel(entry, todayKey)}
+  {@const roomTimes = describeRoomTimes(entry, $t, $locale === 'fr' ? 'fr-CA' : 'en-CA')}
   <li class="admin-item-row admin-item-row--pending consultation-row">
     <div class="admin-reservation-details">
       <span class="consultation-row__heading">
@@ -235,6 +237,18 @@
       <span class="admin-reservation-dates">
         {$t(`inventory.filter_${entry.tag}`)} · {formatDates(entry)}
       </span>
+      {#if roomTimes}
+        <span class="consultation-field">
+          <span class="consultation-field__label">{$t('account_reservations.times_label')}</span>
+          <span class="consultation-field__value">{roomTimes}</span>
+        </span>
+      {/if}
+      {#if entry.purpose}
+        <span class="consultation-field">
+          <span class="consultation-field__label">{$t('account_reservations.purpose_label')}</span>
+          <span class="consultation-field__value">{entry.purpose}</span>
+        </span>
+      {/if}
       {#if entry.status === 'pending'}
         <span class="admin-consultation-detail">{$t('account_reservations.pending_hint')}</span>
         {#if entry.location}

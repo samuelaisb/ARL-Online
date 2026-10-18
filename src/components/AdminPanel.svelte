@@ -15,7 +15,7 @@
     refuseReservation,
   } from '../lib/inventory.js';
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
-  import { canBookFollowUp, isConsultationHeld, isTuesday } from '../lib/reservation-rules.js';
+  import { canBookFollowUp, describeRoomTimes, isConsultationHeld, isTuesday } from '../lib/reservation-rules.js';
   import { FOLLOW_UP_NOTE_MAX } from '../lib/expertise-fields.js';
   import { toPublicItem } from '../lib/item-location.js';
   import { locale, t } from '../lib/i18n.js';
@@ -1077,6 +1077,24 @@
     </div>
   {/if}
 
+  {#snippet roomRequestDetails(entry)}
+    {#if entry.itemTag === 'rooms'}
+      {@const roomTimes = describeRoomTimes(entry, $t, $locale === 'fr' ? 'fr-CA' : 'en-CA')}
+      {#if roomTimes}
+        <span class="consultation-field">
+          <span class="consultation-field__label">{$t('admin.room_times_label')}</span>
+          <span class="consultation-field__value">{roomTimes}</span>
+        </span>
+      {/if}
+      {#if entry.requestSummary}
+        <span class="consultation-field">
+          <span class="consultation-field__label">{$t('admin.room_purpose_label')}</span>
+          <span class="consultation-field__value">{entry.requestSummary}</span>
+        </span>
+      {/if}
+    {/if}
+  {/snippet}
+
   {#if showPendingList}
     <div id="admin-pending-list" class="admin-reservation-list">
       {#if loadError}
@@ -1146,6 +1164,7 @@
                       </span>
                     {/if}
                   </span>
+                  {@render roomRequestDetails(entry)}
                 {/if}
                 {#if entry.userEmail}
                   <span class="admin-reservation-email">{entry.userEmail}</span>
@@ -1274,6 +1293,7 @@
                       end: formatDateKey(entry.endDate),
                     })}
                   </span>
+                  {@render roomRequestDetails(entry)}
                 {/if}
                 {#if entry.userEmail}
                   <span class="admin-reservation-email">{entry.userEmail}</span>

@@ -4,7 +4,8 @@
  *
  * Equipment: start Tuesday → end the following Tuesday (+7 days).
  * Books: start Tuesday → end four weeks later (+28 days, also a Tuesday).
- * Rooms: any inclusive date range (no weekday or duration rules).
+ * Rooms: any inclusive date range (no weekday or duration rules). Members also give the
+ *   hours (the same on each day) and what the room is for; see validateRoomRequest.
  * Expertise: no calendar — consultation requests store the submission date
  *   as both start and end, so any valid single date/range passes. A scheduled
  *   consultation is held once its meeting has ended (`isConsultationHeld`).
@@ -84,6 +85,95 @@ export function validateReservationDates(tag, startDate, endDate) {
   }
 
   return { ok: true };
+}
+
+/** Longest answer to "What will you use the room for?". Stored as reservations.request_summary. */
+export const ROOM_PURPOSE_MAX = 1000;
+
+const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** Minutes after midnight for a 24-hour `HH:MM` value (what `<input type="time">` gives), or null. */
+function timeOfDayMinutes(value) {
+  const match = TIME_OF_DAY_PATTERN.exec(typeof value === 'string' ? value.trim() : '');
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+/**
+ * A room request's hours, stored in reservations.time_slots as `HH:MM-HH:MM` (Montréal wall
+ * time, the same hours on each day of the range). Returns `{ start, end }`, or null for rooms
+ * booked without hours (staff bookings and requests from before hours were asked).
+ */
+export function parseRoomTimes(timeSlots) {
+  const [start, end, extra] = typeof timeSlots === 'string' ? timeSlots.split('-') : [];
+  if (extra !== undefined || timeOfDayMinutes(start) === null || timeOfDayMinutes(end) === null) {
+    return null;
+  }
+
+  return { start, end };
+}
+
+/** "6:30 p.m." (en-CA) or "18 h 30" (fr-CA) for an `HH:MM` value; no time-zone conversion. */
+export function formatTimeOfDay(value, localeCode = 'en-CA') {
+  const minutes = timeOfDayMinutes(value);
+  if (minutes === null) {
+    return value ?? '';
+  }
+
+  return new Intl.DateTimeFormat(localeCode, { timeStyle: 'short', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(2000, 0, 1, Math.floor(minutes / 60), minutes % 60)),
+  );
+}
+
+/**
+ * A room reservation's hours for the account and admin lists ("6:00 p.m. to 9:00 p.m.",
+ * "… each day" over several days), or '' when it has none. `translate` is the `$t` value.
+ */
+export function describeRoomTimes(reservation, translate, localeCode) {
+  const times = parseRoomTimes(reservation?.timeSlots);
+  if (!times) {
+    return '';
+  }
+
+  const key =
+    reservation.startDate === reservation.endDate ? 'calendar.room_times_value' : 'calendar.room_times_value_each_day';
+  return translate(key, {
+    start: formatTimeOfDay(times.start, localeCode),
+    end: formatTimeOfDay(times.end, localeCode),
+  });
+}
+
+/**
+ * Checks the hours and purpose a member gives with a room request. Returns
+ * `{ ok: true, timeSlots, purpose }` ready to store, or `{ ok: false, code, error }` with
+ * the code the client translates (`calendar.<code>`).
+ */
+export function validateRoomRequest({ startTime, endTime, purpose }) {
+  const start = timeOfDayMinutes(startTime);
+  const end = timeOfDayMinutes(endTime);
+
+  if (start === null || end === null) {
+    return { ok: false, code: 'room_times_required', error: 'Choose a start and end time for the room.' };
+  }
+
+  if (end <= start) {
+    return { ok: false, code: 'room_times_order', error: 'The end time must be after the start time.' };
+  }
+
+  const text = typeof purpose === 'string' ? purpose.trim() : '';
+
+  if (!text) {
+    return { ok: false, code: 'room_purpose_required', error: 'Tell us what you will use the room for.' };
+  }
+
+  if (text.length > ROOM_PURPOSE_MAX) {
+    return {
+      ok: false,
+      code: 'room_purpose_too_long',
+      error: `What the room is for must be ${ROOM_PURPOSE_MAX} characters or fewer.`,
+    };
+  }
+
+  return { ok: true, timeSlots: `${startTime.trim()}-${endTime.trim()}`, purpose: text };
 }
 
 /** Consultation meeting length; matches Zoom `CONSULTATION_DURATION_MINUTES` in `src/lib/zoom.js`. */

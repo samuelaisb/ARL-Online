@@ -8,7 +8,7 @@ Production emails are sent from `server.js` via the [Resend](https://resend.com)
 
 New pending reservation requests on equipment, books, and rooms do **not** send email — admins are notified via the [Slack webhook](automated-webhooks.md) only, and the member follows the request on `/account` (**Upcoming and pending reservations**). **Expertise consultations are the exception:** see triggers 5–7 (request received / new request, scheduled, cancelled). An admin deleting a member's upcoming equipment, book or room reservation (or its item) emails that member (trigger 8). In `/admin` → **Members**, deleting a member account cancels their active bookings and sends triggers 7 and 8 for them, and **Send password reset** sends trigger 9.
 
-Email dates are written out in English (`formatReservationDates()`: "Tuesday, October 13, 2026 to Tuesday, October 20, 2026", one date when a room is booked for a single day).
+Email dates are written out in English (`formatReservationDates()`: "Tuesday, October 13, 2026 to Tuesday, October 20, 2026", one date when a room is booked for a single day). Room hours are Montréal wall-clock times, written `6:00 p.m. to 9:00 p.m.` with no time-zone conversion (`formatRoomTimes()`).
 
 ---
 
@@ -64,7 +64,7 @@ Ringold and P22 Mackinac Pro are not loaded. Emails are English-only, so the Fre
 | Part | Equipment and books | Rooms |
 |------|---------------------|-------|
 | Intro | Your reservation request has been approved by Apathy is Boring. | Same |
-| Details | **Item** (linked) + **Dates** + **Where** + **Getting there** | **Room** (linked) + **Dates** + **Where** + **Getting there** |
+| Details | **Item** (linked) + **Dates** + **Where** + **Getting there** | **Room** (linked) + **Dates** + **Times** + **Where** + **Getting there**. **Times** is the hours the member asked for (`formatRoomTimes()`: "6:00 p.m. to 9:00 p.m.", "…, each day" over several days); left out when the request has none (older requests). The purpose they gave is not repeated |
 | Where | The item's own place (`item.location`, from `item_locations`; the office for every current item), on three lines: place name, street, `Montréal QC H2T 1S1` | Same |
 | Getting there | The place's English transit note (`transit_note_en`; the row is left out when empty). Office: "Bus 55 stops about 60 m away at Saint-Laurent / Maguire (northbound) and about 200 m away at Saint-Urbain / Fairmount (southbound). Laurier metro station (Orange line) is about 750 m away." | Same |
 | Message | **Message from the library team**: the optional note staff typed under **Approve** (body `message`, max 1000; the row is left out when empty) | Same |
@@ -104,7 +104,7 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 | Part | Text |
 |------|------|
 | Intro | Unfortunately, the item you requested is not available for those dates. |
-| Body | Item (or **Room**) title + date range |
+| Body | Item (or **Room**) title + date range (+ **Times** for a room request with hours) |
 | Closing | Please choose different dates or another item from the library. |
 | Button | **Choose different dates** (item page) plus a **Browse the library** link |
 | Footer | Same office line as the approval email |

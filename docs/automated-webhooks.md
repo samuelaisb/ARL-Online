@@ -31,7 +31,7 @@ All values are plain strings suitable for Slack workflow trigger variables:
 
 | Field | Source | Example / notes |
 |-------|--------|-----------------|
-| `message` | Built by the server | The whole Slack message, ready to post: plain text with line breaks. New requests: `📚 New {equipment\|book\|room} request: {title}`, `From {email}`, the readable dates; consultations: `📚 New consultation request: {expert}`, `From {email}`, `Topic: …`, `Availability: …`. Staff alerts: the event's emoji and the `request_summary` sentence. Built by `reservationSlackMessage()` / `notifySlackAlert()` |
+| `message` | Built by the server | The whole Slack message, ready to post: plain text with line breaks. New requests: `📚 New {equipment\|book\|room} request: {title}`, `From {email}`, the readable dates (room requests then add `Times: 6:00 p.m. to 9:00 p.m.`, with `, each day` over several days, and `For: {what the room is for}`); consultations: `📚 New consultation request: {expert}`, `From {email}`, `Topic: …`, `Availability: …`. Staff alerts: the event's emoji and the `request_summary` sentence. Built by `reservationSlackMessage()` / `notifySlackAlert()` |
 | `item_id` | `item.id` | Inventory item UUID or seed id |
 | `item_title` | `item.title` | Display title |
 | `item_body` | `item.body` | Description text. For expertise, this is the short list blurb (the long bio is not sent) |
@@ -41,8 +41,8 @@ All values are plain strings suitable for Slack workflow trigger variables:
 | `end_date` | `reservation.endDate` | `YYYY-MM-DD` (same as start for expertise requests) |
 | `status` | `reservation.status` | `pending` on create. Staff alerts: `member_signed_up`, `mentor_profile_published`, `mentor_profile_updated`, `reservation_cancelled_by_member` or `consultation_follow_up` |
 | `user_email` | `reservation.userEmail` | Member email from JWT; empty string if missing |
-| `time_slots` | `reservation.timeSlots` | Member's free-text availability (expertise only; empty string otherwise) |
-| `request_summary` | `reservation.requestSummary` | Member's consultation topic summary (expertise only; empty string otherwise). Staff alerts: one sentence describing the event |
+| `time_slots` | `reservation.timeSlots` | Member's free-text availability (expertise); the requested hours as `HH:MM-HH:MM` (room requests, e.g. `18:00-21:00`); empty string otherwise |
+| `request_summary` | `reservation.requestSummary` | Member's consultation topic summary (expertise); what the room is for (room requests); empty string otherwise. Staff alerts: one sentence describing the event |
 | `expert_email` | `item.expertEmail` | Expert contact from the item (expertise only; empty string otherwise) |
 | `admin_url` | `absoluteSiteUrl('/admin')` | Link to the admin page for reviewing the request |
 

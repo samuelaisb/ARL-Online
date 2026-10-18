@@ -57,6 +57,10 @@ const ERROR_CODE_KEYS = {
   reservation_collision: 'admin.create_reservation_collision',
   reservation_account_suspended: 'admin.create_reservation_suspended',
   reservation_consultation: 'admin.create_reservation_consultation',
+  room_times_required: 'calendar.room_times_required',
+  room_times_order: 'calendar.room_times_order',
+  room_purpose_required: 'calendar.room_purpose_required',
+  room_purpose_too_long: 'calendar.room_purpose_too_long',
 };
 
 function apiErrorMessage(result, fallbackKey, code = result.code) {
@@ -277,8 +281,8 @@ export async function loadInventoryItems() {
 
 /**
  * Create a reservation request. Payload is either calendar dates
- * ({ startDate, endDate }) or a consultation request ({ timeSlots, summary })
- * for expertise items.
+ * ({ startDate, endDate }, plus { startTime, endTime, purpose } for rooms) or a
+ * consultation request ({ timeSlots, summary }) for expertise items.
  */
 export async function createReservation(itemId, payload) {
   const response = await fetch(`/api/inventory/${encodeURIComponent(itemId)}/reservations`, {
