@@ -663,7 +663,7 @@ function buildExpertRequestEmailPayload(item, reservation) {
     to,
     subject: `New consultation request: ${title}`,
     heading: 'New consultation request',
-    intro: 'A member has requested a consultation with you through the Activist Resource Library.',
+    intro: `A member has requested a consultation with you through the Activist Resource Library. To view the request, log in with this email address: ${to}`,
     details: [
       ['Consultation', title],
       ['Member', reservation.userEmail],
@@ -671,7 +671,8 @@ function buildExpertRequestEmailPayload(item, reservation) {
       ['What they would like to discuss', reservation.requestSummary],
     ],
     paragraphs: [
-      `Open your account panel to pick a meeting date and time. Log in (or register) with ${to} to see the request. Once you choose a time, we create a Zoom meeting and email the invitation to you both.`,
+      `No account yet? Register with ${to} and confirm your email address; the request will then be in your account panel.`,
+      'Open your account panel to pick a meeting date and time. Once you choose a time, we create a Zoom meeting and email the invitation to you both.',
     ],
     cta: { label: 'Schedule this meeting', href: accountUrl },
     why: EMAIL_WHY.consultationExpert,

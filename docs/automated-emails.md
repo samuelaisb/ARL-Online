@@ -201,7 +201,7 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 | Recipient | Content |
 |-----------|---------|
 | Member | Thanks; the expert will pick a time and both get a Zoom invitation. Echoes their time slots + summary; links to `/account` (follow/cancel) and library home |
-| Expert | Member email, time slots, summary; instructions to log in (or register) **with the expert email** and schedule from `/account`; link to `/account` |
+| Expert | The intro (also the inbox preview) says to log in **with the expert email** to view the request, and names that address. Member email, time slots, summary; a "No account yet?" line to register with that email and confirm it (expert requests only show to confirmed accounts); schedule from `/account`; link to `/account` |
 
 **Failure behavior:** Missing member or expert email skips that email (missing expert email logs a warning — only admins can schedule such requests); Resend errors logged (`Consultation request email failed: …`); request still succeeds with `emailSent: false`. Equipment/books/rooms requests never trigger these emails.
 
