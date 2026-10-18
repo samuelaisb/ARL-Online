@@ -1,4 +1,4 @@
-*Last updated: October 7, 2026*
+*Last updated: October 18, 2026*
 
 The Activist Resource Library (ARL) is run by **Apathy is Boring (AisB)**, a non-profit based in Montréal, Québec, in partnership with Finance Engage Sustain (FES). This policy explains, in plain language, what personal information we collect on activistresourcelibrary.com, why, and what you can do about it. It follows Québec’s *Act respecting the protection of personal information in the private sector* (Law 25).
 
@@ -14,12 +14,12 @@ AisB is responsible for your personal information. Questions, requests, and comp
 
 We only collect what we need to run the library.
 
-- **Your account:** your email address, your password (stored encrypted by our login provider; we never see it), that you accepted the member agreement, and whether you want email updates. If you sign in with **Google** or **Discord** instead of a password, that service sends us your email address, name, profile picture, and account ID, and we store them with your account. We never get your Google or Discord password, and we never post to those accounts. *Why:* to log you in, confirm your email, and contact you about your activity.
-- **Reservations:** the item and the dates you request. *Why:* to review, confirm, and organize pickups and returns.
+- **Your account:** your email address, your password (stored encrypted by our login provider; we never see it), that you accepted the member agreement, and whether you want email updates. If you sign in with **Google** or **Discord** instead of a password, that service sends us your email address, name, profile picture, and account ID, and we store them with your account. We never get your Google or Discord password, and we never post to those accounts. Library staff can add a name to your account that only staff see. *Why:* to log you in, confirm your email, and contact you about your activity.
+- **Reservations:** the item and the dates you request, and for a room, the times you need it and what you’ll use it for. *Why:* to review and confirm your request, and organize pickups, returns, or the use of the room.
 - **Expertise consultations:** the times you offer, what you want to discuss, and the meeting time and Zoom link. *Why:* to schedule the meeting. Your email and request are shared with the expert you chose, and the expert’s email is shared with you.
 - **Expert profiles:** if you share your expertise, your name, photo, and descriptions are **public** on the website. Your email stays private, except with members who request a consultation with you.
 - **Contact form:** your name, email, and message. *Why:* to reply to you.
-- **Website use:** pages you visit, your device and browser type, and your approximate location, collected by Google Analytics using cookies, plus standard server logs (such as IP address) kept for security. Your browser also stores your language choice and your login session. *Why:* to keep the site secure and understand how it’s used.
+- **Website use:** pages you visit, when you send a reservation or consultation request (its type and the item’s name, never an expert’s name), your device and browser type, and your approximate location, collected by Google Analytics using cookies, plus standard server logs (such as IP address) kept for security. Your browser also stores your language choice and your login session. When you open an item, we add one to that item’s view count for the day. We keep only the daily total for each item, not who viewed it: to count each visitor once a day, our server holds your IP address in memory until the end of that day, and your browser remembers which items it has already counted while the tab is open. No cookie is used for this. *Why:* to keep the site secure and understand how it’s used.
 - **Kimchi, our library cat:** Kimchi remembers a few small things in your browser so it doesn’t repeat itself: whether it has already greeted you or told you that you’re logged in, whether it’s napping, and which updates it has already mentioned. These notes hold only dates, statuses, and reference numbers, never your name, your email, or what you reserved. They stay in your browser and are never sent to us; clearing your browser data erases them.
 
 We don’t sell your information or use it for advertising. Funders and partners such as FES only receive anonymous, combined statistics. If we ever ask you for more information for a funder (for example after a consultation), it will be optional and we’ll tell you how it’s used.
@@ -35,12 +35,13 @@ Only with the service providers that help run the site, under agreements that re
 - **Zoom:** consultation meetings
 - **Slack:** internal notifications to our team about new requests
 - **Google Analytics:** website statistics
+- **OpenStreetMap Foundation and Thunderforest (United Kingdom):** map images, loaded only when you open a map on an item or a reservation. They receive your IP address and our site’s address, not your account details.
 
-Some of these providers store information **outside Québec**, mainly in the United States. Before sending information outside Québec, we assess whether it will be adequately protected. We may also disclose information when the law requires it.
+Some of these providers store information **outside Québec**, mainly in the United States (and, for maps, the United Kingdom). Before sending information outside Québec, we assess whether it will be adequately protected. We may also disclose information when the law requires it.
 
 ## How long we keep it
 
-We keep your information while your account is active and as long as needed for the purposes above. After that, we delete it or make it anonymous. You can ask us to delete your account at any time.
+We keep your information while your account is active and as long as needed for the purposes above. After that, we delete it or make it anonymous. You can ask us to delete your account at any time. When we delete an account, its reservations stay only as anonymous history: the item, the dates, and the status, without your email or anything you wrote.
 
 ## How we protect it
 

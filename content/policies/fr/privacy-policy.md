@@ -1,4 +1,4 @@
-*Dernière mise à jour : 7 octobre 2026*
+*Dernière mise à jour : 18 octobre 2026*
 
 La bibliothèque ressources activistes (ARL) est gérée par **Apathy is Boring (AisB)**, un organisme à but non lucratif basé à Montréal, au Québec, en partenariat avec Finance Engage Sustain (FES). Cette politique explique simplement quels renseignements personnels nous recueillons sur activistresourcelibrary.com, pourquoi, et quels sont vos droits. Elle respecte la *Loi sur la protection des renseignements personnels dans le secteur privé* du Québec (Loi 25).
 
@@ -14,12 +14,12 @@ AisB est responsable de vos renseignements personnels. Les questions, demandes e
 
 Nous recueillons seulement ce dont nous avons besoin pour faire fonctionner la bibliothèque.
 
-- **Votre compte :** votre adresse courriel, votre mot de passe (chiffré par notre fournisseur de connexion; nous ne le voyons jamais), votre acceptation de l’entente de membre et votre choix de recevoir ou non des nouvelles par courriel. Si vous vous connectez avec **Google** ou **Discord** plutôt qu’avec un mot de passe, ce service nous transmet votre adresse courriel, votre nom, votre photo de profil et l’identifiant de votre compte, que nous conservons avec votre compte. Nous ne recevons jamais votre mot de passe Google ou Discord et ne publions jamais rien sur ces comptes. *Pourquoi :* pour vous connecter, confirmer votre courriel et vous écrire au sujet de vos activités.
-- **Réservations :** l’article et les dates demandées. *Pourquoi :* pour examiner, confirmer et organiser la cueillette et le retour.
+- **Votre compte :** votre adresse courriel, votre mot de passe (chiffré par notre fournisseur de connexion; nous ne le voyons jamais), votre acceptation de l’entente de membre et votre choix de recevoir ou non des nouvelles par courriel. Si vous vous connectez avec **Google** ou **Discord** plutôt qu’avec un mot de passe, ce service nous transmet votre adresse courriel, votre nom, votre photo de profil et l’identifiant de votre compte, que nous conservons avec votre compte. Nous ne recevons jamais votre mot de passe Google ou Discord et ne publions jamais rien sur ces comptes. Le personnel de la bibliothèque peut ajouter à votre compte un nom que seul le personnel voit. *Pourquoi :* pour vous connecter, confirmer votre courriel et vous écrire au sujet de vos activités.
+- **Réservations :** l’article et les dates demandées et, pour une salle, les heures souhaitées et l’utilisation prévue. *Pourquoi :* pour examiner et confirmer votre demande, et organiser la cueillette, le retour ou l’utilisation de la salle.
 - **Consultations d’expertise :** les plages horaires proposées, le sujet de la demande, ainsi que l’heure de la rencontre et le lien Zoom. *Pourquoi :* pour planifier la rencontre. Votre courriel et votre demande sont transmis à l’expert choisi, et le courriel de l’expert vous est transmis.
 - **Profils d’experts :** si vous partagez votre expertise, votre nom, votre photo et vos descriptions sont **publics** sur le site. Votre courriel reste privé, sauf auprès des membres qui demandent une consultation avec vous.
 - **Formulaire de contact :** votre nom, votre courriel et votre message. *Pourquoi :* pour vous répondre.
-- **Utilisation du site :** les pages visitées, le type d’appareil et de navigateur et votre emplacement approximatif, recueillis par Google Analytics au moyen de témoins (cookies), ainsi que les journaux de serveur habituels (comme l’adresse IP) conservés pour la sécurité. Votre navigateur conserve aussi votre choix de langue et votre session de connexion. *Pourquoi :* pour assurer la sécurité du site et comprendre comment il est utilisé.
+- **Utilisation du site :** les pages visitées, l’envoi d’une demande de réservation ou de consultation (son type et le nom de l’article, jamais le nom d’un expert), le type d’appareil et de navigateur et votre emplacement approximatif, recueillis par Google Analytics au moyen de témoins (cookies), ainsi que les journaux de serveur habituels (comme l’adresse IP) conservés pour la sécurité. Votre navigateur conserve aussi votre choix de langue et votre session de connexion. Quand vous ouvrez un article, nous ajoutons une vue au compteur de cet article pour la journée. Nous ne gardons que le total quotidien de chaque article, pas qui l’a consulté : pour compter chaque visiteur une seule fois par jour, notre serveur garde votre adresse IP en mémoire jusqu’à la fin de la journée, et votre navigateur retient les articles déjà comptés tant que l’onglet est ouvert. Aucun témoin (cookie) n’est utilisé pour cela. *Pourquoi :* pour assurer la sécurité du site et comprendre comment il est utilisé.
 - **Kimchi, le chat de la bibliothèque :** pour éviter de se répéter, Kimchi garde quelques petites notes dans votre navigateur : s’il vous a déjà salué ou vous a déjà dit que vous êtes connecté, s’il fait la sieste et quelles nouvelles il vous a déjà annoncées. Ces notes contiennent seulement des dates, des statuts et des numéros de référence, jamais votre nom, votre courriel ni ce que vous avez réservé. Elles restent dans votre navigateur et ne nous sont jamais transmises; effacer les données de votre navigateur les supprime.
 
 Nous ne vendons pas vos renseignements et ne les utilisons pas à des fins publicitaires. Les bailleurs de fonds et partenaires comme FES reçoivent seulement des statistiques anonymes et regroupées. Si nous vous demandons un jour des renseignements supplémentaires pour un bailleur de fonds (par exemple après une consultation), ce sera facultatif et nous vous expliquerons comment ils sont utilisés.
@@ -35,12 +35,13 @@ Seulement avec les fournisseurs de services qui nous aident à faire fonctionner
 - **Zoom :** rencontres de consultation
 - **Slack :** avis internes à notre équipe sur les nouvelles demandes
 - **Google Analytics :** statistiques du site
+- **Fondation OpenStreetMap et Thunderforest (Royaume-Uni) :** images de carte, chargées seulement quand vous ouvrez une carte sur un article ou une réservation. Ils reçoivent votre adresse IP et l’adresse de notre site, mais pas les renseignements de votre compte.
 
-Certains de ces fournisseurs conservent des renseignements **à l’extérieur du Québec**, principalement aux États-Unis. Avant de communiquer des renseignements à l’extérieur du Québec, nous évaluons s’ils y seront adéquatement protégés. Nous pouvons aussi communiquer des renseignements lorsque la loi l’exige.
+Certains de ces fournisseurs conservent des renseignements **à l’extérieur du Québec**, principalement aux États-Unis (et, pour les cartes, au Royaume-Uni). Avant de communiquer des renseignements à l’extérieur du Québec, nous évaluons s’ils y seront adéquatement protégés. Nous pouvons aussi communiquer des renseignements lorsque la loi l’exige.
 
 ## Combien de temps nous les conservons
 
-Nous conservons vos renseignements tant que votre compte est actif et aussi longtemps que nécessaire aux fins décrites ci-dessus. Ensuite, nous les détruisons ou les rendons anonymes. Vous pouvez nous demander de supprimer votre compte en tout temps.
+Nous conservons vos renseignements tant que votre compte est actif et aussi longtemps que nécessaire aux fins décrites ci-dessus. Ensuite, nous les détruisons ou les rendons anonymes. Vous pouvez nous demander de supprimer votre compte en tout temps. Quand nous supprimons un compte, ses réservations restent seulement comme historique anonyme : l’article, les dates et le statut, sans votre courriel ni ce que vous avez écrit.
 
 ## Comment nous les protégeons
 
