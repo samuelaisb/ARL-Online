@@ -8,6 +8,13 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
 
+      // Staff browsers (flag set by src/lib/analytics.js) go to GA's Internal Traffic filter.
+      try {
+        if (localStorage.getItem('arl-ga-internal') === '1') {
+          gtag('set', { traffic_type: 'internal' });
+        }
+      } catch (e) {}
+
       gtag('config', 'G-5VERECD6ZJ');
     </script>
     <meta charset="UTF-8" />

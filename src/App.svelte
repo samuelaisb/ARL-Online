@@ -3,6 +3,7 @@
   import { loadInventoryItems } from './lib/inventory.js';
   import { toPublicItem } from './lib/item-location.js';
   import { recordItemView } from './lib/item-views.js';
+  import { tagStaffTraffic } from './lib/analytics.js';
   import { locale, t } from './lib/i18n.js';
   import {
     getItemRouteParams,
@@ -475,6 +476,7 @@
 
   onMount(() => {
     refreshInventory().then(warmItemDetailChunk);
+    return tagStaffTraffic();
   });
 </script>
 
