@@ -1179,6 +1179,16 @@ h1[tabindex='-1']:focus {
   line-height: 1.55;
 }
 
+/* Closes the ruled steps; the buttons line up with the step text (number + gap). */
+.how-this-works-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  max-width: 44rem;
+  padding: 1.5rem 0 0 4rem;
+  border-top: 2px solid var(--color-dark);
+}
+
 .how-this-works-faq {
   max-width: 44rem;
   margin-top: 2.5rem;

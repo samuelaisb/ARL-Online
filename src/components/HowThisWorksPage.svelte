@@ -1,6 +1,9 @@
 <script>
-  import { INVENTORY_PATH, navigate } from '../lib/router.js';
+  import { INVENTORY_PATH, isPlainLeftClick, navigate, navigateToPage } from '../lib/router.js';
+  import { session } from '../lib/auth.js';
   import { faq, t } from '../lib/i18n.js';
+
+  let { onOpenRegister } = $props();
 
   const steps = [
     'browse',
@@ -13,6 +16,16 @@
   function goToInventory(event) {
     event.preventDefault();
     navigate(INVENTORY_PATH);
+  }
+
+  // Below the steps, so start the homepage like a fresh load (top, focus on its <h1>).
+  function goToLibrary(event) {
+    if (!isPlainLeftClick(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    navigateToPage('/');
   }
 </script>
 
@@ -38,6 +51,24 @@
       </li>
     {/each}
   </ol>
+
+  <!-- Signed-out visitors can start here: the button opens the Register dialog. -->
+  <div class="how-this-works-cta">
+    {#if !$session}
+      <button type="button" class="btn-header btn-header--primary" aria-haspopup="dialog" onclick={onOpenRegister}>
+        {$t('how_this_works.cta_register')}
+      </button>
+    {/if}
+    <a
+      href="/"
+      class="btn-header"
+      class:btn-header--primary={!!$session}
+      class:btn-header--secondary={!$session}
+      onclick={goToLibrary}
+    >
+      {$t('how_this_works.cta_browse')}
+    </a>
+  </div>
 
   <section class="how-this-works-faq" aria-labelledby="how-this-works-faq-heading">
     <h2 id="how-this-works-faq-heading" class="how-this-works-faq__heading">

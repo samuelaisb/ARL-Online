@@ -635,71 +635,81 @@
   },
   "how_this_works": {
     "heading": "Comment ça marche",
-    "subtitle": "Un guide rapide pour parcourir l'inventaire et réserver à la Bibliothèque ressources activistes.",
+    "subtitle": "Tout est gratuit à la Bibliothèque ressources activistes. Voici comment emprunter de l'équipement et des livres, réserver une salle ou rencontrer un expert.",
     "back_to_inventory": "← Retour à l'inventaire",
     "steps": {
       "browse": {
         "title": "Parcourir l'inventaire",
-        "body": "Utilisez les filtres Équipement, Livres, Salles et Expertise pour trouver ce dont vous avez besoin. Chaque fiche d'équipement, de livre ou de salle indique si l'article est disponible aujourd'hui, nécessite une vérification au calendrier ou est déjà réservé."
+        "body": "Utilisez les filtres Expertise, Équipement, Livres et Salles pour trouver ce dont vous avez besoin. Chaque fiche d'équipement, de livre ou de salle indique si l'article est disponible aujourd'hui, nécessite une vérification au calendrier ou est déjà réservé. Aucun compte n'est nécessaire pour parcourir l'inventaire."
       },
       "account": {
-        "title": "Créer un compte membre",
-        "body": "Inscrivez-vous avec votre courriel et un mot de passe, puis lisez et acceptez l'entente de membre. Un compte est requis pour soumettre une demande de réservation."
+        "title": "Créer un compte gratuit",
+        "body": "Inscrivez-vous avec Google, Discord ou votre courriel, puis lisez et signez l'entente de membre. Si vous vous inscrivez avec votre courriel, confirmez-le à partir du message que nous vous envoyons, puis connectez-vous. Un compte est requis pour envoyer une demande."
       },
       "reserve": {
-        "title": "Choisir vos dates",
-        "body": "Cliquez sur Réserver l'inventaire pour ouvrir le calendrier. L'équipement et les livres se réservent par blocs fixes du mardi (une semaine ou un mois). Les salles utilisent une plage de dates flexible. Pour l'expertise, cliquez sur Demander une consultation et partagez 2-3 plages horaires où vous êtes disponible ainsi qu'un résumé de votre demande."
+        "title": "Envoyer une demande",
+        "body": "Cliquez sur Réserver sur un article pour ouvrir son calendrier. L'équipement s'emprunte pour une semaine, d'un mardi au mardi suivant, et les livres pour quatre semaines, à partir d'un mardi. Les salles se réservent aux dates de votre choix : indiquez les heures souhaitées et à quoi servira la salle. Pour l'expertise, cliquez sur Demander une consultation et indiquez deux ou trois moments où vous êtes disponible, ainsi que ce sur quoi vous aimeriez de l'aide."
       },
       "approval": {
         "title": "Attendre la confirmation",
-        "body": "Votre demande est soumise en attente. Apathy is Boring l'examine et vous envoie un courriel lorsqu'elle est approuvée ou refusée. Les dates en attente restent bloquées au calendrier jusqu'à la décision."
+        "body": "Apathy is Boring examine les demandes d'équipement, de livres et de salles et vous écrit par courriel lorsqu'une demande est approuvée ou refusée. D'ici là, ses dates restent bloquées au calendrier. Pour une consultation, l'expert (ou Apathy is Boring) choisit un moment parmi ceux que vous avez proposés, et vous recevez tous les deux une invitation Zoom. Vous pouvez suivre ou annuler vos demandes depuis la page de votre compte."
       },
       "pickup": {
         "title": "Cueillette et retour",
-        "body": "Pour l'équipement et les livres, la cueillette et le retour ont lieu les mardis entre 10 h et 17 h au bureau d'Apathy is Boring. Remettez les articles à temps pour que d'autres membres puissent les utiliser. Les consultations d'expertise ont lieu sur Zoom — le lien est dans votre courriel d'invitation et sur la page de votre compte, aucune cueillette requise."
+        "body": "Votre courriel de confirmation et la page de votre compte indiquent l'adresse complète et l'itinéraire. L'équipement et les livres se cueillent et se retournent les mardis entre 10 h et 17 h, au bureau d'Apathy is Boring à Montréal. Remettez-les à temps pour que d'autres membres puissent les utiliser. Les consultations ont lieu sur Zoom : le lien est dans votre courriel d'invitation et sur la page de votre compte."
       }
     },
+    "cta_register": "Créer un compte gratuit",
+    "cta_browse": "Parcourir la bibliothèque",
     "faq_heading": "Foire aux questions",
     "faq": [
       {
+        "question": "La bibliothèque est-elle gratuite?",
+        "answer": "Oui. Emprunter de l'équipement et des livres, réserver une salle et rencontrer un expert : tout est gratuit. Les membres s'engagent à prendre soin de ce qu'ils empruntent et à le remettre à temps, comme le prévoit l'entente de membre."
+      },
+      {
         "question": "Ai-je besoin d'un compte pour réserver?",
-        "answer": "Oui. Vous devez vous inscrire avec votre courriel et un mot de passe, accepter l'entente de membre et vous connecter avant de soumettre une demande de réservation."
-      },
-      {
-        "question": "Que se passe-t-il après ma demande de réservation?",
-        "answer": "Votre demande est enregistrée en attente. Apathy is Boring l'examine et vous envoie un courriel lorsqu'elle est approuvée ou refusée. Les dates en attente restent bloquées au calendrier jusqu'à la décision."
-      },
-      {
-        "question": "Comment fonctionnent les réservations d'équipement et de livres?",
-        "answer": "L'équipement se réserve par bloc d'une semaine à partir d'un mardi (jusqu'au mardi suivant). Les livres se réservent par bloc d'un mois à partir d'un mardi (quatre semaines plus tard). Seuls les mardis sont sélectionnables au calendrier."
-      },
-      {
-        "question": "Puis-je choisir n'importe quelles dates pour les salles?",
-        "answer": "Oui. Les réservations de salles utilisent une plage de dates inclusive flexible — cliquez une date de début et une date de fin au calendrier, selon la disponibilité."
-      },
-      {
-        "question": "Comment fonctionnent les consultations d'expertise?",
-        "answer": "Cliquez sur Demander une consultation sur une fiche d'expertise, puis partagez 2-3 plages horaires où vous êtes disponible et un résumé du sujet. L'expert reçoit votre demande par courriel, choisit un moment parmi vos plages, et vous recevez tous les deux une invitation Zoom. Chacun peut annuler depuis la page du compte, et l'autre personne est avisée."
-      },
-      {
-        "question": "Puis-je partager ma propre expertise?",
-        "answer": "Oui. Depuis votre page de compte, Partager votre expertise permet de publier un seul profil de mentor. Il apparaît dans la liste Expertise. Lorsque le courriel du mentor correspond à votre courriel de compte, vous pouvez modifier ce profil depuis la même page."
-      },
-      {
-        "question": "Où cueillir et retourner les articles?",
-        "answer": "L'équipement et les livres se cueillent et se retournent au bureau d'Apathy is Boring à Montréal, les mardis entre 10 h et 17 h."
-      },
-      {
-        "question": "Que signifient les badges de disponibilité?",
-        "answer": "Disponible signifie que l'article n'est pas réservé aujourd'hui. Indisponible signifie qu'il est actuellement réservé. Vérifier disponibilité signifie qu'il n'est pas réservé aujourd'hui mais n'a pas de fenêtre réservable dans les sept prochains jours."
-      },
-      {
-        "question": "Combien de réservations en attente puis-je avoir?",
-        "answer": "Vous pouvez avoir jusqu'à cinq demandes de réservation en attente à la fois. Soumettez-en d'autres après qu'Apathy is Boring ait approuvé ou refusé vos demandes existantes."
+        "answer": "Oui. Inscrivez-vous avec Google, Discord ou votre courriel, signez l'entente de membre et connectez-vous avant d'envoyer une demande. Vous pouvez parcourir tout l'inventaire sans compte."
       },
       {
         "question": "La bibliothèque est-elle seulement pour Montréal?",
-        "answer": "La bibliothèque ressources activistes sert les organisateurs partout au Canada. L'inventaire est basé à Montréal, mais les membres de partout au pays peuvent parcourir en ligne et demander des réservations."
+        "answer": "La Bibliothèque ressources activistes sert les organisateurs partout au Canada, et vous pouvez parcourir l'inventaire et envoyer des demandes d'où que vous soyez. Les consultations d'expertise ont lieu sur Zoom. L'équipement, les livres et les salles sont au bureau d'Apathy is Boring à Montréal : c'est là que les articles se cueillent et se retournent."
+      },
+      {
+        "question": "Comment fonctionnent les réservations d'équipement et de livres?",
+        "answer": "L'équipement se réserve pour une semaine, d'un mardi au mardi suivant. Les livres se réservent pour quatre semaines, d'un mardi au mardi quatre semaines plus tard. Seuls les mardis peuvent être choisis comme date de début au calendrier."
+      },
+      {
+        "question": "Comment fonctionnent les réservations de salles?",
+        "answer": "Choisissez n'importe quelles dates au calendrier : cliquez sur une date de début, puis sur une date de fin (deux fois sur la même journée pour un seul jour), selon la disponibilité de la salle. Indiquez ensuite les heures de début et de fin souhaitées, qui s'appliquent à chaque jour, et à quoi servira la salle."
+      },
+      {
+        "question": "Comment fonctionnent les consultations d'expertise?",
+        "answer": "Cliquez sur Demander une consultation sur le profil d'un expert, puis indiquez deux ou trois moments où vous êtes disponible et ce sur quoi vous aimeriez de l'aide. Votre demande et votre courriel de compte sont transmis à l'expert et à l'équipe d'Apathy is Boring. L'expert (ou Apathy is Boring) choisit un moment parmi ceux que vous avez proposés, et vous recevez tous les deux une invitation Zoom. Chacun peut annuler depuis la page du compte, et l'autre personne est avisée. Vous pouvez avoir une seule demande ouverte à la fois avec chaque expert."
+      },
+      {
+        "question": "Que se passe-t-il après ma demande de réservation?",
+        "answer": "Votre demande est enregistrée en attente, et vous pouvez la suivre sur la page de votre compte. Apathy is Boring l'examine et vous envoie un courriel lorsqu'elle est approuvée ou refusée. Les dates en attente restent bloquées au calendrier jusqu'à la décision."
+      },
+      {
+        "question": "Puis-je annuler ou modifier une réservation?",
+        "answer": "Depuis la page de votre compte, vous pouvez retirer une demande en attente à tout moment et annuler une réservation confirmée jusqu'à son premier jour. Les dates ne peuvent pas être modifiées une fois la demande envoyée : annulez-la et envoyez-en une nouvelle. Si vos plans changent après le début d'une réservation, répondez à votre courriel de confirmation."
+      },
+      {
+        "question": "Où cueillir et retourner les articles?",
+        "answer": "L'équipement et les livres se cueillent et se retournent au bureau d'Apathy is Boring à Montréal, les mardis entre 10 h et 17 h. Chaque fiche d'article indique le code postal et une carte approximative. Votre courriel de confirmation et la page de votre compte indiquent l'adresse complète et l'itinéraire."
+      },
+      {
+        "question": "Que signifient les badges de disponibilité?",
+        "answer": "Disponible signifie que l'article n'est pas réservé aujourd'hui. Indisponible signifie qu'il est réservé aujourd'hui. Vérifier disponibilité signifie qu'il n'est pas réservé aujourd'hui, mais qu'aucune date n'est libre dans les sept prochains jours : regardez plus loin au calendrier."
+      },
+      {
+        "question": "Combien de réservations en attente puis-je avoir?",
+        "answer": "Vous pouvez avoir jusqu'à cinq demandes de réservation en attente à la fois. Soumettez-en d'autres une fois qu'Apathy is Boring a approuvé ou refusé vos demandes existantes."
+      },
+      {
+        "question": "Puis-je partager ma propre expertise?",
+        "answer": "Oui. Une fois votre courriel confirmé, Partager votre expertise, sur la page de votre compte, vous permet de publier un seul profil de mentor, qui apparaît aussitôt dans la liste Expertise. Quand quelqu'un vous demande une consultation, vous recevez un courriel et choisissez un moment parmi ses propositions sur la page de votre compte. Si Apathy is Boring a déjà créé votre profil, connectez-vous avec le courriel que l'équipe a pour vous afin de le modifier."
       }
     ]
   },
@@ -951,7 +961,7 @@
     "home_title": "Bibliothèque ressources activistes | Parcourir et réserver",
     "home_description": "Parcourez l'expertise, l'équipement, les livres et les salles de la bibliothèque ressources activistes au Canada. Réservez en ligne pour votre militantisme, vos formations et vos actions communautaires.",
     "how_this_works_title": "Comment ça marche | Bibliothèque ressources activistes",
-    "how_this_works_description": "Découvrez comment parcourir l'inventaire, créer un compte membre, demander une réservation et cueillir vos articles à la bibliothèque ressources activistes.",
+    "how_this_works_description": "La Bibliothèque ressources activistes est gratuite : créez un compte, demandez de l'équipement, des livres, une salle ou un expert, et cueillez à Montréal.",
     "about_title": "À propos de la bibliothèque ressources activistes",
     "about_description": "Découvrez la bibliothèque ressources activistes d'Apathy is Boring — une bibliothèque partagée pour les organisateurs et les groupes communautaires partout au Canada.",
     "category_equipment_title": "Équipement | Bibliothèque ressources activistes",

@@ -635,71 +635,81 @@
   },
   "how_this_works": {
     "heading": "How it works",
-    "subtitle": "A quick guide to browsing and reserving from the Activist Resource Library.",
+    "subtitle": "Everything in the library is free. Here's how to borrow equipment and books, book a room, or meet with an expert.",
     "back_to_inventory": "← Back to inventory",
     "steps": {
       "browse": {
         "title": "Browse the inventory",
-        "body": "Use the Equipment, Books, Rooms, and Expertise filters to find what you need. Each equipment, book, and room card shows whether an item is available today, needs a closer look on the calendar, or is already reserved."
+        "body": "Use the Expertise, Equipment, Books, and Rooms filters to find what you need. Each equipment, book, and room card shows whether it's available today, needs a closer look on the calendar, or is already reserved. You don't need an account to browse."
       },
       "account": {
-        "title": "Create a member account",
-        "body": "Register with your email and password, then read and agree to the member agreement. You need an account before you can submit a reservation request."
+        "title": "Create a free account",
+        "body": "Sign up with Google, Discord, or your email, then read and sign the member agreement. If you sign up with your email, confirm it from the message we send you, then log in. You need an account before you can send a request."
       },
       "reserve": {
-        "title": "Pick your dates",
-        "body": "Click Reserve Inventory on an item to open the calendar. Equipment and books reserve in fixed Tuesday blocks (one week or one month). Rooms use a flexible date range. For expertise, click Request Consultation and share 2-3 time slots you're available plus a summary of what you'd like help with."
+        "title": "Send a request",
+        "body": "Click Reserve Inventory on an item to open its calendar. Equipment is borrowed for one week, from a Tuesday to the following Tuesday, and books for four weeks, starting on a Tuesday. Rooms can be booked for any dates: add the times you need and what the room is for. For expertise, click Request Consultation and share two or three times you're free, plus what you'd like help with."
       },
       "approval": {
         "title": "Wait for confirmation",
-        "body": "Your request is submitted as pending. Apathy is Boring reviews it and emails you when it is approved or declined. Pending dates are held on the calendar until a decision is made."
+        "body": "Apathy is Boring reviews equipment, book, and room requests and emails you when one is approved or declined. Until then, its dates are held on the calendar. For a consultation, the expert (or Apathy is Boring) picks a time from the ones you gave, and you both get a Zoom invitation. You can follow or cancel any request from your account page."
       },
       "pickup": {
         "title": "Pick up and return",
-        "body": "For equipment and books, pickup and drop-off are on Tuesdays between 10am and 5pm at the Apathy is Boring office. Return items on time so other members can use them. Expertise consultations happen on Zoom — the link is in your invitation email and on your account page, no pickup needed."
+        "body": "Your confirmation email and account page give the full address and directions. Equipment and books are picked up and returned on Tuesdays between 10am and 5pm at the Apathy is Boring office in Montreal. Return them on time so other members can use them. Consultations happen on Zoom: the link is in your invitation email and on your account page."
       }
     },
+    "cta_register": "Create a free account",
+    "cta_browse": "Browse the library",
     "faq_heading": "Frequently asked questions",
     "faq": [
       {
-        "question": "Do I need an account to reserve inventory?",
-        "answer": "Yes. You must register with your email and password, agree to the member agreement, and sign in before you can submit a reservation request."
+        "question": "Is the library free?",
+        "answer": "Yes. Borrowing equipment and books, booking a room, and meeting with an expert are all free. Members agree to take care of what they borrow and return it on time, as set out in the member agreement."
       },
       {
-        "question": "What happens after I submit a reservation?",
-        "answer": "Your request is saved as pending. Apathy is Boring reviews it and emails you when it is approved or declined. Pending dates are held on the calendar until a decision is made."
+        "question": "Do I need an account to reserve inventory?",
+        "answer": "Yes. Sign up with Google, Discord, or your email, sign the member agreement, and log in before you send a request. You can browse everything without an account."
+      },
+      {
+        "question": "Is the library only for Montreal?",
+        "answer": "The Activist Resource Library serves organizers across Canada, and you can browse and send requests from anywhere. Expertise consultations happen on Zoom. Equipment, books, and rooms are at the Apathy is Boring office in Montreal, so that's where items are picked up and returned."
       },
       {
         "question": "How do equipment and book reservations work?",
-        "answer": "Equipment reserves in a one-week block starting on a Tuesday (through the following Tuesday). Books reserve in a one-month block starting on a Tuesday (four weeks later). Only Tuesdays are selectable on the calendar."
+        "answer": "Equipment is reserved for one week, from a Tuesday to the following Tuesday. Books are reserved for four weeks, from a Tuesday to the Tuesday four weeks later. Only Tuesdays can be picked as a start date on the calendar."
       },
       {
-        "question": "Can I choose any dates for rooms?",
-        "answer": "Yes. Room reservations use a flexible inclusive date range — click a start date and an end date on the calendar, subject to availability."
+        "question": "How do room bookings work?",
+        "answer": "Pick any dates on the calendar: click a start date and an end date (the same day twice for a single day), as long as the room is free. Then add the start and end times you need, which apply to each day, and tell us what you'll use the room for."
       },
       {
         "question": "How do expertise consultations work?",
-        "answer": "Click Request Consultation on an expertise item, then share 2-3 time slots you're available and a summary of what you'd like expertise about. The expert gets your request by email, picks a meeting time from your slots, and you both receive a Zoom invitation. Either of you can cancel from the account page, and the other person is notified."
+        "answer": "Click Request Consultation on an expert's profile, then share two or three times you're free and what you'd like help with. Your request and your account email go to the expert and to the Apathy is Boring team. The expert (or Apathy is Boring) picks a time from the ones you gave, and you both get a Zoom invitation. Either of you can cancel from the account page, and the other person is notified. You can have one open request with each expert at a time."
       },
       {
-        "question": "Can I share my own expertise?",
-        "answer": "Yes. From your account page, Share Expertise lets you publish one mentor profile. It appears on the Expertise list. When the mentor email matches your account email, you can edit that profile from the same page."
+        "question": "What happens after I submit a reservation?",
+        "answer": "Your request is saved as pending, and you can follow it on your account page. Apathy is Boring reviews it and emails you when it is approved or declined. Pending dates are held on the calendar until a decision is made."
+      },
+      {
+        "question": "Can I cancel or change a reservation?",
+        "answer": "You can withdraw a pending request at any time, and cancel a confirmed booking until its first day, from your account page. Dates can't be changed once a request is sent, so cancel it and send a new one. If your plans change after a booking has started, reply to your confirmation email."
       },
       {
         "question": "Where do I pick up and return items?",
-        "answer": "Equipment and books are picked up and returned at the Apathy is Boring office in Montreal on Tuesdays between 10am and 5pm."
+        "answer": "Equipment and books are picked up and returned at the Apathy is Boring office in Montreal, on Tuesdays between 10am and 5pm. Each item page shows the postal code and an approximate map. Your confirmation email and account page give the full address and directions."
       },
       {
         "question": "What do the availability badges mean?",
-        "answer": "Available means the item is not reserved today. Unavailable means it is currently reserved. Check availability means it is not reserved today but has no bookable window within the next seven days."
+        "answer": "Available means the item isn't reserved today. Unavailable means it's reserved today. Check availability means it isn't reserved today, but no dates are open in the next seven days, so look further ahead on the calendar."
       },
       {
         "question": "How many pending reservations can I have?",
         "answer": "You can have up to five pending reservation requests at a time. Submit more after Apathy is Boring approves or declines your existing requests."
       },
       {
-        "question": "Is the library only for Montreal?",
-        "answer": "The Activist Resource Library serves organizers across Canada. Inventory is based in Montreal, but members from anywhere in Canada can browse online and request reservations."
+        "question": "Can I share my own expertise?",
+        "answer": "Yes. Once your email is confirmed, Share Expertise on your account page lets you publish one mentor profile, and it appears on the Expertise list right away. When someone requests a consultation, you get an email and pick a time from their suggestions on your account page. If Apathy is Boring already created a profile for you, log in with the email they have for you to edit it."
       }
     ]
   },
@@ -951,7 +961,7 @@
     "home_title": "Activist Resource Library | Browse & Reserve Inventory",
     "home_description": "Browse expertise, equipment, books, and rooms from Canada's Activist Resource Library. Reserve items online for your organizing, education, and community work.",
     "how_this_works_title": "How It Works | Activist Resource Library",
-    "how_this_works_description": "Learn how to browse inventory, create a member account, request reservations, and pick up items from the Activist Resource Library.",
+    "how_this_works_description": "How the free Activist Resource Library works: create an account, request equipment, books, rooms, or an expert consultation, and pick up in Montreal.",
     "about_title": "About the Activist Resource Library",
     "about_description": "Learn about Apathy is Boring's Activist Resource Library — a shared lending library for organizers and community groups across Canada.",
     "category_equipment_title": "Equipment | Activist Resource Library",

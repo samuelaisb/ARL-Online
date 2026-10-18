@@ -537,7 +537,7 @@
       {#await lazyPage(loadHowThisWorksPage)}
         <RouteProgress />
       {:then { default: HowThisWorksPage }}
-        <HowThisWorksPage />
+        <HowThisWorksPage onOpenRegister={openRegisterFromReserve} />
       {:catch}
         <PageLoadError />
       {/await}
