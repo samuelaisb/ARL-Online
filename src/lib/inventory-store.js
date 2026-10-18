@@ -944,9 +944,13 @@ export async function countPendingReservationsByEmail(userEmail) {
   return count ?? 0;
 }
 
+/**
+ * `status` defaults to `pending` for a member's request (`reserved` without an email); staff
+ * bookings from admin pass `reserved`.
+ */
 export async function addReservation(
   itemId,
-  { startDate, endDate, userEmail = null, timeSlots = null, requestSummary = null },
+  { startDate, endDate, userEmail = null, timeSlots = null, requestSummary = null, status = null },
 ) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
@@ -979,7 +983,7 @@ export async function addReservation(
       id: randomUUID(),
       startDate,
       endDate,
-      status: userEmail ? 'pending' : 'reserved',
+      status: status ?? (userEmail ? 'pending' : 'reserved'),
       userEmail: typeof userEmail === 'string' && userEmail.trim() ? userEmail.trim() : null,
       timeSlots: typeof timeSlots === 'string' && timeSlots.trim() ? timeSlots.trim() : null,
       requestSummary:

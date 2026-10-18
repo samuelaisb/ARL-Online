@@ -34,6 +34,7 @@
   import MeetingTimePicker, { parseMeetingTimeInput } from './MeetingTimePicker.svelte';
   import MentorBrowser from './MentorBrowser.svelte';
   import AdminAttention, { isOverdueRequest } from './AdminAttention.svelte';
+  import AdminCreateReservation from './AdminCreateReservation.svelte';
   import AdminUsers from './AdminUsers.svelte';
   import AdminStats from './AdminStats.svelte';
   import BusyLabel from './BusyLabel.svelte';
@@ -68,6 +69,7 @@
   let showMentorList = $state(false);
   let showPendingList = $state(false);
   let showReservationList = $state(false);
+  let showCreateReservation = $state(false);
   let showUserList = $state(false);
   let showStats = $state(false);
   let deletingReservationId = $state('');
@@ -996,6 +998,15 @@
     <button
       type="button"
       class="btn-primary"
+      aria-expanded={showCreateReservation}
+      aria-controls="admin-create-reservation"
+      onclick={() => (showCreateReservation = !showCreateReservation)}
+    >
+      {$t('admin.create_reservation')}
+    </button>
+    <button
+      type="button"
+      class="btn-primary"
       aria-expanded={showUserList}
       aria-controls="admin-users"
       onclick={() => (showUserList = !showUserList)}
@@ -1352,6 +1363,17 @@
         <p class="admin-status admin-status-error" role="alert">{reservationError}</p>
       {/if}
     </div>
+  {/if}
+
+  {#if showCreateReservation}
+    <AdminCreateReservation
+      items={adminItems}
+      {loading}
+      {hasLoaded}
+      {loadError}
+      {todayKey}
+      oncreated={(itemId, result) => applyItemUpdate({ itemId }, result)}
+    />
   {/if}
 
   {#if showUserList}

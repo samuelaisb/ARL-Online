@@ -466,6 +466,8 @@ const CONSULTATION_DATA_NOTICE =
 const EMAIL_WHY = {
   reservation:
     'You are receiving this because you requested an item from the Activist Resource Library.',
+  staffReservation:
+    'You are receiving this because the Activist Resource Library team made a reservation for this email address.',
   consultationMember:
     'You are receiving this because you requested a consultation through the Activist Resource Library.',
   consultationExpert:
@@ -965,6 +967,35 @@ function itemPlaceLines(location) {
     .join('\n');
 }
 
+/**
+ * What every confirmed equipment, book or room email shows (the approval and the staff
+ * booking): the full address (the item's own place; see resolveItemLocation), its directions
+ * link, and the pickup or room lines.
+ */
+function confirmedReservationEmailParts(item) {
+  const isRoom = item.tag === 'rooms';
+  const location = hasPhysicalLocation(item.tag) ? item.location ?? null : null;
+  const where = location ? itemPlaceLines(location) : '';
+  // Rooms have no Tuesday pickup: confirm where and when instead.
+  let paragraphs;
+  if (isRoom) {
+    paragraphs = where ? [RESERVATION_CHANGES_NOTICE] : [APPROVAL_ROOM_NO_ADDRESS, RESERVATION_CHANGES_NOTICE];
+  } else {
+    paragraphs = [
+      where ? APPROVAL_PICKUP_NOTICE : APPROVAL_PICKUP_NOTICE_NO_ADDRESS,
+      'We look forward to seeing you at pickup.',
+    ];
+  }
+
+  return {
+    isRoom,
+    location,
+    where,
+    paragraphs,
+    directions: location ? memberLocation(location).directionsUrl : '',
+  };
+}
+
 /** `message`: the optional note staff wrote when approving; only approvals show it. */
 function buildMemberDecisionEmailPayload(item, reservation, decision, message = '') {
   if (item?.tag === 'expertise') {
@@ -984,9 +1015,10 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
   }
 
   const approved = decision === 'approved';
-  // The full address only on an approval (the item's own place; see resolveItemLocation).
-  const location = approved && hasPhysicalLocation(item.tag) ? item.location ?? null : null;
-  const where = location ? itemPlaceLines(location) : '';
+  // The full address only on an approval.
+  const confirmed = approved ? confirmedReservationEmailParts(item) : null;
+  const location = confirmed?.location ?? null;
+  const where = confirmed?.where ?? '';
   const subject = approved
     ? `Reservation confirmed: ${title}`
     : `Reservation update: ${title}`;
@@ -995,21 +1027,8 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
     : 'Unfortunately, the item you requested is not available for those dates.';
   const itemUrl = itemPageUrl(item);
   const libraryUrl = absoluteSiteUrl('/');
-  let paragraphs = ['Please choose different dates or another item from the library.'];
-
-  if (approved) {
-    // Rooms have no Tuesday pickup: confirm where and when instead.
-    if (isRoom) {
-      paragraphs = where ? [RESERVATION_CHANGES_NOTICE] : [APPROVAL_ROOM_NO_ADDRESS, RESERVATION_CHANGES_NOTICE];
-    } else {
-      paragraphs = [
-        where ? APPROVAL_PICKUP_NOTICE : APPROVAL_PICKUP_NOTICE_NO_ADDRESS,
-        'We look forward to seeing you at pickup.',
-      ];
-    }
-  }
-
-  const directions = location ? memberLocation(location).directionsUrl : '';
+  const paragraphs = confirmed?.paragraphs ?? ['Please choose different dates or another item from the library.'];
+  const directions = confirmed?.directions ?? '';
 
   const rendered = renderBrandedEmail({
     subject,
@@ -1060,6 +1079,77 @@ async function sendMemberDecisionEmail(item, reservation, decision, message = ''
     [emailPayload],
     decision === 'approved' ? 'Reservation approval' : 'Reservation refusal',
   );
+}
+
+/**
+ * Staff booked an equipment, book or room reservation for this address (admin **Create
+ * Reservation**), member or not. `account`: 'member' (a confirmed account uses the address),
+ * 'new' (none, or one never confirmed) or 'unknown' (the lookup failed). The account page
+ * lists reservations by email, so the invitation is to sign in or register with this one.
+ * `today` is a libraryTodayKey(): members can cancel online only before the first day.
+ */
+function buildStaffReservationEmailPayload(item, reservation, { account, message = '', today }) {
+  const to = trimmedOrNull(reservation?.userEmail);
+  if (!to) {
+    return null;
+  }
+
+  const title = trimmedOrNull(item?.title) ?? 'Inventory item';
+  const { isRoom, location, where, paragraphs, directions } = confirmedReservationEmailParts(item);
+  const canCancel = compareDateKeys(reservation.startDate ?? '', today) > 0;
+  const seeIt = canCancel ? 'To see or cancel it' : 'To see it';
+  // The account sentence is in the intro, so the inbox preview already says what to do.
+  const accountLine = {
+    member: `${seeIt}, log in with this email address: ${to}`,
+    new: `${seeIt} online, create a free account with this email address: ${to}`,
+  }[account] ?? `${seeIt} online, log in or create a free account with this email address: ${to}`;
+  const intro = `The Activist Resource Library team has booked ${title} for you. ${accountLine}`;
+  const accountUrl = absoluteSiteUrl('/account');
+  const itemUrl = itemPageUrl(item);
+
+  return buildConsultationEmail({
+    to,
+    subject: `Reservation confirmed: ${title}`,
+    heading: 'Reservation confirmed',
+    intro,
+    details: [
+      [isRoom ? 'Room' : 'Item', title, itemUrl],
+      ['Dates', formatReservationDates(reservation)],
+      ['Where', where],
+      ['Getting there', location?.transitNoteEn ?? ''],
+      ['Message from the library team', message],
+    ],
+    paragraphs: [
+      {
+        member: '',
+        new: 'Once you have confirmed your email address, the reservation will be on your account page.',
+      }[account] ?? 'If you create an account, confirm your email address and the reservation will be on your account page.',
+      canCancel ? 'You can cancel it there until the day before it starts.' : '',
+      ...paragraphs,
+    ],
+    cta: {
+      label: { member: 'See your reservation', new: 'Create your account' }[account] ?? 'Go to your account',
+      href: accountUrl,
+    },
+    // In links, not on the Where row, so the plain-text part carries the URL too.
+    links: [
+      ...(directions ? [['Get directions', directions]] : []),
+      [isRoom ? 'View the room' : 'View the item', itemUrl],
+    ],
+    why: EMAIL_WHY.staffReservation,
+  });
+}
+
+/** Resolves false when the send failed (logged). */
+async function sendStaffReservationEmail(item, reservation, options) {
+  const emailPayload = buildStaffReservationEmailPayload(item, reservation, options);
+
+  if (!emailPayload) {
+    console.warn(`Skipping staff reservation email: no email on reservation ${reservation?.id}.`);
+    return false;
+  }
+
+  return sendEmailPayloads([emailPayload], 'Staff reservation');
 }
 
 /**
@@ -2885,6 +2975,118 @@ app.post('/api/inventory/:id/reservations/:reservationId/refuse', requireAuth, r
   }
 });
 
+// Staff bookings: any dates (members' Tuesday blocks don't apply), up to a year long.
+const STAFF_RESERVATION_MAX_DAYS = 366;
+const EMAIL_ADDRESS_MAX = 254;
+
+/**
+ * Admin **Create Reservation**: books an equipment, book or room item for any email address,
+ * member or not, as confirmed (`reserved`), and emails them the confirmation with an invitation
+ * to sign in or register with that address. No caps, Slack post or member date rules.
+ */
+app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, async (req, res) => {
+  const itemId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const startDate = typeof req.body?.startDate === 'string' ? req.body.startDate.trim() : '';
+  const endDate = typeof req.body?.endDate === 'string' ? req.body.endDate.trim() : '';
+  const today = libraryTodayKey();
+
+  if (!itemId) {
+    return res.status(400).json({ error: 'Item id is required.' });
+  }
+
+  if (!email || email.length > EMAIL_ADDRESS_MAX || !isValidEmailAddress(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address.', code: 'reservation_email_invalid' });
+  }
+
+  if (!parseDateKey(startDate) || !parseDateKey(endDate) || compareDateKeys(startDate, endDate) > 0) {
+    return res.status(400).json({
+      error: 'Choose a start date on or before the end date.',
+      code: 'reservation_dates_invalid',
+    });
+  }
+
+  if (compareDateKeys(endDate, today) < 0) {
+    return res.status(400).json({ error: 'These dates are in the past.', code: 'reservation_dates_past' });
+  }
+
+  if (compareDateKeys(endDate, addDays(startDate, STAFF_RESERVATION_MAX_DAYS - 1)) > 0) {
+    return res.status(400).json({
+      error: `A reservation can be at most ${STAFF_RESERVATION_MAX_DAYS} days long.`,
+      code: 'reservation_dates_too_long',
+    });
+  }
+
+  const { message, error: messageError } = readConfirmationMessage(req.body);
+  if (messageError) {
+    return res.status(400).json({ error: messageError });
+  }
+
+  try {
+    await ensureInventory();
+    const item = await findInventoryItem(itemId);
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found.' });
+    }
+
+    if (item.tag === 'expertise') {
+      return res.status(400).json({
+        error: 'Consultations are booked from a member request, not created here.',
+        code: 'reservation_consultation',
+      });
+    }
+
+    // Decides the email's wording only; a failed lookup still books, with neutral wording.
+    let account = 'unknown';
+    try {
+      const user = await findAuthUserByEmail(email);
+      if (user && isUserSuspended(user)) {
+        return res.status(409).json({
+          error: 'This account is suspended. Lift the suspension in Members first.',
+          code: 'reservation_account_suspended',
+        });
+      }
+      account = user && isConfirmedUser(user) ? 'member' : 'new';
+    } catch (error) {
+      console.error('Could not look up the account for a staff reservation:', error);
+    }
+
+    const result = await addReservation(itemId, {
+      startDate,
+      endDate,
+      userEmail: email,
+      status: 'reserved',
+    });
+
+    if (result.notFound) {
+      return res.status(404).json({ error: 'Item not found.' });
+    }
+
+    if (result.collision) {
+      return res.status(409).json({
+        error: 'These dates overlap a reservation or a pending request on this item.',
+        code: 'reservation_collision',
+      });
+    }
+
+    const emailSent = await settleNotifications('Staff reservation', [
+      sendStaffReservationEmail(result.item, result.reservation, { account, message, today }),
+    ]);
+
+    auditAdminAction(req, 'create_reservation', { itemId, reservationId: result.reservation.id, account });
+    res.status(201).json({
+      item: withPublicItemImage(result.item),
+      reservation: result.reservation,
+      emailSent,
+      hasAccount: account === 'unknown' ? null : account === 'member',
+    });
+  } catch (error) {
+    console.error('Failed to create staff reservation:', error);
+    res.status(500).json({ error: 'Could not create the reservation.' });
+  }
+});
+
 app.delete('/api/inventory/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
 
@@ -3038,6 +3240,12 @@ async function listAllAuthUsers() {
 
   console.warn(`Admin users list stopped at ${ADMIN_USERS_MAX_PAGES * ADMIN_USERS_PAGE_SIZE} accounts.`);
   return users;
+}
+
+/** The account using `email` (case-insensitive), or null. Throws when the list fails. */
+async function findAuthUserByEmail(email) {
+  const users = await listAllAuthUsers();
+  return users.find((user) => emailsMatch(user.email, email)) ?? null;
 }
 
 /** A fresh copy of the user, or null when the id doesn't exist. `id` must pass parseAuthUserId. */

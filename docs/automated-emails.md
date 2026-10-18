@@ -4,7 +4,7 @@ Production emails are sent from `server.js` via the [Resend](https://resend.com)
 
 **Reply-To:** every app email except the contact form sets `Reply-To` to `EMAIL_REPLY_TO` (default `samuel@apathyisboring.com`). `activistresourcelibrary.com` has no MX record and receives no mail, so without it a member's reply to `noreply@` would be lost. The contact form sets `Reply-To` to the visitor instead.
 
-**Recipients are the member who made the reservation** (`userEmail` from the JWT at create time, stored on the reservation row) — plus, for expertise consultations, **the item's expert** (`inventory_items.expert_email`). The admin password reset (trigger 9) goes to the account's own email from Supabase Auth. There is no admin `EMAIL_TO` or env-based fallback recipient.
+**Recipients are the member who made the reservation** (`userEmail` from the JWT at create time, stored on the reservation row) — plus, for expertise consultations, **the item's expert** (`inventory_items.expert_email`). The admin password reset (trigger 9) goes to the account's own email from Supabase Auth. A booking staff create in admin (trigger 10) stores, and emails, the address they typed, which may have no account yet. There is no admin `EMAIL_TO` or env-based fallback recipient.
 
 New pending reservation requests on equipment, books, and rooms do **not** send email — admins are notified via the [Slack webhook](automated-webhooks.md) only, and the member follows the request on `/account` (**Upcoming and pending reservations**). **Expertise consultations are the exception:** see triggers 5–7 (request received / new request, scheduled, cancelled). An admin deleting a member's upcoming equipment, book or room reservation (or its item) emails that member (trigger 8). In `/admin` → **Members**, deleting a member account cancels their active bookings and sends triggers 7 and 8 for them, and **Send password reset** sends trigger 9.
 
@@ -296,6 +296,39 @@ The redirect (`https://activistresourcelibrary.com/?password_reset=1`, or `SITE_
 
 ---
 
+### 10. Reservation booked by staff (member or not — equipment, books, rooms)
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | `/admin` → **Create Reservation** → `POST /api/admin/inventory/:id/reservations` (the booking is saved as `reserved` first) |
+| **Function** | `sendStaffReservationEmail(item, reservation, { account, message, today })` → `buildStaffReservationEmailPayload()` (`buildConsultationEmail` layout; place, directions and pickup lines from `confirmedReservationEmailParts()`, shared with trigger 1) |
+| **From** | `EMAIL_FROM` |
+| **Reply-To** | `EMAIL_REPLY_TO` |
+| **To** | The address staff typed, trimmed and lower-cased |
+| **Subject** | `Reservation confirmed: {item title}` |
+| **Timing** | Awaited before the 201 (`emailSent`) |
+| **Auth** | Admin only |
+
+`account` comes from the Supabase Auth list (`findAuthUserByEmail`): `member` when a confirmed account uses the address, `new` when none does (or it was never confirmed), `unknown` when the lookup failed. A suspended account is refused before anything is saved (409 `reservation_account_suspended`).
+
+**Content summary:**
+
+| Part | Text |
+|------|------|
+| Heading | Reservation confirmed |
+| Intro (also the preheader) | The Activist Resource Library team has booked {item} for you. Then, by `account`: `member` "To see or cancel it, log in with this email address: {email}"; `new` "To see or cancel it online, create a free account with this email address: {email}"; `unknown` "To see or cancel it online, log in or create a free account with this email address: {email}". When the booking starts today or earlier, "To see it" replaces "To see or cancel it" |
+| Details | **Item** / **Room** (linked), **Dates**, **Where**, **Getting there**, **Message from the library team** (only when staff wrote one), as in trigger 1 |
+| Account line | `new`: Once you have confirmed your email address, the reservation will be on your account page. `unknown`: If you create an account, confirm your email address and the reservation will be on your account page. `member`: none |
+| Cancel line | Only when it starts after today (Montréal): You can cancel it there until the day before it starts. (the `/account` rule) |
+| Pickup / room | Trigger 1's lines: the Tuesday pickup notice and "We look forward to seeing you at pickup." for equipment and books; "If anything changes, just reply to this email." for rooms (plus the reply-for-the-address line when the room has no address) |
+| Button | `member` **See your reservation**, `new` **Create your account**, `unknown` **Go to your account**, all → `/account` (signed out, it offers **Log in** and **Register**) |
+| Links | **Get directions** (when there is an address) · **View the item** / **View the room** |
+| Footer | Office line, then `EMAIL_WHY.staffReservation`: "You are receiving this because the Activist Resource Library team made a reservation for this email address." |
+
+**Failure behavior:** Resend error or timeout: logged (`Staff reservation email failed: …`), `emailSent: false`; the booking stays and the admin status line says the email didn't go out.
+
+---
+
 ## `emailSent` in responses
 
 Routes that send email add `emailSent` to their JSON. It is `true` only when there was at least one email and Resend accepted every one. It is `false` when any send failed, timed out, or threw while being built, and when there was nobody to email (for example a reservation with no member email). Failures are logged either way. The client reads it only to avoid claiming an email that didn't go out: `AdminPanel` (approve, refuse, deletes, follow-up) and `AccountConsultations` (schedule, cancel, follow-up) show Kimchi's plain bubbles (`kimchi.*_plain`, or the bubble without "has been emailed") when it is `false`, and their hidden status lines add an "emailed" note only when it isn't (`AdminPanel`: only when it is `true`). There is no warning UI; see `docs/automated-notifications.md`.
@@ -305,6 +338,7 @@ Routes that send email add `emailSent` to their JSON. It is `true` only when the
 | `POST /api/inventory/:id/reservations` | Expertise only: the member and expert request emails. Equipment/books/rooms responses have no `emailSent` (they only post to Slack) |
 | `POST /api/inventory/:id/reservations/:reservationId/approve` | The approval email, or for expertise the two scheduled emails |
 | `POST /api/inventory/:id/reservations/:reservationId/refuse` | The refusal email |
+| `POST /api/admin/inventory/:id/reservations` | The staff booking email (trigger 10) |
 | `POST /api/consultations/:reservationId/schedule` | The two scheduled emails |
 | `POST /api/consultations/:reservationId/follow-up` | The two scheduled emails, worded as a follow-up |
 | `POST /api/consultations/:reservationId/cancel` | The cancellation emails. The response also has `otherPartyEmailed`: `emailSent` and the other side has an address on file (the trimmed `item.expertEmail` when the member cancels, the trimmed `reservation.userEmail` when the expert does, both when an admin does). A mentor with no address is skipped while the member's email still goes out, so `emailSent` alone can be `true` when the mentor wasn't told. Only the boolean is returned, never an address |
@@ -368,7 +402,7 @@ Exits with error if `RESEND_API_KEY` is missing. **Not invoked by the web app.**
 
 | File | Role |
 |------|------|
-| `server.js` | Resend client, `EMAIL_REPLY_TO`, member decision + team-cancellation + consultation + password reset payload builders (`buildConsultationEmail`, `buildConsultationIcs`, `buildReservationCancelledByTeamEmailPayload`, `buildPasswordResetEmailPayload`), `EMAIL_WHY`, the member delete (`deleteMemberAccount`), `formatReservationDates`, send functions (`sendEmailPayloads`, 10 s cap), `settleNotifications` (routes await emails + Slack), route hooks |
+| `server.js` | Resend client, `EMAIL_REPLY_TO`, member decision + staff booking + team-cancellation + consultation + password reset payload builders (`buildConsultationEmail`, `buildConsultationIcs`, `buildStaffReservationEmailPayload`, `confirmedReservationEmailParts`, `buildReservationCancelledByTeamEmailPayload`, `buildPasswordResetEmailPayload`), `EMAIL_WHY`, the member delete (`deleteMemberAccount`), `formatReservationDates`, send functions (`sendEmailPayloads`, 10 s cap), `settleNotifications` (routes await emails + Slack), route hooks |
 | `src/lib/email-brand.js` | Shared branded HTML + plain-text layout (`renderBrandedEmail`, `orgContact`) |
 | `src/lib/item-location.js` | Item places for the approval email: `locationAreaLine`, `memberLocation(...).directionsUrl` (`itemPlaceLines` in `server.js` builds the Where row) |
 | `src/assets/brand/apathy-is-boring-logo-light.png` | English light wordmark, flattened onto Mint, attached inline on every email |

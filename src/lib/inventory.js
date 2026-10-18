@@ -50,6 +50,13 @@ const ERROR_CODE_KEYS = {
   password_reset_failed: 'admin.users_reset_failed',
   user_delete_incomplete: 'admin.users_delete_incomplete',
   user_name_too_long: 'admin.users_name_too_long',
+  reservation_email_invalid: 'admin.create_reservation_email_invalid',
+  reservation_dates_invalid: 'admin.create_reservation_dates_invalid',
+  reservation_dates_past: 'admin.create_reservation_dates_past',
+  reservation_dates_too_long: 'admin.create_reservation_dates_too_long',
+  reservation_collision: 'admin.create_reservation_collision',
+  reservation_account_suspended: 'admin.create_reservation_suspended',
+  reservation_consultation: 'admin.create_reservation_consultation',
 };
 
 function apiErrorMessage(result, fallbackKey, code = result.code) {
@@ -324,6 +331,32 @@ export async function approveReservation(itemId, reservationId, { meetingAt = nu
 
   if (!response.ok) {
     throw new Error(result.error || translateKey('admin.approve_reservation_error'));
+  }
+
+  return result;
+}
+
+/**
+ * Admin Create Reservation: books an equipment, book or room item for any email, confirmed at
+ * once, and emails them. Returns `{ item, reservation, emailSent, hasAccount }` (`hasAccount`
+ * null when the server couldn't tell).
+ */
+export async function createStaffReservation(itemId, { email, startDate, endDate, message = '' }) {
+  const response = await fetch(`/api/admin/inventory/${encodeURIComponent(itemId)}/reservations`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({
+      email: email.trim(),
+      startDate,
+      endDate,
+      ...(message.trim() ? { message: message.trim() } : {}),
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'admin.create_reservation_error'));
   }
 
   return result;
