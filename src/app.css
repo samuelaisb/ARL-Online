@@ -3162,7 +3162,8 @@ h1[tabindex='-1']:focus {
 
 /* Admin → Create Reservation (AdminCreateReservation.svelte): one form, with the picked item's
    upcoming bookings under its picker and the two dates side by side (stacked on small phones).
-   The date fields share the meeting picker's iOS fixes above. */
+   A mentor swaps the dates for one meeting date and time, as wide as the meeting picker. The date
+   fields share the meeting picker's iOS fixes above. */
 .admin-create-reservation {
   margin-top: 1.5rem;
 }
@@ -3234,6 +3235,14 @@ h1[tabindex='-1']:focus {
 .admin-create-reservation__booked-label {
   margin: 0;
   font-weight: 600;
+}
+
+.admin-create-reservation__mentor-note {
+  margin: 0 0 0.5rem;
+}
+
+.admin-create-reservation__meeting {
+  max-width: 20rem;
 }
 
 .admin-create-reservation__booked ul {

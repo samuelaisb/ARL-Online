@@ -484,6 +484,8 @@ const EMAIL_WHY = {
     'You are receiving this because you requested an item from the Activist Resource Library.',
   staffReservation:
     'You are receiving this because the Activist Resource Library team made a reservation for this email address.',
+  staffConsultation:
+    'You are receiving this because the Activist Resource Library team booked a consultation for this email address.',
   consultationMember:
     'You are receiving this because you requested a consultation through the Activist Resource Library.',
   consultationExpert:
@@ -670,11 +672,11 @@ function zoomDetailRows(reservation) {
   return [['Passcode', reservation.zoomPassword]];
 }
 
-function consultationCta(reservation, accountUrl) {
+function consultationCta(reservation, accountUrl, accountLabel = 'Your account panel') {
   if (reservation.zoomJoinUrl) {
     return { label: 'Join Zoom', href: reservation.zoomJoinUrl };
   }
-  return { label: 'Your account panel', href: accountUrl };
+  return { label: accountLabel, href: accountUrl };
 }
 
 const ZOOM_ROOM_NOTICE =
@@ -712,14 +714,42 @@ function buildExpertRequestEmailPayload(item, reservation) {
 }
 
 /**
+ * Staff bookings (admin **Create Reservation**) go to any address, member or not, and the account
+ * page lists them by email. By `account` ('member', 'new' or 'unknown', when the lookup failed),
+ * how to see it online; `seeIt` starts the sentence ("To see or cancel it").
+ */
+function staffBookingAccountLine(account, seeIt, email) {
+  return {
+    member: `${seeIt}, log in with this email address: ${email}`,
+    new: `${seeIt} online, create a free account with this email address: ${email}`,
+  }[account] ?? `${seeIt} online, log in or create a free account with this email address: ${email}`;
+}
+
+/** The staff booking's account paragraph; none for a member. `what`: "reservation", "consultation". */
+function staffBookingAccountParagraph(account, what) {
+  return {
+    member: '',
+    new: `Once you have confirmed your email address, the ${what} will be on your account page.`,
+  }[account] ?? `If you create an account, confirm your email address and the ${what} will be on your account page.`;
+}
+
+/**
  * Scheduled → member and expert, each with the Zoom link and a calendar invite. A follow-up
  * booked by the expert says so, and its optional note replaces the member's request summary.
  * `message` is the optional note the expert (`messageFrom: 'expert'`) or staff (`'admin'`)
- * wrote when scheduling; both emails show it.
+ * wrote when scheduling; both emails show it. `account` is set ('member', 'new' or 'unknown',
+ * as in buildStaffReservationEmailPayload) when staff booked the meeting themselves (admin
+ * **Create Reservation**): the member never asked through the site, so their email says who
+ * booked it, shows the topic staff typed, and asks them to log in or register with the address.
  */
-function buildConsultationScheduledEmailPayloads(item, reservation, { message = '', messageFrom = 'expert' } = {}) {
+function buildConsultationScheduledEmailPayloads(
+  item,
+  reservation,
+  { message = '', messageFrom = 'expert', account = null } = {},
+) {
   const title = consultationTitle(item);
   const fromStaff = messageFrom === 'admin';
+  const bookedByStaff = account !== null;
   const followUp = Boolean(reservation.followUpOf);
   const kind = followUp ? 'Follow-up consultation' : 'Consultation';
   const noteRow = followUp
@@ -734,27 +764,44 @@ function buildConsultationScheduledEmailPayloads(item, reservation, { message = 
   const expertEmail = trimmedOrNull(item.expertEmail);
 
   if (memberEmail) {
-    const cta = consultationCta(reservation, accountUrl);
+    const accountLabel = account === 'new' ? 'Create your account' : 'Your account panel';
+    const cta = consultationCta(reservation, accountUrl, accountLabel);
+    // A staff booking's account sentence is in the intro, so the inbox preview says what to do.
+    const intro = bookedByStaff
+      ? `The Activist Resource Library team has booked you a consultation with ${expertEmail ?? title} for ${meetingTime}. ${staffBookingAccountLine(account, 'To see or cancel it', memberEmail)}`
+      : `Your ${kind.toLowerCase()} is booked for ${meetingTime} with ${expertEmail ?? title}.`;
+    let memberNoteRow = [];
+    if (followUp) {
+      memberNoteRow = [noteRow];
+    } else if (bookedByStaff) {
+      memberNoteRow = [['What you would like to discuss', reservation.requestSummary]];
+    }
     payloads.push(
       buildConsultationEmail({
         to: memberEmail,
         subject: `${kind} confirmed: ${title}`,
         heading: `${kind} confirmed`,
-        intro: `Your ${kind.toLowerCase()} is booked for ${meetingTime} with ${expertEmail ?? title}.`,
+        intro,
         details: [
           ['Consultation', title, itemPageUrl(item)],
           ['When', meetingTime],
           [fromStaff ? 'Message from the library team' : `Message from ${title}`, message],
-          ...(followUp ? [noteRow] : []),
+          ...memberNoteRow,
           ...zoomDetailRows(reservation),
         ],
-        paragraphs: [roomNotice, CONSULTATION_FUNDING_NOTICE, CONSULTATION_DATA_NOTICE, cancelNotice],
+        paragraphs: [
+          roomNotice,
+          bookedByStaff ? staffBookingAccountParagraph(account, 'consultation') : '',
+          CONSULTATION_FUNDING_NOTICE,
+          CONSULTATION_DATA_NOTICE,
+          cancelNotice,
+        ],
         cta,
         links: [
           ['Share your information', CONSULTATION_DATA_FORM_URL],
-          ...(cta.href === accountUrl ? [] : [['Your account panel', accountUrl]]),
+          ...(cta.href === accountUrl ? [] : [[accountLabel, accountUrl]]),
         ],
-        why: EMAIL_WHY.consultationMember,
+        why: bookedByStaff ? EMAIL_WHY.staffConsultation : EMAIL_WHY.consultationMember,
         funderStrip: true,
         attachments: [buildConsultationIcs(item, reservation, 'REQUEST')],
       }),
@@ -768,7 +815,9 @@ function buildConsultationScheduledEmailPayloads(item, reservation, { message = 
         to: expertEmail,
         subject: `${kind} scheduled: ${title}`,
         heading: `${kind} scheduled`,
-        intro: `Your ${kind.toLowerCase()} with ${memberEmail ?? 'a member'} is booked for ${meetingTime}.`,
+        intro: bookedByStaff
+          ? `The Activist Resource Library team has booked ${memberEmail ?? 'a member'} a consultation with you for ${meetingTime}.`
+          : `Your ${kind.toLowerCase()} with ${memberEmail ?? 'a member'} is booked for ${meetingTime}.`,
         details: [
           ['Consultation', title],
           ['When', meetingTime],
@@ -1130,10 +1179,7 @@ function buildStaffReservationEmailPayload(item, reservation, { account, message
   const canCancel = compareDateKeys(reservation.startDate ?? '', today) > 0;
   const seeIt = canCancel ? 'To see or cancel it' : 'To see it';
   // The account sentence is in the intro, so the inbox preview already says what to do.
-  const accountLine = {
-    member: `${seeIt}, log in with this email address: ${to}`,
-    new: `${seeIt} online, create a free account with this email address: ${to}`,
-  }[account] ?? `${seeIt} online, log in or create a free account with this email address: ${to}`;
+  const accountLine = staffBookingAccountLine(account, seeIt, to);
   const intro = `The Activist Resource Library team has booked ${title} for you. ${accountLine}`;
   const accountUrl = absoluteSiteUrl('/account');
   const itemUrl = itemPageUrl(item);
@@ -1152,10 +1198,7 @@ function buildStaffReservationEmailPayload(item, reservation, { account, message
       ['Message from the library team', message],
     ],
     paragraphs: [
-      {
-        member: '',
-        new: 'Once you have confirmed your email address, the reservation will be on your account page.',
-      }[account] ?? 'If you create an account, confirm your email address and the reservation will be on your account page.',
+      staffBookingAccountParagraph(account, 'reservation'),
       canCancel ? 'You can cancel it there until the day before it starts.' : '',
       ...paragraphs,
     ],
@@ -3112,15 +3155,65 @@ const STAFF_RESERVATION_MAX_DAYS = 366;
 const EMAIL_ADDRESS_MAX = 254;
 
 /**
- * Admin **Create Reservation**: books an equipment, book or room item for any email address,
- * member or not, as confirmed (`reserved`), and emails them the confirmation with an invitation
- * to sign in or register with that address. No caps, Slack post or member date rules.
+ * An equipment, book or room booking's dates from the request body: `{ startDate, endDate }`,
+ * or `{ error }` with the 400 body.
+ */
+function readStaffBookingDates(body, today) {
+  const startDate = typeof body?.startDate === 'string' ? body.startDate.trim() : '';
+  const endDate = typeof body?.endDate === 'string' ? body.endDate.trim() : '';
+
+  if (!parseDateKey(startDate) || !parseDateKey(endDate) || compareDateKeys(startDate, endDate) > 0) {
+    return { error: { error: 'Choose a start date on or before the end date.', code: 'reservation_dates_invalid' } };
+  }
+
+  if (compareDateKeys(endDate, today) < 0) {
+    return { error: { error: 'These dates are in the past.', code: 'reservation_dates_past' } };
+  }
+
+  if (compareDateKeys(endDate, addDays(startDate, STAFF_RESERVATION_MAX_DAYS - 1)) > 0) {
+    return {
+      error: {
+        error: `A reservation can be at most ${STAFF_RESERVATION_MAX_DAYS} days long.`,
+        code: 'reservation_dates_too_long',
+      },
+    };
+  }
+
+  return { startDate, endDate };
+}
+
+/**
+ * A consultation's meeting time and optional topic (`summary`) from the request body:
+ * `{ meetingAt, summary }`, or `{ error }` with the 400 body. Same time rule as scheduling.
+ */
+function readStaffBookingMeeting(body) {
+  const meetingAt = typeof body?.meetingAt === 'string' ? body.meetingAt.trim() : '';
+  const summary = typeof body?.summary === 'string' ? body.summary.trim() : '';
+  const meetingError = validateMeetingAt(meetingAt);
+
+  if (meetingError) {
+    const code = Number.isNaN(Date.parse(meetingAt)) ? 'reservation_meeting_required' : 'reservation_meeting_past';
+    return { error: { error: meetingError, code } };
+  }
+
+  if (summary.length > CONSULTATION_SUMMARY_MAX) {
+    return { error: { error: `Summary must be ${CONSULTATION_SUMMARY_MAX} characters or fewer.` } };
+  }
+
+  return { meetingAt, summary };
+}
+
+/**
+ * Admin **Create Reservation**: books an item for any email address, member or not, as confirmed
+ * (`reserved`), and emails them with an invitation to sign in or register with that address.
+ * Equipment, books and rooms take `startDate` and `endDate` (no member date rules). A mentor
+ * (expertise) takes `meetingAt` and an optional `summary`: the consultation is scheduled at once,
+ * with its Zoom meeting and the scheduled emails to the member and the mentor, and a member can
+ * still have only one open consultation per mentor. No caps or Slack post.
  */
 app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, async (req, res) => {
   const itemId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
   const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-  const startDate = typeof req.body?.startDate === 'string' ? req.body.startDate.trim() : '';
-  const endDate = typeof req.body?.endDate === 'string' ? req.body.endDate.trim() : '';
   const today = libraryTodayKey();
 
   if (!itemId) {
@@ -3129,24 +3222,6 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
 
   if (!email || email.length > EMAIL_ADDRESS_MAX || !isValidEmailAddress(email)) {
     return res.status(400).json({ error: 'Enter a valid email address.', code: 'reservation_email_invalid' });
-  }
-
-  if (!parseDateKey(startDate) || !parseDateKey(endDate) || compareDateKeys(startDate, endDate) > 0) {
-    return res.status(400).json({
-      error: 'Choose a start date on or before the end date.',
-      code: 'reservation_dates_invalid',
-    });
-  }
-
-  if (compareDateKeys(endDate, today) < 0) {
-    return res.status(400).json({ error: 'These dates are in the past.', code: 'reservation_dates_past' });
-  }
-
-  if (compareDateKeys(endDate, addDays(startDate, STAFF_RESERVATION_MAX_DAYS - 1)) > 0) {
-    return res.status(400).json({
-      error: `A reservation can be at most ${STAFF_RESERVATION_MAX_DAYS} days long.`,
-      code: 'reservation_dates_too_long',
-    });
   }
 
   const { message, error: messageError } = readConfirmationMessage(req.body);
@@ -3162,11 +3237,10 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       return res.status(404).json({ error: 'Item not found.' });
     }
 
-    if (item.tag === 'expertise') {
-      return res.status(400).json({
-        error: 'Consultations are booked from a member request, not created here.',
-        code: 'reservation_consultation',
-      });
+    const isConsultation = item.tag === 'expertise';
+    const booking = isConsultation ? readStaffBookingMeeting(req.body) : readStaffBookingDates(req.body, today);
+    if (booking.error) {
+      return res.status(400).json(booking.error);
     }
 
     // Decides the email's wording only; a failed lookup still books, with neutral wording.
@@ -3184,14 +3258,34 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       console.error('Could not look up the account for a staff reservation:', error);
     }
 
-    const result = await addReservation(itemId, {
-      startDate,
-      endDate,
-      userEmail: email,
-      status: 'reserved',
-      bookedByStaff: true,
-      queueGaEvent: STAFF_BOOKING_GA_EVENTS_HERE,
-    });
+    let result;
+    try {
+      result = await addReservation(itemId, {
+        // A consultation is dated the day it was booked, like a member's request or a follow-up.
+        startDate: isConsultation ? today : booking.startDate,
+        endDate: isConsultation ? today : booking.endDate,
+        userEmail: email,
+        status: 'reserved',
+        bookedByStaff: true,
+        queueGaEvent: STAFF_BOOKING_GA_EVENTS_HERE,
+        ...(isConsultation
+          ? {
+              requestSummary: booking.summary,
+              meetingAt: booking.meetingAt,
+              createMeeting: createZoomMeetingForConsultation,
+              deleteMeeting: deleteConsultationMeeting,
+            }
+          : {}),
+      });
+    } catch (error) {
+      if (error.zoomFailed) {
+        return res.status(502).json({
+          error: 'Could not create the Zoom meeting. Please try again in a moment.',
+          code: 'reservation_zoom_failed',
+        });
+      }
+      throw error;
+    }
 
     if (result.notFound) {
       return res.status(404).json({ error: 'Item not found.' });
@@ -3204,11 +3298,33 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       });
     }
 
-    const emailSent = await settleNotifications('Staff reservation', [
-      sendStaffReservationEmail(result.item, result.reservation, { account, message, today }),
-    ]);
+    if (result.consultationAlreadyOpen) {
+      return res.status(409).json({
+        error: 'This person already has a pending request or an upcoming meeting with this mentor. Schedule or cancel that one instead.',
+        code: 'reservation_consultation_open',
+      });
+    }
 
-    auditAdminAction(req, 'create_reservation', { itemId, reservationId: result.reservation.id, account });
+    if (result.meetingTimeRequired) {
+      return res.status(400).json({
+        error: 'A valid meeting date and time is required to schedule a consultation.',
+        code: 'reservation_meeting_required',
+      });
+    }
+
+    const emailSent = isConsultation
+      ? await settleNotifications('Staff consultation', [
+          sendConsultationScheduledEmails(result.item, result.reservation, { message, messageFrom: 'admin', account }),
+        ])
+      : await settleNotifications('Staff reservation', [
+          sendStaffReservationEmail(result.item, result.reservation, { account, message, today }),
+        ]);
+
+    auditAdminAction(req, isConsultation ? 'create_consultation' : 'create_reservation', {
+      itemId,
+      reservationId: result.reservation.id,
+      account,
+    });
     res.status(201).json({
       item: withPublicItemImage(result.item),
       reservation: result.reservation,

@@ -56,7 +56,10 @@ const ERROR_CODE_KEYS = {
   reservation_dates_too_long: 'admin.create_reservation_dates_too_long',
   reservation_collision: 'admin.create_reservation_collision',
   reservation_account_suspended: 'admin.create_reservation_suspended',
-  reservation_consultation: 'admin.create_reservation_consultation',
+  reservation_meeting_required: 'admin.create_reservation_meeting_required',
+  reservation_meeting_past: 'admin.meeting_time_past',
+  reservation_consultation_open: 'admin.create_reservation_consultation_open',
+  reservation_zoom_failed: 'admin.create_reservation_zoom_failed',
   room_times_required: 'calendar.room_times_required',
   room_times_order: 'calendar.room_times_order',
   room_purpose_required: 'calendar.room_purpose_required',
@@ -341,18 +344,23 @@ export async function approveReservation(itemId, reservationId, { meetingAt = nu
 }
 
 /**
- * Admin Create Reservation: books an equipment, book or room item for any email, confirmed at
- * once, and emails them. Returns `{ item, reservation, emailSent, hasAccount }` (`hasAccount`
- * null when the server couldn't tell).
+ * Admin Create Reservation: books an item for any email, confirmed at once, and emails them.
+ * Equipment, books and rooms take `startDate` and `endDate`; a mentor takes `meetingAt` (ISO) and
+ * an optional `summary`, and the server schedules the consultation (Zoom, both emailed). Returns
+ * `{ item, reservation, emailSent, hasAccount, gaEventQueued }` (`hasAccount` null when the
+ * server couldn't tell).
  */
-export async function createStaffReservation(itemId, { email, startDate, endDate, message = '' }) {
+export async function createStaffReservation(
+  itemId,
+  { email, startDate = '', endDate = '', meetingAt = '', summary = '', message = '' },
+) {
   const response = await fetch(`/api/admin/inventory/${encodeURIComponent(itemId)}/reservations`, {
     method: 'POST',
     headers: await authHeaders(true),
     body: JSON.stringify({
       email: email.trim(),
-      startDate,
-      endDate,
+      ...(meetingAt ? { meetingAt } : { startDate, endDate }),
+      ...(summary.trim() ? { summary: summary.trim() } : {}),
       ...(message.trim() ? { message: message.trim() } : {}),
     }),
   });

@@ -975,8 +975,11 @@ function missingStaffBookingColumn(error, row) {
 /**
  * `status` defaults to `pending` for a member's request (`reserved` without an email); staff
  * bookings from admin pass `reserved`, `bookedByStaff` and, when the server sends their GA event
- * (013), `queueGaEvent`. Resolves `{ item, reservation, gaEventQueued }`, where `gaEventQueued`
- * says the row was saved with `ga_event = 'pending'` (false before 013).
+ * (013), `queueGaEvent`. A consultation staff book also passes `meetingAt` and the Zoom callbacks
+ * of scheduleConsultation: it is saved already scheduled, with the meeting made inside the item
+ * lock after the one-open-request check, and deleted again if the insert fails. Resolves
+ * `{ item, reservation, gaEventQueued }`, where `gaEventQueued` says the row was saved with
+ * `ga_event = 'pending'` (false before 013).
  */
 export async function addReservation(
   itemId,
@@ -989,6 +992,9 @@ export async function addReservation(
     status = null,
     bookedByStaff = false,
     queueGaEvent = false,
+    meetingAt = null,
+    createMeeting = null,
+    deleteMeeting = null,
   },
 ) {
   return withItemLock(itemId, async () => {
@@ -1018,6 +1024,16 @@ export async function addReservation(
       return { consultationAlreadyOpen: true };
     }
 
+    let meetingIso = null;
+    if (meetingAt !== null) {
+      const parsedMeeting =
+        item.tag === 'expertise' && typeof meetingAt === 'string' ? Date.parse(meetingAt.trim()) : NaN;
+      if (Number.isNaN(parsedMeeting)) {
+        return { meetingTimeRequired: true };
+      }
+      meetingIso = new Date(parsedMeeting).toISOString();
+    }
+
     const reservation = {
       id: randomUUID(),
       startDate,
@@ -1028,10 +1044,17 @@ export async function addReservation(
       requestSummary:
         typeof requestSummary === 'string' && requestSummary.trim() ? requestSummary.trim() : null,
       bookedByStaff: bookedByStaff === true,
+      ...(meetingIso ? { meetingAt: meetingIso } : {}),
     };
 
+    const meeting = meetingIso && createMeeting ? await createMeeting(item, reservation) : null;
     const supabase = getSupabaseAdmin();
     const row = reservationToRow(itemId, reservation);
+    if (meeting) {
+      row.zoom_meeting_id = meeting.id;
+      row.zoom_join_url = meeting.joinUrl;
+      row.zoom_password = meeting.password || null;
+    }
     // Waits for the server to send its GA event an hour from now (013); see server.js.
     if (queueGaEvent === true) {
       row.ga_event = 'pending';
@@ -1051,10 +1074,20 @@ export async function addReservation(
     }
 
     if (error) {
+      if (meeting && deleteMeeting) {
+        await deleteMeeting(meeting.id).catch((cleanupError) =>
+          console.error('Could not remove Zoom meeting after failed booking:', cleanupError),
+        );
+      }
       throw new Error(error.message || 'Could not create reservation.');
     }
 
     reservation.bookedByStaff = row.booked_by_staff === true;
+    if (meetingIso) {
+      reservation.zoomMeetingId = meeting?.id ?? null;
+      reservation.zoomJoinUrl = meeting?.joinUrl ?? null;
+      reservation.zoomPassword = meeting?.password || null;
+    }
     item.reservations = [...reservations, reservation];
     return { item, reservation, gaEventQueued: row.ga_event === 'pending' };
   });

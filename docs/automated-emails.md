@@ -4,7 +4,7 @@ Production emails are sent from `server.js` via the [Resend](https://resend.com)
 
 **Reply-To:** every app email except the contact form sets `Reply-To` to `EMAIL_REPLY_TO` (default `samuel@apathyisboring.com`). `activistresourcelibrary.com` has no MX record and receives no mail, so without it a member's reply to `noreply@` would be lost. The contact form sets `Reply-To` to the visitor instead.
 
-**Recipients are the member who made the reservation** (`userEmail` from the JWT at create time, stored on the reservation row) — plus, for expertise consultations, **the item's expert** (`inventory_items.expert_email`). The admin password reset (trigger 9) goes to the account's own email from Supabase Auth. A booking staff create in admin (trigger 10) stores, and emails, the address they typed, which may have no account yet. There is no admin `EMAIL_TO` or env-based fallback recipient.
+**Recipients are the member who made the reservation** (`userEmail` from the JWT at create time, stored on the reservation row) — plus, for expertise consultations, **the item's expert** (`inventory_items.expert_email`). The admin password reset (trigger 9) goes to the account's own email from Supabase Auth. A booking staff create in admin (trigger 10, or trigger 6 for a meeting with a mentor) stores, and emails, the address they typed, which may have no account yet. There is no admin `EMAIL_TO` or env-based fallback recipient.
 
 New pending reservation requests on equipment, books, and rooms do **not** send email — admins are notified via the [Slack webhook](automated-webhooks.md) only, and the member follows the request on `/account` (**Upcoming and pending reservations**). **Expertise consultations are the exception:** see triggers 5–7 (request received / new request, scheduled, cancelled). An admin deleting a member's upcoming equipment, book or room reservation (or its item) emails that member (trigger 8). In `/admin` → **Members**, deleting a member account cancels their active bookings and sends triggers 7 and 8 for them, and **Send password reset** sends trigger 9.
 
@@ -211,8 +211,8 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 
 | Field | Value |
 |-------|-------|
-| **Trigger** | Successful `POST /api/consultations/:reservationId/schedule` (expert or admin), admin `POST /api/inventory/:id/reservations/:reservationId/approve` on an expertise item, **or** `POST /api/consultations/:reservationId/follow-up` (expert books a follow-up; the new reservation has `followUpOf`) |
-| **Function** | `runScheduleConsultation()` → `sendConsultationScheduledEmails()` → `buildConsultationScheduledEmailPayloads(item, reservation, { message, messageFrom })` |
+| **Trigger** | Successful `POST /api/consultations/:reservationId/schedule` (expert or admin), admin `POST /api/inventory/:id/reservations/:reservationId/approve` on an expertise item, `POST /api/consultations/:reservationId/follow-up` (expert books a follow-up; the new reservation has `followUpOf`), **or** `/admin` → **Create Reservation** on a mentor (`POST /api/admin/inventory/:id/reservations` with `meetingAt`: staff book the meeting for any address, member or not) |
+| **Function** | `runScheduleConsultation()` → `sendConsultationScheduledEmails()` → `buildConsultationScheduledEmailPayloads(item, reservation, { message, messageFrom, account })`; the follow-up and Create Reservation routes call `sendConsultationScheduledEmails()` directly |
 | **Reply-To** | `EMAIL_REPLY_TO` |
 | **To** | Member and expert (separate emails) |
 | **Subject** | Member: `Consultation confirmed: {title}` · Expert: `Consultation scheduled: {title}`. Follow-ups: `Follow-up consultation confirmed: {title}` · `Follow-up consultation scheduled: {title}` (heading and intro say "follow-up consultation" too) |
@@ -220,6 +220,17 @@ No room email promises access details (entrance, hours, on-site contact); the FA
 | **Timing** | Awaited after the Zoom meeting is created and the reservation is saved, before the response (`emailSent`). A failed email is logged (`Consultation scheduled email failed: …`, or `Consultation scheduled notifications failed: …` if it could not be built) and never undoes the schedule |
 
 **Content summary:** meeting time (America/Toronto, labelled "Montreal time"), **Join Zoom** button + passcode (or "we will send you a meeting link" and an account-panel button when Zoom is not configured), note that anyone can join before the host and share their screen, how to cancel from `/account`. Member email also includes "This project is funded by YES Employment.", a **Share your information** link (**placeholder `https://REPLACE-ME.example/participant-info` — update `CONSULTATION_DATA_FORM_URL` in `server.js`**), and the funder logo strip when `EMAIL_FUNDER_LOGO_URL` is set. Expert email includes the member email and request summary. For a follow-up, the expert's optional note is shown as **Follow-up note** in both emails (it replaces the request summary row in the expert's), and the `.ics` `SUMMARY` reads `Follow-up consultation: {title}`. The follow-up route logs failures as `Follow-up consultation notifications failed: …`. When whoever scheduled it typed the optional message (body `message` on schedule or approve, max 1000, never stored), the member's email shows it as **Message from {title}** (the expert) or **Message from the library team** (staff), and the expert's as **Your message to the member** or **Message from the library team to the member**; with no message the row is left out. Follow-ups don't take a message (their note does that job).
+
+**Booked by staff (Create Reservation):** the route passes `account` (`member`, `new` or `unknown`, from the same Supabase Auth lookup as trigger 10; a suspended account is refused with 409 `reservation_account_suspended` before anything is saved). Subjects, `.ics`, Zoom rows, funder lines and the cancel notice are as above. The member's email changes in four places:
+
+| Part | Text |
+|------|------|
+| Intro (also the preheader) | The Activist Resource Library team has booked you a consultation with {mentor's email, or the title when there is none} for {time}. Then trigger 10's account sentence with "To see or cancel it": `member` "…, log in with this email address: {email}"; `new` "… online, create a free account with this email address: {email}"; `unknown` "… online, log in or create a free account with this email address: {email}" |
+| Details | **What you would like to discuss**: the topic staff typed (left out when empty), after **Message from the library team** |
+| Account paragraph | After the room notice. `new`: Once you have confirmed your email address, the consultation will be on your account page. `unknown`: If you create an account, confirm your email address and the consultation will be on your account page. `member`: none |
+| Account link | **Create your account** for `new` (the button too when there is no Zoom link), **Your account panel** otherwise. Footer `EMAIL_WHY.staffConsultation`: "You are receiving this because the Activist Resource Library team booked a consultation for this email address." |
+
+The mentor's email opens with "The Activist Resource Library team has booked {member} a consultation with you for {time}." and shows the topic as **What they would like to discuss**, as for a member's request. A mentor with no email on file gets nothing (staff send the link). The route logs failures as `Consultation scheduled email failed: …`, and a failed email never undoes the booking (`emailSent: false`).
 
 ---
 
@@ -298,6 +309,8 @@ The redirect (`https://activistresourcelibrary.com/?password_reset=1`, or `SITE_
 
 ### 10. Reservation booked by staff (member or not — equipment, books, rooms)
 
+A meeting with a mentor booked in the same form sends trigger 6 instead (see **Booked by staff** there).
+
 | Field | Value |
 |-------|-------|
 | **Trigger** | `/admin` → **Create Reservation** → `POST /api/admin/inventory/:id/reservations` (the booking is saved as `reserved` first) |
@@ -338,7 +351,7 @@ Routes that send email add `emailSent` to their JSON. It is `true` only when the
 | `POST /api/inventory/:id/reservations` | Expertise only: the member and expert request emails. Equipment/books/rooms responses have no `emailSent` (they only post to Slack) |
 | `POST /api/inventory/:id/reservations/:reservationId/approve` | The approval email, or for expertise the two scheduled emails |
 | `POST /api/inventory/:id/reservations/:reservationId/refuse` | The refusal email |
-| `POST /api/admin/inventory/:id/reservations` | The staff booking email (trigger 10) |
+| `POST /api/admin/inventory/:id/reservations` | The staff booking email (trigger 10), or for a mentor the two scheduled emails (trigger 6; only the member's when the mentor has no email) |
 | `POST /api/consultations/:reservationId/schedule` | The two scheduled emails |
 | `POST /api/consultations/:reservationId/follow-up` | The two scheduled emails, worded as a follow-up |
 | `POST /api/consultations/:reservationId/cancel` | The cancellation emails. The response also has `otherPartyEmailed`: `emailSent` and the other side has an address on file (the trimmed `item.expertEmail` when the member cancels, the trimmed `reservation.userEmail` when the expert does, both when an admin does). A mentor with no address is skipped while the member's email still goes out, so `emailSent` alone can be `true` when the mentor wasn't told. Only the boolean is returned, never an address |

@@ -1,5 +1,6 @@
 <script module>
-  function toLocalInputValue(date) {
+  /** A Date (or timestamp) as a datetime-local value in the device's time zone. */
+  export function toLocalInputValue(date) {
     const local = new Date(date);
     local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
     return local.toISOString().slice(0, 16);

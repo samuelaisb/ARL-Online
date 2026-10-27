@@ -1392,6 +1392,7 @@
       {hasLoaded}
       {loadError}
       {todayKey}
+      {now}
       oncreated={(itemId, result) => applyItemUpdate({ itemId }, result)}
     />
   {/if}

@@ -122,6 +122,7 @@ Slack reservation webhook → configured
 | Reservation delete / patch (admin) | No Slack call |
 | Member withdraws a pending request from `/account` | No Slack call (cancelling an approved booking does send `reservation_cancelled_by_member`) |
 | Consultation schedule / cancel | No Slack call (booking a follow-up does send `consultation_follow_up`) |
+| `/admin` → **Create Reservation** (equipment, a book, a room or a meeting with a mentor) | No Slack call: staff made the booking themselves |
 | Add / remove inventory item, admin **Mentors** edits | No Slack call (only member mentor-profile saves send an alert) |
 | Mentor profile `PATCH` that changed nothing | No Slack call |
 | Client-side actions | Kimchi bubbles are in-browser only |
@@ -172,4 +173,4 @@ Not a webhook, but the server's other automated outbound post.
 | **Timeout** | **5 seconds** (`AbortSignal.timeout(5000)`) |
 | **Blocks API response?** | The request that runs the pass waits for it, 3 s at most; the booking itself never waits. A failed send goes back to the queue and retries on the next pass |
 
-**Payload:** `client_id` `arl-server.staff-bookings` (fixed), `timestamp_micros` (when the booking was made), `non_personalized_ads: true`, and one event `booking_request_sent` with `booking_type`, `booking_source: staff`, `listing_name` (the item's title) and `traffic_type: staff_booking`. Never a name or an email. Without both env vars, the Create Reservation form sends the same event from the staff browser instead (gtag), at once. See **Staff bookings in GA** in `AGENTS.md`.
+**Payload:** `client_id` `arl-server.staff-bookings` (fixed), `timestamp_micros` (when the booking was made), `non_personalized_ads: true`, and one event `booking_request_sent` with `booking_type`, `booking_source: staff`, `listing_name` (the item's title; none for a meeting with a mentor, whose title is a person's name) and `traffic_type: staff_booking`. Never a name or an email. Without both env vars, the Create Reservation form sends the same event from the staff browser instead (gtag), at once. See **Staff bookings in GA** in `AGENTS.md`.
