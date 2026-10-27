@@ -217,3 +217,20 @@ export function canBookFollowUp(source, others, now = Date.now()) {
           (!isConsultationHeld(other, now) || Date.parse(other.meetingAt ?? '') > start))),
   );
 }
+
+/**
+ * Cancelled this soon after it was made: a test (or a slip fixed at once), not a request.
+ * /admin Stats leaves these out, and the server doesn't send a staff booking's GA event until
+ * this long after it was made, and then only if it isn't one.
+ */
+export const TEST_CANCEL_WINDOW_MS = 60 * 60 * 1000;
+
+/** Cancelled within an hour of being made. Rows from before 009 have no `createdAt`. */
+export function isTestCancellation(reservation) {
+  if (reservation?.status !== 'cancelled' || !reservation.createdAt || !reservation.cancelledAt) {
+    return false;
+  }
+  const made = Date.parse(reservation.createdAt);
+  const cancelled = Date.parse(reservation.cancelledAt);
+  return !Number.isNaN(made) && !Number.isNaN(cancelled) && cancelled - made < TEST_CANCEL_WINDOW_MS;
+}

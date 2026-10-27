@@ -1,5 +1,6 @@
 <script>
   import { onMount, tick } from 'svelte';
+  import { trackBookingRequestSent } from '../lib/analytics.js';
   import { createStaffReservation, fetchAdminUsers } from '../lib/inventory.js';
   import { compareDateKeys, getBlockingReservations, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
   import { CONFIRMATION_MESSAGE_MAX } from '../lib/expertise-fields.js';
@@ -217,6 +218,10 @@
 
     try {
       const result = await createStaffReservation(item.id, { email: to, startDate, endDate, message });
+      // When queued, the server sends GA's event an hour from now, unless the booking was a test.
+      if (!result.gaEventQueued) {
+        trackBookingRequestSent(item, { bookedByStaff: true });
+      }
       oncreated?.(item.id, result);
 
       let doneKey = 'admin.create_reservation_done';

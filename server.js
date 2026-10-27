@@ -21,7 +21,9 @@ import {
   addDays,
   formatTimeOfDay,
   isConsultationHeld,
+  isTestCancellation,
   parseRoomTimes,
+  TEST_CANCEL_WINDOW_MS,
   validateReservationDates,
   validateRoomRequest,
 } from './src/lib/reservation-rules.js';
@@ -53,8 +55,10 @@ import {
   isValidInventoryImage,
   isValidTag,
   listConsultationsForUser,
+  listPendingGaEvents,
   listReservationsForMember,
   loadItemViewStats,
+  moveGaEvent,
   normalizeInventoryItem,
   reservationSchemaErrorMessage,
   patchReservation,
@@ -71,6 +75,11 @@ import {
   deleteConsultationMeeting,
   isZoomConfigured,
 } from './src/lib/zoom.js';
+import {
+  GA_BACKDATE_LIMIT_MS,
+  isGaMeasurementProtocolConfigured,
+  sendStaffBookingEvent,
+} from './src/lib/ga-measurement-protocol.js';
 import { assertSupabaseAdminConfigured, getSupabaseAdmin } from './src/lib/supabase-server.js';
 import {
   ITEM_MEDIA_BASE,
@@ -1825,6 +1834,83 @@ app.use((req, res, next) => {
   res.redirect(301, `${apexOrigin}${req.originalUrl}`);
 });
 
+// Staff bookings' GA event (013): Create Reservation queues it, and the server sends it about an
+// hour after the booking, unless the booking was a test (cancelled within the hour, as /admin
+// Stats counts) or deleted. Needs GA_MEASUREMENT_ID and GA_API_SECRET, and only the deployed
+// service does it (as with item views, local .env is production): otherwise nothing is queued
+// and the form sends the event from the browser at once, as before.
+const STAFF_BOOKING_GA_EVENTS_HERE =
+  isGaMeasurementProtocolConfigured() &&
+  (process.env.NODE_ENV === 'production' || Boolean(process.env.K_SERVICE));
+const GA_EVENT_PASS_INTERVAL_MS = 10 * 60 * 1000;
+const GA_EVENT_PASS_WAIT_MS = 3000;
+let gaEventPassStartedAt = 0;
+let gaEventPass = null;
+
+/**
+ * One pass over the queued staff bookings made at least an hour ago. Each is expired (past GA's
+ * 72-hour backdating limit), skipped (a test cancellation) or claimed (`pending` → `sending`, so
+ * a second instance can't send it too), sent dated when it was made, and marked `sent`; a failed
+ * send goes back to `pending` for the next pass.
+ */
+async function sendDueStaffBookingEvents(now = Date.now()) {
+  const due = await listPendingGaEvents(new Date(now - TEST_CANCEL_WINDOW_MS).toISOString());
+
+  for (const booking of due) {
+    const madeAt = Date.parse(booking.createdAt ?? '');
+    if (Number.isNaN(madeAt) || now - madeAt > GA_BACKDATE_LIMIT_MS) {
+      if (await moveGaEvent(booking.id, 'pending', 'expired')) {
+        console.warn(
+          `[ga] Staff booking ${booking.id} wasn't sent in time: GA takes events up to 72 hours old.`,
+        );
+      }
+      continue;
+    }
+
+    if (isTestCancellation(booking)) {
+      await moveGaEvent(booking.id, 'pending', 'skipped');
+      continue;
+    }
+
+    if (!(await moveGaEvent(booking.id, 'pending', 'sending'))) {
+      continue;
+    }
+
+    try {
+      await sendStaffBookingEvent(booking);
+    } catch (error) {
+      console.error(`[ga] Could not send staff booking ${booking.id}, will retry:`, error.message);
+      await moveGaEvent(booking.id, 'sending', 'pending');
+      continue;
+    }
+
+    await moveGaEvent(booking.id, 'sending', 'sent');
+    console.info(`[ga] Sent booking_request_sent for staff booking ${booking.id}.`);
+  }
+}
+
+/**
+ * No timers: Cloud Run throttles CPU between requests, so the pass runs on whatever request comes
+ * in, at most every 10 minutes, and that request waits for it (3 s at most; a longer pass carries
+ * on, and the claims make it safe to cut short).
+ */
+app.use(async (_req, _res, next) => {
+  if (
+    STAFF_BOOKING_GA_EVENTS_HERE &&
+    !gaEventPass &&
+    Date.now() - gaEventPassStartedAt >= GA_EVENT_PASS_INTERVAL_MS
+  ) {
+    gaEventPassStartedAt = Date.now();
+    gaEventPass = sendDueStaffBookingEvents()
+      .catch((error) => console.error('[ga] Staff booking events pass failed:', error))
+      .finally(() => {
+        gaEventPass = null;
+      });
+    await Promise.race([gaEventPass, delay(GA_EVENT_PASS_WAIT_MS, undefined, { ref: false })]);
+  }
+  next();
+});
+
 app.get('/config.js', (_req, res) => {
   res.type('application/javascript');
   res.set('Cache-Control', 'no-store');
@@ -3103,6 +3189,8 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       endDate,
       userEmail: email,
       status: 'reserved',
+      bookedByStaff: true,
+      queueGaEvent: STAFF_BOOKING_GA_EVENTS_HERE,
     });
 
     if (result.notFound) {
@@ -3126,6 +3214,8 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       reservation: result.reservation,
       emailSent,
       hasAccount: account === 'unknown' ? null : account === 'member',
+      // The server sends GA's event an hour from now; when false the form sends it at once.
+      gaEventQueued: result.gaEventQueued === true,
     });
   } catch (error) {
     console.error('Failed to create staff reservation:', error);

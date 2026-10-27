@@ -4,6 +4,7 @@
  */
 
 import { isApathyAdmin, session } from './auth.js';
+import { BOOKING_REQUEST_EVENT, bookingRequestParams } from './booking-event.js';
 
 /**
  * localStorage flag set once staff sign in on a browser. The gtag bootstrap in `index.html`
@@ -11,20 +12,29 @@ import { isApathyAdmin, session } from './auth.js';
  */
 const INTERNAL_TRAFFIC_KEY = 'arl-ga-internal';
 
-const BOOKING_TYPES = { equipment: 'equipment', books: 'book', rooms: 'room', expertise: 'expertise' };
-
 /**
- * `booking_request_sent`, sent once a member's request saves (pending or confirmed at once).
- * Expertise listings are titled with the expert's name, so they send no `listing_name`.
+ * `booking_request_sent`, sent once a request saves: a member's (pending or confirmed at once),
+ * or a staff booking from /admin → Create Reservation (`{ bookedByStaff: true }`) when the server
+ * didn't queue it (`gaEventQueued` false: GA's Measurement Protocol isn't set up, or migration 013
+ * isn't applied). Queued staff bookings are sent by the server an hour later, unless they were a
+ * test. Parameters: `bookingRequestParams` in `booking-event.js`.
  */
-export function trackBookingRequestSent(item) {
+export function trackBookingRequestSent(item, { bookedByStaff = false } = {}) {
   if (typeof window.gtag !== 'function') return;
 
-  const bookingType = BOOKING_TYPES[item?.tag] ?? 'equipment';
-  window.gtag('event', 'booking_request_sent', {
-    booking_type: bookingType,
-    ...(bookingType !== 'expertise' && item?.title ? { listing_name: item.title } : {}),
-  });
+  window.gtag('event', BOOKING_REQUEST_EVENT, bookingRequestParams(item, { bookedByStaff }));
+}
+
+/**
+ * True once staff have signed in on this browser (the `arl-ga-internal` flag), signed in now or
+ * not. The item view counter skips these browsers too, so /admin Stats leaves out what GA does.
+ */
+export function isInternalTrafficBrowser() {
+  try {
+    return localStorage.getItem(INTERNAL_TRAFFIC_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function markInternalTraffic() {

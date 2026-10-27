@@ -3,11 +3,13 @@
  * page has loaded; the server adds one to that item's count for the Montréal day.
  *
  * One view per item, per tab session, per library day: Back/Forward re-opens, reloads and
- * sign-in round trips don't count again. Staff (@apathyisboring.com) and automated
- * browsers are skipped. The request carries no body, no auth header and no cookies.
+ * sign-in round trips don't count again. Staff (@apathyisboring.com, or any browser staff have
+ * signed in on, the same browsers GA files as internal traffic) and automated browsers are
+ * skipped. The request carries no body, no auth header and no cookies.
  */
 
 import { get } from 'svelte/store';
+import { isInternalTrafficBrowser } from './analytics.js';
 import { authReady, isApathyAdmin, session } from './auth.js';
 import { libraryTodayKey } from './calendar.js';
 import { readSessionJson, writeSessionJson } from './kimchi-memory.js';
@@ -54,7 +56,7 @@ export async function recordItemView(itemId) {
   writeSessionJson(VIEWS_SESSION_KEY, entries.slice(-VIEWS_SESSION_LIMIT));
 
   await whenAuthReady();
-  if (isApathyAdmin(get(session))) return;
+  if (isApathyAdmin(get(session)) || isInternalTrafficBrowser()) return;
 
   fetch(`/api/inventory/${encodeURIComponent(itemId)}/view`, {
     method: 'POST',

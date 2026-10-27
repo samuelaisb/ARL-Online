@@ -405,6 +405,8 @@ function reservationRowToApi(row) {
     createdAt: timestampToIso(row.created_at),
     // When a deleted account's email was stripped from the row (009); null otherwise. Admin only.
     anonymizedAt: timestampToIso(row.anonymized_at),
+    // Made in /admin → Create Reservation (012), not requested by the member. False before 012.
+    bookedByStaff: row.booked_by_staff === true,
   };
 }
 
@@ -559,6 +561,10 @@ function reservationToRow(itemId, reservation) {
   }
   if (reservation.meetingAt) {
     row.meeting_at = reservation.meetingAt;
+  }
+  // Only after 012_staff_bookings.sql; every other row keeps the column's default (false).
+  if (reservation.bookedByStaff === true) {
+    row.booked_by_staff = true;
   }
 
   return row;
@@ -945,12 +951,45 @@ export async function countPendingReservationsByEmail(userEmail) {
 }
 
 /**
+ * Staff bookings' columns from later migrations. While one isn't applied the booking is saved
+ * without it (one warning each) rather than refused.
+ */
+const STAFF_BOOKING_COLUMN_NOTICES = {
+  booked_by_staff:
+    'Staff bookings are saved unmarked, so Stats counts them as members\' requests: apply supabase/migrations/012_staff_bookings.sql in the Supabase SQL Editor.',
+  ga_event:
+    'Staff bookings send their GA event from the browser at once, tests included: apply supabase/migrations/013_staff_booking_ga_events.sql in the Supabase SQL Editor.',
+};
+const staffBookingColumnNoticesLogged = new Set();
+
+/** The staff-booking column a failed insert says is missing (PostgREST's PGRST204 names it). */
+function missingStaffBookingColumn(error, row) {
+  if (error?.code !== 'PGRST204' && error?.code !== '42703') {
+    return null;
+  }
+  const present = Object.keys(STAFF_BOOKING_COLUMN_NOTICES).filter((column) => column in row);
+  const named = present.find((column) => (error.message ?? '').includes(column));
+  return named ?? (present.length === 1 ? present[0] : null);
+}
+
+/**
  * `status` defaults to `pending` for a member's request (`reserved` without an email); staff
- * bookings from admin pass `reserved`.
+ * bookings from admin pass `reserved`, `bookedByStaff` and, when the server sends their GA event
+ * (013), `queueGaEvent`. Resolves `{ item, reservation, gaEventQueued }`, where `gaEventQueued`
+ * says the row was saved with `ga_event = 'pending'` (false before 013).
  */
 export async function addReservation(
   itemId,
-  { startDate, endDate, userEmail = null, timeSlots = null, requestSummary = null, status = null },
+  {
+    startDate,
+    endDate,
+    userEmail = null,
+    timeSlots = null,
+    requestSummary = null,
+    status = null,
+    bookedByStaff = false,
+    queueGaEvent = false,
+  },
 ) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
@@ -988,18 +1027,100 @@ export async function addReservation(
       timeSlots: typeof timeSlots === 'string' && timeSlots.trim() ? timeSlots.trim() : null,
       requestSummary:
         typeof requestSummary === 'string' && requestSummary.trim() ? requestSummary.trim() : null,
+      bookedByStaff: bookedByStaff === true,
     };
 
     const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from('reservations').insert(reservationToRow(itemId, reservation));
+    const row = reservationToRow(itemId, reservation);
+    // Waits for the server to send its GA event an hour from now (013); see server.js.
+    if (queueGaEvent === true) {
+      row.ga_event = 'pending';
+    }
+    let { error } = await supabase.from('reservations').insert(row);
+
+    // Each retry drops one column, so this stops after at most two.
+    let missingColumn = missingStaffBookingColumn(error, row);
+    while (missingColumn) {
+      if (!staffBookingColumnNoticesLogged.has(missingColumn)) {
+        staffBookingColumnNoticesLogged.add(missingColumn);
+        console.warn(`[reservations] ${STAFF_BOOKING_COLUMN_NOTICES[missingColumn]}`);
+      }
+      delete row[missingColumn];
+      ({ error } = await supabase.from('reservations').insert(row));
+      missingColumn = missingStaffBookingColumn(error, row);
+    }
 
     if (error) {
       throw new Error(error.message || 'Could not create reservation.');
     }
 
+    reservation.bookedByStaff = row.booked_by_staff === true;
     item.reservations = [...reservations, reservation];
-    return { item, reservation };
+    return { item, reservation, gaEventQueued: row.ga_event === 'pending' };
   });
+}
+
+/** A pass looks at this many waiting GA events at most; the rest wait for the next one. */
+const GA_EVENT_BATCH_SIZE = 50;
+let gaEventSchemaNoticeLogged = false;
+
+/**
+ * Staff bookings whose GA event is waiting (013, `ga_event = 'pending'`) and that were made at or
+ * before `madeBefore` (ISO), oldest first, as `{ id, status, createdAt, cancelledAt, item }` with
+ * only the item's `tag` and `title`: never the email. Empty before 013 (one warning).
+ */
+export async function listPendingGaEvents(madeBefore) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, status, created_at, cancelled_at, inventory_items(tag, title)')
+    .eq('ga_event', 'pending')
+    .lte('created_at', madeBefore)
+    .order('created_at', { ascending: true })
+    .limit(GA_EVENT_BATCH_SIZE);
+
+  if (error) {
+    if (isMissingColumnError(error, 'ga_event')) {
+      if (!gaEventSchemaNoticeLogged) {
+        gaEventSchemaNoticeLogged = true;
+        console.warn(`[reservations] ${STAFF_BOOKING_COLUMN_NOTICES.ga_event}`);
+      }
+      return [];
+    }
+    throw new Error(error.message || 'Could not load waiting GA events.');
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    status: row.status,
+    createdAt: timestampToIso(row.created_at),
+    cancelledAt: timestampToIso(row.cancelled_at),
+    item: { tag: row.inventory_items?.tag ?? null, title: row.inventory_items?.title ?? null },
+  }));
+}
+
+/**
+ * Moves a booking's GA event from one state to another, only if it is still in `from`, so two
+ * passes can't both claim it (`pending` → `sending`). Settled states (`sent`, `skipped`,
+ * `expired`) also record `ga_event_at`. Resolves whether the row moved.
+ */
+export async function moveGaEvent(reservationId, from, to) {
+  const values = ['sent', 'skipped', 'expired'].includes(to)
+    ? { ga_event: to, ga_event_at: new Date().toISOString() }
+    : { ga_event: to };
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .update(values)
+    .eq('id', reservationId)
+    .eq('ga_event', from)
+    .select('id');
+
+  if (error) {
+    throw new Error(error.message || 'Could not update the GA event.');
+  }
+
+  return (data ?? []).length > 0;
 }
 
 export async function removeReservation(itemId, reservationId) {

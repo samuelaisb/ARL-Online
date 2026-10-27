@@ -85,13 +85,18 @@ export const needsMemberAgreement = derived(session, ($session) =>
 
 const APATHY_ADMIN_DOMAIN = '@apathyisboring.com';
 
-/** True when the signed-in user's email is an @apathyisboring.com address. */
-export function isApathyAdmin(sessionValue) {
-  const email = sessionValue?.user?.email?.trim();
-  if (!email) {
+/** True for an @apathyisboring.com address (staff), compared case-insensitively. */
+export function isApathyAdminEmail(email) {
+  const trimmed = typeof email === 'string' ? email.trim() : '';
+  if (!trimmed) {
     return false;
   }
-  return email.toLowerCase().endsWith(APATHY_ADMIN_DOMAIN);
+  return trimmed.toLowerCase().endsWith(APATHY_ADMIN_DOMAIN);
+}
+
+/** True when the signed-in user's email is an @apathyisboring.com address. */
+export function isApathyAdmin(sessionValue) {
+  return isApathyAdminEmail(sessionValue?.user?.email);
 }
 
 const PENDING_OAUTH_SIGNUP_KEY = 'arl-pending-oauth-signup';

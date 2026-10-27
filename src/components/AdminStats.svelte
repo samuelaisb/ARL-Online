@@ -1,7 +1,8 @@
 <script module>
+  import { isApathyAdminEmail } from '../lib/auth.js';
   import { compareDateKeys, libraryTodayKey, parseDateKey } from '../lib/calendar.js';
   import { DEFAULT_INVENTORY_TAG, INVENTORY_TAGS, fetchAdminItemViews } from '../lib/inventory.js';
-  import { addDays, isConsultationHeld } from '../lib/reservation-rules.js';
+  import { addDays, isConsultationHeld, isTestCancellation } from '../lib/reservation-rules.js';
 
   // Pure helpers: each stat below is one of these over the admin items (and the view
   // counts), so every number can be checked by hand.
@@ -15,21 +16,38 @@
   const SPARK_HEIGHT = 60;
   // Keeps the line's 2px stroke inside the box at the peak and at zero.
   const SPARK_PAD = 4;
+  /**
+   * Anything booked or asked for, whatever came of it: member requests, staff bookings
+   * (Create Reservation, 012) and follow-ups. A deleted member's rows lose their email but keep
+   * `anonymizedAt`, so their history still counts. Left out: rows with neither (staff blocks,
+   * pre-002 bookings), staff accounts' own requests (@apathyisboring.com, filed as internal
+   * traffic in GA) and test cancellations.
+   */
+  function isCountedActivity(reservation) {
+    if (!REQUEST_STATUSES.has(reservation.status) || isTestCancellation(reservation)) {
+      return false;
+    }
+    if (reservation.bookedByStaff || reservation.anonymizedAt) {
+      return true;
+    }
+    return Boolean(reservation.userEmail) && !isApathyAdminEmail(reservation.userEmail);
+  }
 
   /**
-   * A member's request, whatever came of it. A deleted member's rows lose their email but
-   * keep `anonymizedAt`, so their history still counts. Rows with neither are staff blocks or
-   * pre-002 bookings, not requests.
+   * A request: a member's own from the site, or a staff booking. These are what send GA's
+   * `booking_request_sent` (`booking_source` member or staff). Follow-ups are booked by the
+   * expert from a meeting already counted, so they're activity, not requests.
    */
-  function isMemberRequest(reservation) {
-    return (
-      Boolean(reservation.userEmail || reservation.anonymizedAt) &&
-      REQUEST_STATUSES.has(reservation.status)
-    );
+  function isCountedRequest(reservation) {
+    return isCountedActivity(reservation) && !reservation.followUpOf;
   }
 
   function requestsOf(item) {
-    return (item.reservations ?? []).filter(isMemberRequest);
+    return (item.reservations ?? []).filter(isCountedRequest);
+  }
+
+  function activityOf(item) {
+    return (item.reservations ?? []).filter(isCountedActivity);
   }
 
   /**
@@ -47,15 +65,16 @@
   }
 
   /**
-   * Member requests, on every item, that came in on `sinceKey` or later. A row from before
-   * 009 that starts after `todayKey` has no known request day (a booking can be made months
-   * ahead), so it's left out rather than counted as a request from the future.
+   * Requests, on every item, that came in on `sinceKey` or later: `{ total, byStaff }`. A row
+   * from before 009 that starts after `todayKey` has no known request day (a booking can be
+   * made months ahead), so it's left out rather than counted as a request from the future.
    */
   function countRequestsSince(items, sinceKey, todayKey) {
     const inWindow = (r) =>
       (r.createdAt || compareDateKeys(r.startDate, todayKey) <= 0) &&
       compareDateKeys(requestDayKey(r), sinceKey) >= 0;
-    return items.reduce((sum, item) => sum + requestsOf(item).filter(inWindow).length, 0);
+    const counted = items.flatMap((item) => requestsOf(item).filter(inWindow));
+    return { total: counted.length, byStaff: counted.filter((r) => r.bookedByStaff).length };
   }
 
   /** `{ [tag]: number of items }` for every category. */
@@ -147,8 +166,8 @@
   }
 
   /**
-   * Quiet items: on the shelves since before `since60`, with no views and no member requests
-   * from `since60` on. Longest on the shelves first.
+   * Quiet items: on the shelves since before `since60`, with no views and no counted activity
+   * (requests, staff bookings, follow-ups) from `since60` on. Longest on the shelves first.
    */
   function findQuietItems(items, viewsById, since60) {
     return items
@@ -163,7 +182,7 @@
         if ((viewsById.get(item.id)?.last60 ?? 0) > 0) {
           return false;
         }
-        return !requestsOf(item).some((r) => compareDateKeys(requestDayKey(r), since60) >= 0);
+        return !activityOf(item).some((r) => compareDateKeys(requestDayKey(r), since60) >= 0);
       })
       .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
   }
@@ -332,8 +351,18 @@
     {
       key: 'requests-30',
       labelKey: 'admin.stats_requests_30',
-      value: formatNumber(requestsLast30),
+      value: formatNumber(requestsLast30.total),
       note: $t('admin.stats_requests_30_note'),
+      // "Members 12 · Staff 3" once staff have booked in the window.
+      parts:
+        requestsLast30.byStaff > 0
+          ? [
+              $t('admin.stats_requests_members', {
+                count: formatNumber(requestsLast30.total - requestsLast30.byStaff),
+              }),
+              $t('admin.stats_requests_staff', { count: formatNumber(requestsLast30.byStaff) }),
+            ]
+          : [],
     },
     {
       key: 'items',

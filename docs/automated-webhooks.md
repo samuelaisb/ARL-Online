@@ -1,6 +1,6 @@
 # Automated webhooks
 
-The ARL Online server posts to **one optional outbound webhook**: a Slack workflow trigger. It fires on new pending reservations and, as **staff alerts** with the same payload keys, when a member publishes or edits a mentor profile or cancels an approved equipment, book or room reservation from `/account`. There are no other webhook integrations in the application codebase.
+The ARL Online server posts to **one optional outbound webhook**: a Slack workflow trigger. It fires on new pending reservations and, as **staff alerts** with the same payload keys, when a member publishes or edits a mentor profile or cancels an approved equipment, book or room reservation from `/account`. There are no other webhook integrations in the application codebase. The server's other automated outbound post, staff bookings' Google Analytics event, is described at the end ([Google Analytics Measurement Protocol](#google-analytics-measurement-protocol)).
 
 ---
 
@@ -155,3 +155,21 @@ Slack reservation webhook → configured
 | `server.js` | `postSlackWorkflow()`, `notifySlackReservation()`, `notifySlackAlert()`, `notifyMentorProfileChange()`, `notifyMemberReservationCancelled()`; hooks on reservation create, mentor-profile `POST`/`PATCH` and the member reservation cancel |
 | `.env.example` | Documents optional `SLACK_RESERVATION_WEBHOOK_URL` |
 | `scripts/cloud-build.sh` | Cloud Run runtime env for webhook URL |
+
+---
+
+## Google Analytics Measurement Protocol
+
+Not a webhook, but the server's other automated outbound post.
+
+| Field | Value |
+|-------|-------|
+| **Env vars** | `GA_MEASUREMENT_ID` and `GA_API_SECRET` (both, or nothing is sent). Only the deployed service sends (`NODE_ENV=production` or `K_SERVICE`) |
+| **Function** | `sendStaffBookingEvent()` in `src/lib/ga-measurement-protocol.js`, called by `sendDueStaffBookingEvents()` in `server.js` |
+| **Trigger** | A staff booking from `/admin` → **Create Reservation** (`POST /api/admin/inventory/:id/reservations`), queued as `reservations.ga_event = 'pending'` (migration 013), sent on the first request at least an hour after it was made (a pass runs at most every 10 minutes). Not sent if it was cancelled less than an hour after it was made (a test), deleted, or more than 71 hours old |
+| **HTTP method** | `POST https://www.google-analytics.com/mp/collect?measurement_id=…&api_secret=…` |
+| **Content-Type** | `application/json` |
+| **Timeout** | **5 seconds** (`AbortSignal.timeout(5000)`) |
+| **Blocks API response?** | The request that runs the pass waits for it, 3 s at most; the booking itself never waits. A failed send goes back to the queue and retries on the next pass |
+
+**Payload:** `client_id` `arl-server.staff-bookings` (fixed), `timestamp_micros` (when the booking was made), `non_personalized_ads: true`, and one event `booking_request_sent` with `booking_type`, `booking_source: staff`, `listing_name` (the item's title) and `traffic_type: staff_booking`. Never a name or an email. Without both env vars, the Create Reservation form sends the same event from the staff browser instead (gtag), at once. See **Staff bookings in GA** in `AGENTS.md`.
