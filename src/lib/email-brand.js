@@ -1,15 +1,11 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
 /**
  * Apathy is Boring layout for Activist Resource Library transactional emails.
  *
  * Ringold and P22 Mackinac Pro are not loaded: email clients drop webfonts,
  * and those licences are not confirmed for email. Headlines use Inter bold
  * uppercase; body uses Inter with a Helvetica/Arial fallback.
- * Emails are English-only, so this uses the English light wordmark.
- * The French wordmark is not wired until French email copy exists.
+ * The header wordmark is live text, not an image, so it shows the moment
+ * the email opens (images load after, or not at all when blocked).
  */
 
 export const EMAIL_COLORS = {
@@ -35,48 +31,13 @@ export const orgContact = {
   websiteLabel: 'apathyisboring.com',
 };
 
-/**
- * English light wordmark, flattened onto Mint so clients that drop PNG
- * transparency still show it. 2× (400×228), displayed at 200×114.
- * Sent inline (`cid:aisb-logo`) because the live site does not serve this file yet.
- */
-export const EMAIL_LOGO = {
-  path: '/assets/brand/apathy-is-boring-logo-light.png',
-  width: 200,
-  height: 114,
-  alt: 'Apathy is Boring',
-  cid: 'aisb-logo',
-};
-
-const LOGO_FILE = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../assets/brand/apathy-is-boring-logo-light.png',
-);
-
-let cachedLogoAttachment = null;
-
-/** Inline image for Resend. Reference it as `cid:${EMAIL_LOGO.cid}`. */
-export function emailLogoAttachment() {
-  if (!cachedLogoAttachment) {
-    cachedLogoAttachment = {
-      filename: 'apathy-is-boring-logo.png',
-      content: fs.readFileSync(LOGO_FILE),
-      contentType: 'image/png',
-      inlineContentId: EMAIL_LOGO.cid,
-    };
-  }
-  return cachedLogoAttachment;
-}
-
 const FONT_SANS = "'Inter', Helvetica, Arial, sans-serif";
+/** System fonts only: a webfont would swap in after open, which is the pop-in this avoids. */
+const FONT_WORDMARK = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 const INTER_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;1,400;1,700&display=swap';
 
 const LINK_STYLE = `color:${EMAIL_COLORS.grape};font-weight:700;text-decoration:none;`;
-
-export function emailLogoUrl() {
-  return `cid:${EMAIL_LOGO.cid}`;
-}
 
 function funderLogoUrl() {
   return process.env.EMAIL_FUNDER_LOGO_URL?.trim() || '';
@@ -117,8 +78,7 @@ function htmlWithBreaks(text) {
  * @param {Array<[string, string]>} [options.links]
  * @param {string} options.why Why the recipient got this email (footer; no unsubscribe on transactional mail)
  * @param {boolean} [options.funderStrip] YES Employment emails: logo strip when EMAIL_FUNDER_LOGO_URL is set
- * @param {string} [options.logoUrl] Defaults to the inline logo. Pass an http(s) URL for a browser preview.
- * @returns {{ html: string, text: string, attachments: object[] }}
+ * @returns {{ html: string, text: string }}
  */
 export function renderBrandedEmail({
   subject,
@@ -131,7 +91,6 @@ export function renderBrandedEmail({
   links = [],
   why,
   funderStrip = false,
-  logoUrl = emailLogoUrl(),
 }) {
   const preview = String(preheader || intro || subject || '')
     .replace(/\s+/g, ' ')
@@ -224,7 +183,7 @@ export function renderBrandedEmail({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${EMAIL_COLORS.light}"><tr><td align="center">
 <table role="presentation" class="container" width="700" cellpadding="0" cellspacing="0" style="max-width:700px;width:100%;">
 <tr><td align="center" bgcolor="${EMAIL_COLORS.mint}" style="background:${EMAIL_COLORS.mint};padding:28px 24px 20px;">
-<a href="${escapeHtml(orgContact.websiteUrl)}" style="text-decoration:none;"><img src="${escapeHtml(logoUrl)}" alt="${EMAIL_LOGO.alt}" width="${EMAIL_LOGO.width}" height="${EMAIL_LOGO.height}" style="display:block;margin:0 auto;width:${EMAIL_LOGO.width}px;height:${EMAIL_LOGO.height}px;border:0;"></a>
+<p style="margin:0;font-family:${FONT_WORDMARK};font-size:48px;line-height:44px;mso-line-height-rule:exactly;font-weight:900;letter-spacing:-1px;text-transform:uppercase;white-space:nowrap;"><a href="${escapeHtml(orgContact.websiteUrl)}" style="color:${EMAIL_COLORS.light};text-decoration:none;">Apathy<br><span style="font-size:19px;line-height:19px;letter-spacing:0;vertical-align:top;">is </span>Boring</a></p>
 <p style="margin:12px 0 0;font-family:${FONT_SANS};font-size:16px;line-height:1.4;font-weight:700;text-transform:uppercase;color:${EMAIL_COLORS.light};">${escapeHtml(orgContact.tagline)}</p>
 </td></tr>
 <tr><td bgcolor="${EMAIL_COLORS.dark}" style="background:${EMAIL_COLORS.dark};font-size:0;line-height:0;height:2px;">&nbsp;</td></tr>
@@ -252,6 +211,5 @@ ${escapeHtml(why)}
   return {
     html,
     text: textLines.join('\n').replace(/\n{3,}/g, '\n\n').trim(),
-    attachments: [emailLogoAttachment()],
   };
 }

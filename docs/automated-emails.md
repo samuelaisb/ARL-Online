@@ -19,7 +19,7 @@ Email dates are written out in English (`formatReservationDates()`: "Tuesday, Oc
 | `RESEND_API_KEY` | Yes (at send time) | — | Resend API key. Server starts without it (warning logged); `getResend()` throws when sending if unset |
 | `EMAIL_FROM` | No | `noreply@activistresourcelibrary.com` | Sender address on all app emails |
 | `EMAIL_REPLY_TO` | No | `samuel@apathyisboring.com` (`CONTACT_TO`) | `Reply-To` on every app email except the contact form. One address (no commas: `cloud:build` passes it in a comma-separated list) |
-| `SITE_URL` | Recommended (prod) | Falls back to `https://activistresourcelibrary.com` | Base origin for email links (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped). The header logo is an inline attachment (`cid:aisb-logo`) and does not depend on it |
+| `SITE_URL` | Recommended (prod) | Falls back to `https://activistresourcelibrary.com` | Base origin for email links (`SITE_URL` or `VITE_SITE_URL`, trailing slash stripped). The header wordmark is text and does not depend on it |
 | `ORG_ADDRESS` | No | `5310 Boulevard Saint-Laurent, Montréal QC H2T 1S1` | Footer street address (`orgContact` in `src/lib/email-brand.js`) and the welcome email's pickup line. An approved item's own address comes from `item_locations` (migration 010), not from this. `cloud:build` does not pass it — the comma breaks gcloud's env list |
 | `ORG_PHONE` | No | `514.844.2472` | Footer phone. Passed by `cloud:build` when set in `.env` |
 | `EMAIL_FUNDER_LOGO_URL` | No | unset | Absolute URL of a funder logo strip. When set, the member "consultation confirmed" email shows it above the footer |
@@ -32,13 +32,13 @@ All of the emails below share `renderBrandedEmail()` in `src/lib/email-brand.js`
 
 | Piece | Treatment |
 |-------|-----------|
-| Header | Mint `#024238` band, English light wordmark inlined as `cid:aisb-logo` (200×114, `alt="Apathy is Boring"`), tagline **GET INVOLVED, BECAUSE APATHY IS BORING** in Light |
+| Header | Mint `#024238` band, live-text wordmark linking to apathyisboring.com (APATHY over a small IS and BORING, 48px bold uppercase Light, Helvetica Neue / Helvetica / Arial), tagline **GET INVOLVED, BECAUSE APATHY IS BORING** in Light |
 | Body | Light `#FAF9F7` background, Dark `#231F20` 15px Inter (Helvetica, Arial fallback), 21px uppercase headline |
 | Button | Lemon `#FFDD2A` fill, Dark text, uppercase |
 | Links | Grape `#473198`, bold, no underline |
 | Footer | Dark background, Light 13px text: Apathy is Boring · office address · phone · apathyisboring.com, then why the person received it. No unsubscribe link (transactional) |
 
-Ringold and P22 Mackinac Pro are not loaded. Emails are English-only, so the French wordmark is not used. The logo file is `src/assets/brand/apathy-is-boring-logo-light.png`, served at `/assets/brand/apathy-is-boring-logo-light.png`.
+Ringold and P22 Mackinac Pro are not loaded. The wordmark is text rather than an image so it shows the moment the email opens: email clients load images after the HTML (and Outlook blocks them by default), and Gmail and Outlook don't show SVG. It uses system fonts only, since a webfont would also swap in after open. Emails are English-only, so the wordmark is English. The only image left is the optional funder strip.
 
 **Local smoke test:** `npm run send-email` runs `send-email.js` (not part of the web app — see [Dev-only script](#dev-only-script)).
 
@@ -418,7 +418,6 @@ Exits with error if `RESEND_API_KEY` is missing. **Not invoked by the web app.**
 | `server.js` | Resend client, `EMAIL_REPLY_TO`, member decision + staff booking + team-cancellation + consultation + password reset payload builders (`buildConsultationEmail`, `buildConsultationIcs`, `buildStaffReservationEmailPayload`, `confirmedReservationEmailParts`, `buildReservationCancelledByTeamEmailPayload`, `buildPasswordResetEmailPayload`), `EMAIL_WHY`, the member delete (`deleteMemberAccount`), `formatReservationDates`, send functions (`sendEmailPayloads`, 10 s cap), `settleNotifications` (routes await emails + Slack), route hooks |
 | `src/lib/email-brand.js` | Shared branded HTML + plain-text layout (`renderBrandedEmail`, `orgContact`) |
 | `src/lib/item-location.js` | Item places for the approval email: `locationAreaLine`, `memberLocation(...).directionsUrl` (`itemPlaceLines` in `server.js` builds the Where row) |
-| `src/assets/brand/apathy-is-boring-logo-light.png` | English light wordmark, flattened onto Mint, attached inline on every email |
 | `src/lib/zoom.js` | Zoom meeting create/delete used before scheduled/cancelled emails |
 | `.env.example` | Env var template |
 | `send-email.js` | One-off Resend test script |

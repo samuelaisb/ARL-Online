@@ -601,7 +601,7 @@ function buildConsultationEmail({
     subject,
     text: rendered.text,
     html: rendered.html,
-    attachments: [...rendered.attachments, ...(attachments ?? [])],
+    attachments,
   };
 }
 
@@ -1142,7 +1142,6 @@ function buildMemberDecisionEmailPayload(item, reservation, decision, message = 
     subject,
     text: rendered.text,
     html: rendered.html,
-    attachments: rendered.attachments,
   };
 }
 
@@ -1340,7 +1339,6 @@ function buildWelcomeEmailPayload(email) {
     subject,
     text: rendered.text,
     html: rendered.html,
-    attachments: rendered.attachments,
   };
 }
 
@@ -1482,7 +1480,6 @@ function buildContactEmailPayload({ name, email, message }) {
     subject,
     text: rendered.text,
     html: rendered.html,
-    attachments: rendered.attachments,
   };
 }
 

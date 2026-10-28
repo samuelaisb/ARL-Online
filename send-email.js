@@ -11,7 +11,7 @@ if (!apiKey) {
 
 const resend = new Resend(apiKey);
 const subject = 'Activist Resource Library email check';
-const { html, text, attachments } = renderBrandedEmail({
+const { html, text } = renderBrandedEmail({
   subject,
   preheader: 'Apathy is Boring transactional email check.',
   headline: 'Email check',
@@ -28,7 +28,6 @@ const { data, error } = await resend.emails.send({
   subject,
   html,
   text,
-  attachments,
 });
 
 if (error) {
