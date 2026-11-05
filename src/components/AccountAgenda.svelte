@@ -494,7 +494,7 @@
         {/if}
 
         {#each agenda.weeks as week (week.key)}
-          {@const label = weekLabelParts(week.start, todayKey, $locale)}
+          {@const label = weekLabelParts(week.start, agenda.timelineTodayKey, $locale)}
           <h3 class="agenda-week f-label">{$t(label.labelKey, label.vars)}</h3>
           <ol class="agenda-days">
             {#each week.days as day (day.key)}

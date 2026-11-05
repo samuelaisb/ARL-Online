@@ -29,6 +29,19 @@ export function rowKey(entry) {
   return `${entry.role}:${entry.id}`;
 }
 
+/**
+ * A request the mentor's side closed before any time was set: the mentor (or the host of a
+ * mentor with no address, `expert` or `admin`) used **Decline request**, which the server records
+ * as `cancelled` with no `meetingAt`. Shown as declined, like a request staff refused.
+ */
+export function isDeclinedRequest(entry) {
+  return (
+    entry?.status === 'cancelled' &&
+    !entry.meetingAt &&
+    (entry.cancelledBy === 'expert' || entry.cancelledBy === 'admin')
+  );
+}
+
 /** Same held rule as the server, which refuses to cancel a meeting that has already ended. */
 export function isEntryClosed(entry, now) {
   return entry.status === 'cancelled' || entry.status === 'refused' || isConsultationHeld(entry, now);
@@ -128,7 +141,8 @@ export function findClosedByOthers(entries, previous) {
 /** B4's bubble for a closed row. Experts only hear about members' cancels (never named). */
 export function closedMessage(entry) {
   if (entry.role === 'member') {
-    const byExpert = entry.status === 'cancelled' && entry.cancelledBy === 'expert';
+    // A declined request (no meeting yet) gets the "didn't go ahead" line, as a refused one does.
+    const byExpert = entry.status === 'cancelled' && entry.cancelledBy === 'expert' && !isDeclinedRequest(entry);
     return {
       textKey: byExpert ? 'kimchi.consultation_cancelled_by_expert' : 'kimchi.consultation_declined',
       vars: { title: entry.itemTitle },

@@ -977,12 +977,18 @@ const CANCELLED_BY_LABELS = {
 };
 
 /** Cancelled → member and expert; scheduled meetings also get an iCalendar CANCEL. */
-function buildConsultationCancelledEmailPayloads(item, reservation, previousStatus) {
+/**
+ * `declined`: the mentor's side closed a pending request with **Decline request** on /account
+ * (the cancel route, so the row is `cancelled`), worded as declined. Other cancels of a request
+ * (the member withdrawing, staff deleting it, a member account deleted) stay "cancelled".
+ */
+function buildConsultationCancelledEmailPayloads(item, reservation, previousStatus, { declined = false } = {}) {
   const title = consultationTitle(item);
   const wasScheduled = previousStatus === 'reserved' && reservation.meetingAt;
   const meetingTime = wasScheduled ? formatMeetingDateTime(reservation.meetingAt) : '';
   const cancelledBy = reservation.cancelledBy;
   const libraryUrl = absoluteSiteUrl('/');
+  const asDecline = declined && !wasScheduled;
   const recipients = [
     ['member', trimmedOrNull(reservation.userEmail)],
     ['expert', trimmedOrNull(item.expertEmail)],
@@ -993,10 +999,11 @@ function buildConsultationCancelledEmailPayloads(item, reservation, previousStat
     .map(([role, email]) => {
       const byYou = role === cancelledBy;
       const who = byYou ? 'You' : CANCELLED_BY_LABELS[cancelledBy] ?? 'Someone';
-      const what = wasScheduled
-        ? `the consultation scheduled for ${meetingTime}`
-        : 'the consultation request';
-      const intro = `${who.charAt(0).toUpperCase()}${who.slice(1)} cancelled ${what}.`;
+      let what = wasScheduled ? `the consultation scheduled for ${meetingTime}` : 'the consultation request';
+      if (asDecline) {
+        what = role === 'member' ? 'your consultation request' : 'the consultation request';
+      }
+      const intro = `${who.charAt(0).toUpperCase()}${who.slice(1)} ${asDecline ? 'declined' : 'cancelled'} ${what}.`;
       const closing =
         role === 'member'
           ? 'You are welcome to submit a new request whenever it suits you.'
@@ -1004,8 +1011,8 @@ function buildConsultationCancelledEmailPayloads(item, reservation, previousStat
 
       return buildConsultationEmail({
         to: email,
-        subject: `Consultation cancelled: ${title}`,
-        heading: 'Consultation cancelled',
+        subject: asDecline ? `Consultation request declined: ${title}` : `Consultation cancelled: ${title}`,
+        heading: asDecline ? 'Consultation request declined' : 'Consultation cancelled',
         intro,
         details: [['Consultation', title], ['Was scheduled for', meetingTime]],
         paragraphs: [wasScheduled ? 'The Zoom meeting has been removed.' : '', closing].filter(Boolean),
@@ -2052,13 +2059,13 @@ async function removeZoomMeeting(reservation) {
  * Deletes the Zoom meeting (if any) and emails member + expert about a cancellation.
  * Resolves true when every email went out (see sendEmailPayloads).
  */
-async function handleConsultationCancelled(item, reservation, previousStatus) {
+async function handleConsultationCancelled(item, reservation, previousStatus, options) {
   if (previousStatus === 'reserved') {
     await removeZoomMeeting(reservation);
   }
 
   return sendEmailPayloads(
-    buildConsultationCancelledEmailPayloads(item, reservation, previousStatus),
+    buildConsultationCancelledEmailPayloads(item, reservation, previousStatus, options),
     'Consultation cancelled',
   );
 }
@@ -5692,7 +5699,10 @@ app.post(
       }
 
       const emailSent = await settleNotifications('Consultation cancelled', [
-        handleConsultationCancelled(result.item, result.reservation, result.previousStatus),
+        // The mentor's side closing a request (Decline request on /account) is worded as declined.
+        handleConsultationCancelled(result.item, result.reservation, result.previousStatus, {
+          declined: cancelledBy !== 'member' && result.previousStatus === 'pending',
+        }),
       ]);
       // Whether the other side was told by email: a mentor with no address on file is skipped
       // while the member's email still goes out (emailSent stays true). Whoever cancels for the

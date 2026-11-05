@@ -9,7 +9,11 @@
  *   (`needs: 'approve'`) or a consultation request to pick a time for (`needs: 'pick-time'`).
  * - `waiting`: the member's consultation requests that have no time yet.
  * - `weeks`: the timeline. Own bookings not past, hosted bookings confirmed and not ended,
- *   scheduled consultations not held, plus "Due back" milestones, by Montréal day, Sunday-first weeks.
+ *   scheduled consultations not held, plus "Due back" milestones, by day, Sunday-first weeks. The
+ *   days are the viewer's own calendar (`timelineTodayKey`, the device's date): a meeting (stored
+ *   as an instant) sits on the device's day of its start, so its day and its clock agree wherever
+ *   the viewer is; bookings sit on their dates, which are Montréal calendar dates everywhere.
+ *   The booking rules (ended, can cancel) keep Montréal's date (`todayKey`), as the server does.
  * - `recent`: consultations closed by the other side since the last visit (B4's `recentKeys`).
  * - `earlier`: everything else that is over, newest first.
  *
@@ -22,9 +26,9 @@
  * 'message-member', 'follow-up'; confirmations 'withdraw', 'cancel', 'refuse'.
  */
 
-import { compareDateKeys, libraryTodayKey, libraryWallTimeToMs, parseDateKey } from './calendar.js';
+import { compareDateKeys, libraryTodayKey, libraryWallTimeToMs, parseDateKey, toDateKey } from './calendar.js';
 import { addDays, canBookFollowUp, PICKUP_OPENS_AT, reservationStartsAt } from './reservation-rules.js';
-import { isEntryClosed, meetingTimingFor, rowKey } from './consultation-notices.js';
+import { isDeclinedRequest, isEntryClosed, meetingTimingFor, rowKey } from './consultation-notices.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A date with no time (a request day, an end day) sorts at Montréal noon. */
@@ -133,18 +137,26 @@ export function hostedToolsFor(row, today) {
   return tools;
 }
 
-function bookingPhase(row, today) {
+/**
+ * 'progress' once the booking has really started (reservationStartsAt: a room's start time, a
+ * pickup's 10:00, Montréal), not from midnight of its first day: before that it is 'confirmed'
+ * and the card says "Starts today". A start that can't be read falls back to the first day.
+ */
+function bookingPhase(row, today, now) {
   if (row.status === 'pending') {
     return 'pending';
   }
   if (row.status === 'reserved' && !hasEnded(row, today)) {
-    return compareDateKeys(row.startDate, today) <= 0 ? 'progress' : 'confirmed';
+    const startsAt = reservationStartsAt(row, row.tag);
+    const started = Number.isFinite(startsAt) ? startsAt <= now : compareDateKeys(row.startDate, today) <= 0;
+    return started ? 'progress' : 'confirmed';
   }
   return 'past';
 }
 
-function bookingEntry(row, source, today, now) {
-  const phase = bookingPhase(row, today);
+/** `timelineToday`: the viewer's date, where bookings under way and overdue requests sit. */
+function bookingEntry(row, source, today, now, timelineToday = today) {
+  const phase = bookingPhase(row, today, now);
   const current = source === 'res' ? !isPastReservation(row, today) : isActiveHosted(row, today);
   const needs = source === 'host' && row.status === 'pending' ? 'approve' : null;
   const startsAt = reservationStartsAt(row, row.tag);
@@ -163,7 +175,7 @@ function bookingEntry(row, source, today, now) {
     phase: current ? phase : 'past',
     needs,
     // Bookings under way, and requests whose dates have passed, sit on today.
-    anchorDay: current && !needs ? laterDateKey(row.startDate, today) : null,
+    anchorDay: current && !needs ? laterDateKey(row.startDate, timelineToday) : null,
     sortAt: Number.isFinite(startsAt) ? startsAt : dateKeyMs(row.startDate),
     pastAt: dateKeyMs(row.endDate),
     // Hosted rows that wait on the viewer sort by when they were made.
@@ -229,13 +241,15 @@ export function consultationToolsFor(row, allExpertRows, now) {
   return tools;
 }
 
+/** `today` is the timeline's (the viewer's) date: the card shows the meeting's time in the device's zone. */
 function consultationEntry(row, allExpertRows, now, today) {
   const closed = isEntryClosed(row, now);
   const needs = row.role === 'expert' && row.status === 'pending' ? 'pick-time' : null;
   const scheduled = !closed && row.status === 'reserved';
   const meetingMs = Date.parse(row.meetingAt ?? '');
-  // A meeting's Montréal day; one still running after midnight stays on today.
-  const meetingDay = Number.isNaN(meetingMs) ? today : laterDateKey(libraryTodayKey(new Date(meetingMs)), today);
+  // The device's day of the meeting, so the rail's date matches the clock on the card (which is
+  // in the device's zone); one still running after midnight stays on today.
+  const meetingDay = Number.isNaN(meetingMs) ? today : laterDateKey(toDateKey(new Date(meetingMs)), today);
 
   return {
     key: `con:${rowKey(row)}`,
@@ -245,7 +259,8 @@ function consultationEntry(row, allExpertRows, now, today) {
     row,
     title: row.itemTitle ?? '',
     status: row.status,
-    statusKey: closed && row.status === 'reserved' ? 'completed' : row.status,
+    // A request the mentor declined reads "Declined" (grey), like one staff refused.
+    statusKey: closed && row.status === 'reserved' ? 'completed' : isDeclinedRequest(row) ? 'refused' : row.status,
     phase: closed ? 'past' : scheduled ? 'scheduled' : 'pending',
     closed,
     needs,
@@ -423,7 +438,8 @@ function buildWeeks(entries, today) {
  * Sorts the three account lists into the agenda's sections (see the top of this file).
  * `reservations`, `hosted`, `asMember` and `asExpert` are exactly what fetchAccountReservations,
  * fetchHostedReservations and fetchAccountConsultations return; `now` is epoch ms; `todayKey`
- * Montréal's date (`libraryTodayKey`); `recentKeys` B4's row keys (`<role>:<id>`).
+ * Montréal's date (`libraryTodayKey`), for the booking rules; `timelineTodayKey` the device's date
+ * (`toDateKey`), for the timeline's days; `recentKeys` B4's row keys (`<role>:<id>`).
  */
 export function buildAgenda({
   reservations = [],
@@ -432,6 +448,7 @@ export function buildAgenda({
   asExpert = [],
   now = Date.now(),
   todayKey = libraryTodayKey(new Date(now)),
+  timelineTodayKey = toDateKey(new Date(now)),
   recentKeys = [],
 } = {}) {
   const needsYou = [];
@@ -454,20 +471,21 @@ export function buildAgenda({
     }
   };
 
-  reservations.forEach((row) => place(bookingEntry(row, 'res', todayKey, now)));
-  hosted.forEach((row) => place(bookingEntry(row, 'host', todayKey, now)));
+  reservations.forEach((row) => place(bookingEntry(row, 'res', todayKey, now, timelineTodayKey)));
+  hosted.forEach((row) => place(bookingEntry(row, 'host', todayKey, now, timelineTodayKey)));
   // The mentor's rows first, as the old page listed them above the member's.
-  [...asExpert, ...asMember].forEach((row) => place(consultationEntry(row, asExpert, now, todayKey)));
+  [...asExpert, ...asMember].forEach((row) => place(consultationEntry(row, asExpert, now, timelineTodayKey)));
 
   needsYou.sort((a, b) => a.requestedAt - b.requestedAt || compareTitles(a, b));
   waiting.sort((a, b) => a.requestedAt - b.requestedAt || compareTitles(a, b));
   earlier.sort((a, b) => b.pastAt - a.pastAt || compareTitles(a, b));
 
   const timeline = [...groupBookings(upcoming), ...dueMilestones(upcoming, todayKey)];
-  const weeks = buildWeeks(timeline, todayKey);
+  const weeks = buildWeeks(timeline, timelineTodayKey);
 
   return {
     todayKey,
+    timelineTodayKey,
     needsYou,
     waiting,
     weeks,

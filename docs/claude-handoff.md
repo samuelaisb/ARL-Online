@@ -4,7 +4,14 @@ Claude Code is taking the lead on ARL Online from here. This is the state of the
 
 ## Where things stand
 
-- **Booking conversations (2026-11-05): not committed, pushed or deployed; needs migration 016 first.** Samuel saw that people who book could get an owner's email address: **Message the member** set `Reply-To` to the sender. He asked for a conversation per booking between the member and the host, with notifications that don't repeat. What was built:
+- **Review fixes for the `/account` agenda and request form (2026-11-05): committed 2026-11-05, not pushed or deployed.** From the independent pre-deploy review of `fb3b29e` (findings in the review session's notes), Samuel asked for fixes 1, 2, 3 and 5:
+  - **Time zones:** meetings sit on the viewer's own day and show their own clock (a viewer in Paris sees an 18:00 EST Friday meeting under Saturday at 12:00 a.m.); bookings keep their Montréal dates and rules.
+  - **Start times:** a booking is "In progress" from its start time (room hours, 10:00 pickup), not from midnight; before that it says **Starts today** with its own hint.
+  - **Declined requests:** a mentor's **Decline request** reads as declined in the status line, Kimchi, both cards, the member's bubble and the emails ("Consultation request declined"). A member's questions no longer promise an email when the mentor has no address.
+  - **Request form:** a time today that has already ended is refused.
+  - Checked: `agenda-check.mjs` (41), build, `node --check`, mock in headless Chrome. Not checked: real phones. Details in the `AGENTS.md` changelog (2026-11-05, review fixes).
+  - Not fixed, by choice: the deleted member's blank email in host questions (4), the handover failure looking like a normal save (6), the spring-forward slot (7).
+- **Booking conversations (2026-11-05): committed as `553ee6a`, not pushed or deployed; needs migration 016 first.** Samuel saw that people who book could get an owner's email address: **Message the member** set `Reply-To` to the sender. He asked for a conversation per booking between the member and the host, with notifications that don't repeat. What was built:
   - **Schema:** `supabase/migrations/016_reservation_messages.sql` (`reservation_messages`, `reservation_message_state`; no addresses stored; RLS on, service role only).
   - **Server:** messages are saved; the other side is emailed only when they've opened the conversation since the last email (one email for a run of messages), with the library's Reply-To and a **Read and reply** button to `/account`. New `GET /api/reservations/:id/messages?as=` (marks it read); the agenda lists carry `unreadMessages`. Deleting a member deletes the conversations on their bookings. Per-account limit 30 messages an hour.
   - **UI:** the message panel shows the conversation and stays open after **Send**; an **N new messages** sticker on an agenda entry opens it.

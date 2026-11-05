@@ -241,14 +241,14 @@ The mentor's email opens with "The Activist Resource Library team has booked {me
 | Field | Value |
 |-------|-------|
 | **Trigger** | `POST /api/consultations/:reservationId/cancel` (member, expert, the owner of a mentor with no `expert_email`, or admin); admin `DELETE` of an active expertise reservation; admin `DELETE` of an expertise item with active reservations; admin `DELETE /api/admin/users/:id` (member account delete) for each of that member's pending or not-yet-held consultations (`cancelledBy: 'admin'`). **Never for a held meeting** (`reserved` and `meetingAt` + 60 min has passed, `isConsultationHeld()`): the cancel route answers 400 `consultation_already_held`, and admin deletes remove the row without a Zoom delete or email |
-| **Function** | `handleConsultationCancelled()` → `buildConsultationCancelledEmailPayloads(item, reservation, previousStatus)` |
+| **Function** | `handleConsultationCancelled()` → `buildConsultationCancelledEmailPayloads(item, reservation, previousStatus, { declined })` |
 | **Reply-To** | `EMAIL_REPLY_TO` |
 | **To** | Member and expert (separate emails) |
-| **Subject** | `Consultation cancelled: {title}` |
+| **Subject** | `Consultation cancelled: {title}`; `Consultation request declined: {title}` when the mentor's side declined a pending request |
 | **Timing** | Awaited after the Zoom meeting is deleted, before the response (`emailSent`). Deleting an expertise item, or a member account, cancels the active consultations in paced rounds (`settleNotificationRounds()`): one consultation per round, each round taking at least 1 s for its two emails, to stay under Resend's rate limit |
 | **Attachment** | `consultation-cancelled.ics` (`METHOD:CANCEL`, same UID, `SEQUENCE` = seconds since 1970 as in trigger 6) — only when it had been scheduled |
 
-**Content summary:** "You cancelled …" for the person who cancelled; "The member / The expert / The Activist Resource Library team cancelled …" for the other (an admin cancel, including a member account delete, says "The Activist Resource Library team" to both; the member is emailed before their address is stripped from the row). An owner's cancel is recorded and worded by `consultationHostVoice()`: `admin` (the library team) for staff, `expert` for a non-staff owner. Names the scheduled time when there was one and confirms the Zoom meeting was removed.
+**Content summary:** "You cancelled …" for the person who cancelled; "The member / The expert / The Activist Resource Library team cancelled …" for the other (an admin cancel, including a member account delete, says "The Activist Resource Library team" to both; the member is emailed before their address is stripped from the row). An owner's cancel is recorded and worded by `consultationHostVoice()`: `admin` (the library team) for staff, `expert` for a non-staff owner. Names the scheduled time when there was one and confirms the Zoom meeting was removed. **Declined:** when the cancel route closes a **pending** request for the mentor (the mentor, an owner or staff, i.e. anyone but the member: `/account` **Decline request**), the heading and subject say "Consultation request declined" and the intro "The expert declined your consultation request." / "You declined the consultation request." The row is still `cancelled`; staff deletes and member account deletes keep "cancelled".
 
 ---
 

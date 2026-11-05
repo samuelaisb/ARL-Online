@@ -11,7 +11,7 @@
   import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import { pluralKey, stickerFor, timingStickerFor, TOOL_KINDS } from '../lib/agenda.js';
-  import { rowKey } from '../lib/consultation-notices.js';
+  import { isDeclinedRequest, rowKey } from '../lib/consultation-notices.js';
   import {
     cancelFeedbackFor,
     cancelLabelKeys,
@@ -140,7 +140,13 @@
       section === 'upcoming' && row.zoomJoinUrl && row.zoomPassword
         ? $t('account_consultations.passcode', { code: row.zoomPassword })
         : '',
-      row.status === 'cancelled' && row.cancelledBy ? $t(`account_consultations.cancelled_by_${row.cancelledBy}`) : '',
+      row.status === 'cancelled' && row.cancelledBy
+        ? $t(
+            isDeclinedRequest(row)
+              ? `account_agenda.declined_by_${row.cancelledBy}`
+              : `account_consultations.cancelled_by_${row.cancelledBy}`,
+          )
+        : '',
     ].filter(Boolean),
   );
   // The Lavender strip at the card's foot: what happens next, when there's something to say.
@@ -529,17 +535,27 @@
 
   /** Cancel's question, worded like its Yes: withdraw (member) or decline (mentor) a pending request, else cancel the meeting. */
   function cancelQuestion(vars) {
+    // A mentor with no email address on file isn't emailed (the server writes only to the member
+    // and expertEmail), so the member's questions promise nothing then.
+    const mentorEmailed = row.role === 'member' && Boolean(row.expertEmail);
     if (row.status === 'pending') {
       if (row.role === 'member') {
-        return $t('account_agenda.withdraw_request_confirm', { title: vars.title });
+        return $t(
+          mentorEmailed ? 'account_agenda.withdraw_request_confirm' : 'account_agenda.withdraw_request_confirm_no_email',
+          { title: vars.title },
+        );
       }
       return vars.email
         ? $t('account_agenda.decline_request_confirm', { title: vars.title, email: vars.email })
         : $t('account_agenda.decline_request_confirm_no_email', { title: vars.title });
     }
-    return row.role === 'expert'
-      ? $t('account_consultations.cancel_confirm_expert', { title: vars.title, email: vars.email })
-      : $t('account_consultations.cancel_confirm_member', { title: vars.title });
+    if (row.role === 'expert') {
+      return $t('account_consultations.cancel_confirm_expert', { title: vars.title, email: vars.email });
+    }
+    return $t(
+      mentorEmailed ? 'account_consultations.cancel_confirm_member' : 'account_agenda.cancel_meeting_confirm_no_email',
+      { title: vars.title },
+    );
   }
 
   /** The open question's words and buttons: the same *_confirm strings window.confirm asked. */

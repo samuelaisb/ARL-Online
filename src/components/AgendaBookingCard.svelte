@@ -1108,7 +1108,10 @@
       {/each}
     </ul>
     {#if started}
-      {@render strip($t('account_reservations.started_hint'))}
+      <!-- Past its first day's cancel cutoff: started, or starting later today. -->
+      {@render strip(
+        $t(entry.phase === 'progress' ? 'account_reservations.started_hint' : 'account_reservations.starts_today_hint'),
+      )}
     {/if}
   </article>
 {:else}
@@ -1154,7 +1157,10 @@
     {#if pendingHint}
       {@render strip($t('account_reservations.pending_hint'))}
     {:else if startedHint}
-      {@render strip($t('account_reservations.started_hint'))}
+      <!-- Past its first day's cancel cutoff: started, or starting later today. -->
+      {@render strip(
+        $t(entry.phase === 'progress' ? 'account_reservations.started_hint' : 'account_reservations.starts_today_hint'),
+      )}
     {/if}
   </article>
 {/if}

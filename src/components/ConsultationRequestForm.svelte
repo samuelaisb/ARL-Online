@@ -44,8 +44,14 @@
   let submitErrorBox = $state();
   let sentHeading = $state();
 
-  // The member's own calendar day: the times are in their device's time zone.
+  // The member's own calendar day and clock ("HH:MM"): the times are in their device's time zone.
   const todayKey = $derived(toDateKey(new Date($availabilityNow)));
+  const nowTime = $derived(
+    (() => {
+      const now = new Date($availabilityNow);
+      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    })(),
+  );
 
   // "Tue, Nov 10, 2:00–4:00 p.m. EST": the member's language and their device's time zone
   // name, so the expert reads the time as the member meant it.
@@ -63,7 +69,8 @@
   const isBlank = (slot) => !slot.date && !slot.from && !slot.to;
 
   // What's wrong with one row, or null. A blank row is fine (it's left out).
-  function slotProblem(slot, today) {
+  // `nowTime` ("HH:MM", the device's clock) rejects a window that has already ended today.
+  function slotProblem(slot, today, nowTime) {
     if (isBlank(slot)) {
       return null;
     }
@@ -81,6 +88,9 @@
     if (slot.to <= slot.from) {
       return { key: 'calendar.room_times_order', from: true, to: true };
     }
+    if (slot.date === today && slot.to <= nowTime) {
+      return { key: 'consultation.slot_time_past', from: true, to: true };
+    }
     return null;
   }
 
@@ -95,7 +105,7 @@
   }
 
   const slotLines = $derived(
-    slots.filter((slot) => !isBlank(slot) && !slotProblem(slot, todayKey)).map(formatSlot),
+    slots.filter((slot) => !isBlank(slot) && !slotProblem(slot, todayKey, nowTime)).map(formatSlot),
   );
   // Closing the disclosure leaves their words out, as it hides them.
   const ownWordsText = $derived(ownWordsOpen ? ownWords.trim() : '');
@@ -194,7 +204,7 @@
   function validate() {
     const nextSlotErrors = {};
     for (const slot of slots) {
-      const problem = slotProblem(slot, todayKey);
+      const problem = slotProblem(slot, todayKey, nowTime);
       if (problem) {
         nextSlotErrors[slot.key] = problem;
       }
