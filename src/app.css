@@ -54,6 +54,18 @@
   /* Titles: Inter Bold. Rules using --font-display also set font-weight: 700. */
   --font-display: var(--font-body);
   --font-brand: 'Ringold Sans', var(--font-body);
+
+  /* Design F (the /account agenda and the /admin lists; see "Design F" below). Past and
+     disabled things are grey with a lighter border: #5c5658 on #ecebe9 is 6:1. */
+  --f-hover: #f0eeea;
+  --f-press: #e8e5e0;
+  --f-past-fill: #ecebe9;
+  --f-past-border: #b9b5b6;
+  --f-past-text: #5c5658;
+  --f-lavender-tint: #f1d0ff;
+  --f-plum-hover: #5e0b0b;
+  --f-plum-tint: #fbf4f4;
+  --f-focus-halo: 0 0 0 3px rgba(71, 49, 152, 0.18);
 }
 
 *,
@@ -1545,22 +1557,6 @@ h1[tabindex='-1']:focus {
   margin-top: 0.4rem;
 }
 
-.item-location--online {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0;
-  padding: 0;
-  border: none;
-  color: var(--color-text);
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.item-location--online .item-location__icon {
-  color: var(--color-mint);
-}
-
 /* LocationMap: Leaflet inside a bordered frame. Leaflet's stylesheet is added when a map first
    opens (LocationMapPanel), after this file, so the overrides below are one class deeper. */
 .location-map,
@@ -1941,22 +1937,11 @@ h1[tabindex='-1']:focus {
   gap: 0.75rem;
 }
 
-/* font-weight: the Admin link is an <a>, which doesn't get the buttons' 600. */
-.account-actions .btn-header {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-weight: 600;
-}
-
+/* The buttons (and the Admin link) take Design F's secondary look, icon and label in a row,
+   through `.account-page .btn-header--secondary`; an open Share Expertise toggle turns ink like
+   any expanded F button. */
 .account-actions__icon {
   flex-shrink: 0;
-}
-
-.account-actions .btn-header[aria-expanded='true'] {
-  background: var(--color-lemon);
-  border-color: transparent;
-  color: var(--color-dark);
 }
 
 .account-actions__error {
@@ -1988,6 +1973,32 @@ h1[tabindex='-1']:focus {
 
 .account-share-expertise__email {
   margin-bottom: 0.35rem;
+}
+
+.consultation-field.account-share-expertise__email {
+  gap: 0.3rem;
+}
+
+/* Share Expertise's read-only address keeps its pre-F look (a small muted label over a Lemon
+   pill), so it doesn't read as one of the form's text fields. */
+.account-share-expertise__email .consultation-field__label {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.account-share-expertise__email .consultation-field__value {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: var(--color-lemon);
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* Photo column top right, beside name, email and short text. Phones stack it on
@@ -2052,17 +2063,6 @@ h1[tabindex='-1']:focus {
   font-weight: 600;
 }
 
-.account-consultations,
-.account-reservations {
-  max-width: 48rem;
-  margin-top: 1rem;
-}
-
-/* The details column fills the row beside the actions, so a map in it has a width. */
-.account-reservations .admin-reservation-details {
-  flex: 1 1 auto;
-}
-
 .reservation-location {
   display: flex;
   flex-direction: column;
@@ -2079,26 +2079,11 @@ h1[tabindex='-1']:focus {
   gap: 0.25rem 1rem;
 }
 
-.reservation-location__toggle {
-  font-size: 0.9rem;
-}
-
-.account-reservations .location-map {
-  max-width: 32rem;
-  margin-top: 0.25rem;
-}
-
 .consultation-row__heading {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-}
-
-.consultation-row__title {
-  font-weight: 600;
-  color: var(--color-text);
-  overflow-wrap: break-word;
 }
 
 .consultation-row__zoom {
@@ -2118,85 +2103,77 @@ h1[tabindex='-1']:focus {
   color: var(--color-dark);
 }
 
-.consultation-row--inactive {
-  opacity: 0.7;
-}
-
-.consultation-history__toggle {
-  margin-top: 0.75rem;
-  white-space: normal;
-}
-
-.consultation-history__list {
-  margin-top: 0.75rem;
-}
-
+/* Stickers (Design F): every status, timing and role label on /account and /admin. Flat, no
+   tilt: a 2px ink border, ink caps on white unless the modifier fills it. Ink on Lavender is
+   8.3:1, on Pear 8.6:1, on Lemon 12.1:1; light on Grape 9.2:1, on Plum 15.9:1. Each one wraps as
+   a whole inside a line of dates. */
 .consultation-status {
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--color-lavender);
-  color: var(--color-dark);
-}
-
-.consultation-status--reserved {
-  background: var(--color-mint);
-  color: var(--color-light);
-}
-
-.consultation-status--follow-up {
-  background: var(--color-lemon);
-}
-
-.consultation-status--cancelled,
-.consultation-status--refused,
-.consultation-status--completed,
-.consultation-status--ended {
-  background: var(--color-border);
-}
-
-/* B6: "Starts in N min" / "Happening now" chip on a scheduled consultation row.
-   Dark on lemon is 12.1:1; light on grape is 9.2:1. */
-.consultation-status--soon {
-  background: var(--color-lemon);
-}
-
-.consultation-status--live {
-  background: var(--color-grape);
-  color: var(--color-light);
-}
-
-/* B4: rows someone else cancelled or declined since the last visit, kept out of the collapsed Past list. */
-.consultation-recent__heading {
-  margin: 1rem 0 0.5rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-/* AdminPanel's pending rows flag what Kimchi's arrival note (B2) counts: "Starts today" /
-   "Overdue" on equipment, book and room requests. The "No mentor email" pill (pending and
-   scheduled consultations) uses the default lavender `.consultation-status`. These pills sit
-   inside a line of dates that wraps on phones, so each one wraps as a whole. */
-.consultation-status--starts-today,
-.consultation-status--overdue,
-.consultation-status--no-email {
   display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 3px;
+  background: var(--color-bg);
+  color: var(--color-dark);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
+/* White: confirmed bookings, follow-ups, staff bookings and the host's own items. */
+.consultation-status--reserved,
+.consultation-status--follow-up,
+.consultation-status--staff,
+.consultation-status--your-item {
+  background: var(--color-bg);
+}
+
+.consultation-status--pending,
+.consultation-status--no-email {
+  background: var(--color-lavender);
+}
+
+.consultation-status--progress,
+.consultation-status--scheduled {
+  background: var(--color-pear);
+}
+
+/* B6's "Starts in N min" and Admin's "Starts today" (B2) share Lemon with "Needs you". */
+.consultation-status--needs-you,
+.consultation-status--soon,
 .consultation-status--starts-today {
   background: var(--color-lemon);
 }
 
+.consultation-status--live {
+  border-color: var(--color-grape);
+  background: var(--color-grape);
+  color: var(--color-light);
+}
+
+/* Admin's "Overdue" / "Waiting a week+" (B2). */
 .consultation-status--overdue {
+  border-color: var(--color-plum);
   background: var(--color-plum);
   color: var(--color-light);
 }
 
-/* Admin section toggles: a grid of Lemon buttons (2 columns on phones). The toggle of an open
-   section turns Dark with Lemon text. */
+.consultation-status--cancelled,
+.consultation-status--refused,
+.consultation-status--ended,
+.consultation-status--completed,
+.consultation-status--withdrawn,
+.consultation-status--declined {
+  border-color: var(--f-past-border);
+  background: var(--f-past-fill);
+  color: var(--f-past-text);
+}
+
+/* Admin section toggles: a grid of Lemon buttons with Design F's 2px ink border (2 columns on
+   phones). The toggle of an open section turns Dark with Lemon text; a press moves it down 1px. */
 .admin-actions {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
@@ -2205,8 +2182,14 @@ h1[tabindex='-1']:focus {
 
 .admin-actions .btn-primary {
   width: auto;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
   /* A Needs attention tile scrolls the list's toggle to the top: keep its focus ring in view. */
   scroll-margin-top: 0.75rem;
+}
+
+.admin-actions .btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .admin-actions button[aria-expanded='true'] {
@@ -2220,7 +2203,8 @@ h1[tabindex='-1']:focus {
 
 /* Admin → Needs attention (AdminAttention.svelte): three count tiles above the toggles, each a
    button that opens its list. Lemon while requests wait, Plum when some are late, white for the
-   week's consultations; a tile at zero is white and muted. No motion but the colour ease. */
+   week's consultations; a tile at zero is white and muted. Flat, with Design F's 2px ink border
+   (Plum's own on the Plum tile); no motion but the colour ease and the 1px press. */
 .admin-attention {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2242,7 +2226,7 @@ h1[tabindex='-1']:focus {
   column-gap: 0.875rem;
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 1px solid var(--color-border-strong);
+  border: 2px solid var(--color-dark);
   border-radius: 0.75rem;
   background: var(--color-bg);
   color: var(--color-text);
@@ -2250,8 +2234,12 @@ h1[tabindex='-1']:focus {
 }
 
 .admin-attention__tile:focus-visible {
-  outline: 2px solid var(--color-grape);
-  outline-offset: 2px;
+  outline: 3px solid var(--color-grape);
+  outline-offset: 3px;
+}
+
+.admin-attention__tile:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .admin-attention__count {
@@ -2289,13 +2277,11 @@ h1[tabindex='-1']:focus {
 }
 
 .admin-attention__tile--lemon {
-  border-color: var(--color-lemon);
   background: var(--color-lemon);
   color: var(--color-dark);
 }
 
 .admin-attention__tile--lemon:hover {
-  border-color: #f5d000;
   background: #f5d000;
 }
 
@@ -2370,31 +2356,38 @@ h1[tabindex='-1']:focus {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.3rem;
+  gap: 0.5rem;
   min-width: 0;
   max-width: 100%;
 }
 
+/* A read-only value's label (and the field labels of the shared pickers and message boxes):
+   Design F's .f-label. Inside the agenda, labels of inputs read as sentences instead
+   (`.agenda label.consultation-field__label`, in Design F below). */
 .consultation-field__label {
-  color: var(--color-text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1.3;
+  color: var(--color-dark);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1rem;
   text-transform: uppercase;
 }
 
+/* What a member typed (time slots, a summary, a purpose), as Design F's .f-note: a white box
+   that keeps their line breaks. */
 .consultation-field__value {
-  display: inline-block;
+  display: block;
   max-width: 100%;
-  padding: 0.4rem 0.7rem;
-  border-radius: 0.65rem;
-  background: var(--color-lemon);
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--color-bg);
   color: var(--color-dark);
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.9375rem;
+  font-weight: 400;
   line-height: 1.45;
-  overflow-wrap: break-word;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .consultation-follow-up__toggle {
@@ -2443,6 +2436,36 @@ h1[tabindex='-1']:focus {
   min-height: 3.5rem;
   font-size: 1rem;
   line-height: 1.4;
+}
+
+/* ReservationMessageForm: the panel's gap spaces the field, so it drops the global margin. */
+.reservation-message__input {
+  min-height: 4.5rem;
+  margin: 0;
+}
+
+.reservation-message .admin-pending-actions {
+  align-items: center;
+}
+
+/* Hosted "Choose new dates": the two dates (and a room's two times) side by side, stacked on
+   phones. The fields reuse the Create Reservation date and room time inputs. */
+.hosted-reschedule__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.hosted-reschedule__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.hosted-reschedule__input[aria-invalid='true'] {
+  border-color: var(--color-plum);
 }
 
 .meeting-time-picker {
@@ -2543,24 +2566,8 @@ h1[tabindex='-1']:focus {
   max-width: 100%;
 }
 
-.btn-approve {
-  flex-shrink: 0;
-  padding: 0.5rem 0.85rem;
-  background: var(--color-mint);
-  color: var(--color-light);
-  border: 1px solid var(--color-mint);
-}
-
-.btn-approve:hover:not(:disabled) {
-  background: #01352d;
-  border-color: #01352d;
-  color: var(--color-light);
-}
-
-.btn-approve:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* .btn-approve (Approve, Schedule, Book follow-up, Send, Save…) looks exactly like Design F's
+   .action-btn--primary, and .btn-remove like .action-btn--danger-quiet: see "Design F" below. */
 
 .admin-status {
   margin: 0.75rem 0 0;
@@ -2578,12 +2585,13 @@ h1[tabindex='-1']:focus {
   text-align: right;
 }
 
+/* Design F: a flat card with a 2px ink border, its rows split by 2px ink rules. */
 .admin-item-list {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 12px;
   background: var(--color-bg);
   overflow: hidden;
 }
@@ -2594,7 +2602,7 @@ h1[tabindex='-1']:focus {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 2px solid var(--color-dark);
 }
 
 .admin-item-row:last-child {
@@ -3012,6 +3020,13 @@ h1[tabindex='-1']:focus {
   padding: 0.55rem 0.9rem;
 }
 
+/* Save beside Design F's Cancel (.admin-page .btn-secondary): the same 2px ink edge and height. */
+.admin-mentor-actions .btn-primary {
+  min-height: 2.75rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+}
+
 /* Admin → Users (AdminUsers.svelte): a search and filter toolbar over .admin-item-list rows.
    Each row is an initials avatar with the member's details, the actions to the right (they
    wrap under the details when the row is narrow), then the open Bookings panel or the name
@@ -3113,14 +3128,11 @@ h1[tabindex='-1']:focus {
   font-style: italic;
 }
 
-/* Status pills beside the name, on .consultation-status: You keeps its Lavender. Each pill
-   wraps as a whole. */
-.admin-users__pill {
-  display: inline-block;
-  white-space: nowrap;
-}
-
+/* Stickers beside the name, on .consultation-status (which already wraps each as a whole):
+   You is a plain white sticker, Admin Grape, Mentor Lemon, Suspended Plum, Unconfirmed the past
+   grey. */
 .admin-users__pill--admin {
+  border-color: var(--color-grape);
   background: var(--color-grape);
   color: var(--color-light);
 }
@@ -3130,21 +3142,25 @@ h1[tabindex='-1']:focus {
 }
 
 .admin-users__pill--suspended {
+  border-color: var(--color-plum);
   background: var(--color-plum);
   color: var(--color-light);
 }
 
 .admin-users__pill--unconfirmed {
-  background: var(--color-border);
+  border-color: var(--f-past-border);
+  background: var(--f-past-fill);
+  color: var(--f-past-text);
 }
 
 .admin-users__actions .admin-pending-actions {
   justify-content: flex-end;
 }
 
-/* Five actions fit beside the details: compact, one height for every kind of button. */
-.admin-users__actions button {
-  padding: 0.45rem 0.8rem;
+/* Five actions fit beside the details: Design F's buttons, a little narrower, still 44px tall.
+   (.admin-page raises this above the F button rules.) */
+.admin-page .admin-users__actions button {
+  padding: 0.5rem 0.875rem;
   font-size: 0.875rem;
 }
 
@@ -3390,9 +3406,8 @@ h1[tabindex='-1']:focus {
     padding-left: 0;
   }
 
-  /* Phones: the actions wrap in lines that fill the row edge to edge, a little shorter, and
-     Suspend, Lift suspension and Delete turn to outlines (filled again on hover), so five
-     buttons per member don't stack into dark blocks. */
+  /* Phones: the actions wrap in lines that fill the row edge to edge. Suspend and Delete are
+     already Design F's Plum outlines, so five buttons per member don't stack into dark blocks. */
   .admin-users__actions .admin-pending-actions {
     justify-content: flex-start;
     width: 100%;
@@ -3400,23 +3415,6 @@ h1[tabindex='-1']:focus {
 
   .admin-users__actions button {
     flex: 1 1 auto;
-    padding-block: 0.4rem;
-  }
-
-  .admin-users__actions .btn-remove {
-    background: var(--color-bg);
-    color: var(--color-plum);
-  }
-
-  .admin-users__actions .btn-approve {
-    background: var(--color-bg);
-    color: var(--color-mint);
-  }
-
-  .admin-users__actions .btn-remove:hover:not(:disabled) {
-    background: var(--color-plum);
-    border-color: var(--color-plum);
-    color: var(--color-light);
   }
 
   /* Instead of the inventory filter's even phone grid, where "With active bookings" would
@@ -3433,24 +3431,6 @@ h1[tabindex='-1']:focus {
   .admin-users__panel {
     padding-left: 0;
   }
-}
-
-.btn-remove {
-  flex-shrink: 0;
-  padding: 0.5rem 0.85rem;
-  background: var(--color-plum);
-  color: var(--color-light);
-  border: 1px solid var(--color-plum);
-}
-
-.btn-remove:hover:not(:disabled) {
-  background: #2d0000;
-  border-color: #2d0000;
-}
-
-.btn-remove:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .empty-state {
@@ -4098,7 +4078,17 @@ button:disabled {
 }
 
 .modal--item-detail.modal--expertise {
-  width: min(100%, 34rem);
+  /* 36rem leaves the request form's date column room for an empty "yyyy-mm-dd". */
+  width: min(100%, 36rem);
+  border: 2px solid var(--color-dark);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+/* The overlay itself takes focus when it opens (tabindex="-1"), so no ring lands on a control;
+   keyboard users Tab into the breadcrumb next. */
+.modal--item-detail:focus {
+  outline: none;
 }
 
 .item-detail-overlay {
@@ -4125,40 +4115,105 @@ button:disabled {
   max-width: none;
 }
 
+/* The expert overlay (Design F): a flat sheet, the photo as a 2px ink square, the name in real
+   casing (never Ringold), "Meetings available online" as a Pear sticker, and a 44px close
+   button with F's edge. */
 .item-detail-overlay--expertise {
-  padding: 0.85rem 1rem 1rem;
+  padding: 1rem 2rem 2rem;
 }
 
 .item-detail-overlay--expertise .item-detail-overlay__bar {
-  margin-bottom: 0.7rem;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.item-detail-overlay--expertise .item-detail-overlay__close {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-dark);
+}
+
+.item-detail-overlay--expertise .item-detail-overlay__close:hover {
+  background: var(--f-hover);
+  color: var(--color-dark);
+}
+
+.item-detail-overlay--expertise .item-detail-overlay__close:active {
+  transform: translateY(1px);
+  background: var(--f-press);
+}
+
+.item-detail-overlay--expertise .item-detail-overlay__close:focus-visible,
+.item-detail-overlay--expertise .item-detail-breadcrumb__link:focus-visible {
+  outline: 3px solid var(--color-grape);
+  outline-offset: 3px;
 }
 
 .item-detail.item-detail--expertise {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1.25rem;
 }
 
 .expert-detail__heading {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 1.25rem;
+}
+
+.expert-detail__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .expert-detail__heading h1 {
   margin: 0;
-  font-size: 1.15rem;
-  line-height: 1.25;
+  color: var(--color-dark);
+  font-family: var(--font-body);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  overflow-wrap: anywhere;
 }
 
 .expert-detail__avatar {
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 5rem;
+  height: 5rem;
   flex-shrink: 0;
-  border: 1px solid var(--color-border);
-  border-radius: 0.45rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 12px;
   object-fit: cover;
+}
+
+/* A sticker that may wrap (French is long beside the photo on phones), camera first. */
+.expert-detail__online {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  margin: 0;
+  background: var(--color-pear);
+  white-space: normal;
+}
+
+.expert-detail__online svg {
+  flex: 0 0 1rem;
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .expert-detail__bio {
@@ -4168,30 +4223,6 @@ button:disabled {
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-}
-
-.item-detail--expertise .item-detail__status {
-  margin-top: 0;
-}
-
-.item-detail--expertise .consultation-form {
-  margin-bottom: 0;
-  padding: 0.7rem 0.75rem;
-}
-
-.item-detail--expertise .consultation-form__title {
-  margin-bottom: 0.3rem;
-  font-size: 0.95rem;
-}
-
-.item-detail--expertise .consultation-form__intro {
-  margin-bottom: 0.65rem;
-  font-size: 0.8rem;
-}
-
-.item-detail--expertise .consultation-form__textarea {
-  min-height: 3.4rem;
-  margin-bottom: 0.65rem;
 }
 
 @media (min-width: 900px) {
@@ -4207,21 +4238,20 @@ button:disabled {
   }
 
   .item-detail-overlay--expertise {
-    padding: 0.75rem 0.85rem 0.95rem;
+    padding: 0.75rem 1rem 1.5rem;
   }
 
-  .expert-detail__avatar {
-    width: 3.5rem;
-    height: 3.5rem;
+  .expert-detail__heading {
+    gap: 1rem;
+  }
+
+  .expert-detail__heading h1 {
+    font-size: 1.5rem;
   }
 
   .expert-detail__bio {
     font-size: 0.875rem;
     line-height: 1.4;
-  }
-
-  .item-detail--expertise .consultation-form__textarea {
-    min-height: 4.25rem;
   }
 }
 
@@ -4267,56 +4297,6 @@ button:disabled {
 .item-detail__calendar .item-calendar__legend {
   font-size: 0.68rem;
   gap: 0.35rem 0.5rem;
-}
-
-/* Consultation request form (expertise items — replaces the calendar column) */
-.consultation-form {
-  margin-bottom: 1rem;
-  padding: 0.9rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-surface);
-}
-
-.consultation-form__title {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-}
-
-.consultation-form__intro {
-  margin: 0 0 0.9rem;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-}
-
-.consultation-form__label {
-  display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.consultation-form__textarea {
-  margin-bottom: 1rem;
-  min-height: 4.5rem;
-  font-size: 0.9rem;
-}
-
-.consultation-form__actions {
-  display: flex;
-}
-
-.consultation-form__note {
-  margin: 0.6rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-  line-height: 1.4;
-}
-
-.consultation-form__status {
-  margin: 0.75rem 0 0;
-  font-size: 0.85rem;
 }
 
 .item-detail__calendar .item-calendar__selection {
@@ -4752,7 +4732,7 @@ button:disabled {
     height: calc(100% - 1rem);
   }
 
-  /* Expert/member consultation cards: stack text above actions so a
+  /* Admin's consultation rows (Pending, Edit Reservations): stack text above actions so a
      non-shrinking button row cannot crush the copy into a thin column. */
   .consultation-row {
     flex-direction: column;
@@ -4785,6 +4765,1594 @@ button:disabled {
   .consultation-row__error {
     max-width: 100%;
     text-align: left;
+  }
+
+  /* Book a follow-up's panel takes the stacked row's full width. */
+  .consultation-row .consultation-follow-up {
+    max-width: 100%;
+  }
+
+  .hosted-reschedule__pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =============================================================================================
+   Design F: /account's agenda (AccountAgenda and its cards), the expert request form and the
+   /admin lists. Flat: 2px ink borders and no shadows (only the field focus halo); hovering
+   changes colour, never lifts; a press moves a control down 1px. Every control shows a 3px
+   Grape focus ring. The shared rules F restyles where they are defined, above: the stickers
+   (.consultation-status), .consultation-field__label / __value, .admin-item-list / -row, the
+   admin tiles and toggles, .btn-approve / .btn-remove (looks defined here), and the expert
+   overlay's header and close button (.item-detail-overlay--expertise, .expert-detail__*, with
+   its photo placeholder and skeleton further down).
+   ============================================================================================= */
+
+/* Titles and labels. Ringold has capitals only: section titles are meant to read in caps. */
+.f-title {
+  margin: 0;
+  padding-bottom: 0.625rem;
+  border-bottom: 3px solid var(--color-dark);
+  color: var(--color-dark);
+  font-family: var(--font-brand);
+  font-size: 2.5rem;
+  font-weight: normal;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.f-title--sm {
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+/* The one uppercase label: week headings, labels over read-only values, "Who sees this". */
+.f-label {
+  color: var(--color-dark);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* A label over an input (agenda forms, the request form): a plain bold sentence. */
+.f-field-label,
+.agenda label.consultation-field__label {
+  display: block;
+  margin: 0;
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.375rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Buttons. .action-btn is the secondary look; the modifiers only set the --btn-* colours, so
+   hover, press, open (aria-expanded), busy and disabled work the same for all of them. On
+   /account and /admin the old secondary buttons take the same look; site-wide .btn-header,
+   .btn-secondary and .btn-primary (header, modals) keep theirs. */
+.action-btn,
+.btn-approve,
+.btn-remove,
+.admin-page .btn-secondary,
+.admin-page .btn-header--secondary,
+.admin-page .btn-header--primary,
+.account-page .btn-header--secondary,
+.account-page .btn-header--primary {
+  --btn-bg: var(--color-bg);
+  --btn-fg: var(--color-dark);
+  --btn-border: var(--color-dark);
+  --btn-hover-bg: var(--f-hover);
+  --btn-hover-fg: var(--color-dark);
+  --btn-hover-border: var(--color-dark);
+  --btn-press-bg: var(--f-press);
+}
+
+.action-btn--primary,
+.btn-approve,
+.admin-page .btn-header--primary,
+.account-page .btn-header--primary {
+  --btn-bg: var(--color-lemon);
+  --btn-hover-bg: var(--color-dark);
+  --btn-hover-fg: var(--color-lemon);
+  --btn-press-bg: var(--color-dark);
+  --btn-busy-bg: var(--color-dark);
+  --btn-busy-fg: var(--color-lemon);
+}
+
+/* Only the "Yes" of a destructive confirmation. */
+.action-btn--danger {
+  --btn-bg: var(--color-plum);
+  --btn-fg: var(--color-light);
+  --btn-border: var(--color-plum);
+  --btn-hover-bg: var(--f-plum-hover);
+  --btn-hover-fg: var(--color-light);
+  --btn-hover-border: var(--f-plum-hover);
+  --btn-press-bg: var(--f-plum-hover);
+}
+
+/* A destructive button that opens a confirmation (admin Refuse, Delete, Remove, Suspend). */
+.action-btn--danger-quiet,
+.btn-remove {
+  --btn-fg: var(--color-plum);
+  --btn-border: var(--color-plum);
+  --btn-hover-bg: var(--f-plum-tint);
+  --btn-hover-fg: var(--color-plum);
+  --btn-hover-border: var(--color-plum);
+  --btn-press-bg: var(--f-plum-tint);
+}
+
+/* :is() gives every button here the same weight (two classes), above .btn-header and the
+   global button rules. */
+:is(
+    .action-btn,
+    .btn-approve,
+    .btn-remove,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .admin-page .btn-header--primary,
+    .account-page .btn-header--secondary,
+    .account-page .btn-header--primary
+  ) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.625rem 1.125rem;
+  border: 2px solid var(--btn-border);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: none;
+  transition: background-color 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
+}
+
+:is(
+    .action-btn,
+    .btn-approve,
+    .btn-remove,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .admin-page .btn-header--primary,
+    .account-page .btn-header--secondary,
+    .account-page .btn-header--primary
+  ):hover:not(:disabled) {
+  border-color: var(--btn-hover-border);
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-fg);
+}
+
+:is(
+    .action-btn,
+    .btn-approve,
+    .btn-remove,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .admin-page .btn-header--primary,
+    .account-page .btn-header--secondary,
+    .account-page .btn-header--primary
+  ):active:not(:disabled) {
+  transform: translateY(1px);
+  border-color: var(--btn-hover-border);
+  background: var(--btn-press-bg);
+  color: var(--btn-hover-fg);
+}
+
+/* Open (a More menu, a panel toggle): ink with light text, hovered or not. */
+:is(
+    .action-btn,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .account-page .btn-header--secondary
+  )[aria-expanded='true'] {
+  --btn-bg: var(--color-dark);
+  --btn-fg: var(--color-light);
+  --btn-border: var(--color-dark);
+  --btn-hover-bg: var(--color-dark);
+  --btn-hover-fg: var(--color-light);
+  --btn-hover-border: var(--color-dark);
+  --btn-press-bg: var(--color-dark);
+}
+
+:is(
+    .action-btn,
+    .btn-approve,
+    .btn-remove,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .admin-page .btn-header--primary,
+    .account-page .btn-header--secondary,
+    .account-page .btn-header--primary
+  ):disabled {
+  border-color: var(--f-past-border);
+  background: var(--f-past-fill);
+  color: var(--f-past-text);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+/* The button whose action is running keeps its colours (Lemon turns ink, as on hover) while
+   it and its siblings are disabled. */
+:is(
+    .action-btn,
+    .btn-approve,
+    .btn-remove,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .admin-page .btn-header--primary,
+    .account-page .btn-header--secondary,
+    .account-page .btn-header--primary
+  ):is([aria-busy='true'], :disabled:has(.busy-label.is-busy)) {
+  border-color: var(--btn-border);
+  background: var(--btn-busy-bg, var(--btn-bg));
+  color: var(--btn-busy-fg, var(--btn-fg));
+  cursor: progress;
+}
+
+:is(
+    .action-btn,
+    .btn-approve,
+    .btn-remove,
+    .admin-page .btn-secondary,
+    .admin-page .btn-header--secondary,
+    .admin-page .btn-header--primary,
+    .account-page .btn-header--secondary,
+    .account-page .btn-header--primary
+  ):focus-visible {
+  outline: 3px solid var(--color-grape);
+  outline-offset: 3px;
+}
+
+.btn-approve,
+.btn-remove {
+  flex-shrink: 0;
+}
+
+.action-btn--block {
+  width: 100%;
+}
+
+/* Icon only: give it an aria-label. */
+.action-btn--icon {
+  width: 2.75rem;
+  padding: 0;
+}
+
+.action-btn svg {
+  flex-shrink: 0;
+}
+
+/* Cards, boxes and bands. */
+.f-card {
+  overflow: visible;
+  border: 2px solid var(--color-dark);
+  border-radius: 12px;
+  background: var(--color-bg);
+  box-shadow: none;
+}
+
+/* What a member typed, line breaks kept (.consultation-field__value has the same look). */
+.f-note {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* A Lavender band of context ("We'll email you once…", "Who sees this"). Inside a card it runs
+   edge to edge along the card's bottom; the card sets --f-card-pad-x / -y to its padding. */
+.f-strip {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--f-lavender-tint);
+  color: var(--color-dark);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.f-strip--in-card {
+  margin: 1rem calc(-1 * var(--f-card-pad-x, 1.25rem)) calc(-1 * var(--f-card-pad-y, 1rem));
+  border-width: 2px 0 0;
+  border-radius: 0 0 10px 10px;
+}
+
+/* The board's envelope, then the text. The booking card marks it with .f-strip--icon and
+   .f-strip__icon; the consultation card with .agenda-entry__strip (its svg sets its own size
+   and stroke). */
+.f-strip--icon,
+.agenda-entry__strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.f-strip__icon {
+  flex: 0 0 1.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.0625rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agenda-entry__strip svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* The highlighter: at most three on a page. */
+.f-hl {
+  margin: 0 -0.25em;
+  padding: 0 0.25em;
+  background-image: linear-gradient(
+    transparent 50%,
+    var(--color-lemon) 50%,
+    var(--color-lemon) 94%,
+    transparent 94%
+  );
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* A Lemon underline that swipes in under a title link or a disclosure's text on hover and
+   focus. */
+.f-swipe,
+.f-disclosure__text,
+.agenda-entry__title a,
+.agenda-entry__item-title a {
+  background-image: linear-gradient(var(--color-lemon), var(--color-lemon));
+  background-repeat: no-repeat;
+  background-position: 0 92%;
+  background-size: 0% 0.42em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 180ms ease-out;
+}
+
+.f-swipe:hover,
+.f-swipe:focus-visible,
+.f-disclosure:hover .f-disclosure__text,
+.f-disclosure:focus-visible .f-disclosure__text,
+.agenda-entry__title a:hover,
+.agenda-entry__title a:focus-visible,
+.agenda-entry__item-title a:hover,
+.agenda-entry__item-title a:focus-visible {
+  background-size: 100% 0.42em;
+}
+
+/* Fields inside the agenda and the request form, without touching the shared components:
+   MeetingTimePicker, ConfirmationMessage and ReservationMessageForm take it there. Only the
+   left padding and the background colour, so the touch-screen calendar and clock icons keep
+   their room and their image. */
+.f-field,
+.agenda :is(input:not([type='checkbox'], [type='radio']), textarea, select),
+.consultation-form :is(input:not([type='checkbox'], [type='radio']), textarea, select) {
+  margin: 0;
+  padding-top: 0.6875rem;
+  padding-bottom: 0.6875rem;
+  padding-left: 0.75rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background-color: var(--color-bg);
+  color: var(--color-dark);
+  font-size: 1rem;
+  box-shadow: none;
+}
+
+.f-field:focus,
+.agenda :is(input:not([type='checkbox'], [type='radio']), textarea, select):focus,
+.consultation-form :is(input:not([type='checkbox'], [type='radio']), textarea, select):focus {
+  outline: none;
+  border-color: var(--color-grape);
+  box-shadow: var(--f-focus-halo);
+}
+
+.f-field[aria-invalid='true'],
+.agenda :is(input:not([type='checkbox'], [type='radio']), textarea, select)[aria-invalid='true'],
+.consultation-form :is(input:not([type='checkbox'], [type='radio']), textarea, select)[aria-invalid='true'] {
+  border-color: var(--color-plum);
+}
+
+/* A bold text toggle with a plus that turns to a minus. Markup:
+   <button class="f-disclosure" aria-expanded aria-controls>
+     <svg class="f-disclosure__icon" viewBox="0 0 24 24" aria-hidden="true">
+       <path d="M3.5 12h17" /><path class="f-disclosure__stem" d="M12 3.5v17" /></svg>
+     <span class="f-disclosure__text">Label</span></button> */
+.f-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-dark);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.f-disclosure:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.f-disclosure:focus-visible {
+  outline: 3px solid var(--color-grape);
+  outline-offset: 3px;
+}
+
+.f-disclosure__icon {
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.5;
+  stroke-linecap: square;
+}
+
+.f-disclosure[aria-expanded='true'] .f-disclosure__stem {
+  display: none;
+}
+
+/* The smaller one inside a card ("Show 3 items"). */
+.f-disclosure--sm {
+  gap: 0.625rem;
+  font-size: 0.9375rem;
+}
+
+.f-disclosure--sm .f-disclosure__icon {
+  flex-basis: 1.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* InlineConfirm.svelte: the question in the page, Yes then Keep it. Plum edge and lead for a
+   destructive question, ink otherwise. */
+.inline-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+
+.inline-confirm--danger {
+  border-color: var(--color-plum);
+}
+
+.inline-confirm__text {
+  flex: 1 1 15rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.inline-confirm__lead {
+  font-weight: 800;
+}
+
+.inline-confirm--danger .inline-confirm__lead {
+  color: var(--color-plum);
+}
+
+.inline-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Where a question sits. In a tool's panel (an agenda panel, Admin's Book a follow-up) and in
+   the Approve column, it takes the full width, like the field above it. */
+.consultation-follow-up > .inline-confirm,
+.needs-you__answer > .inline-confirm {
+  align-self: stretch;
+}
+
+/* An admin row asking a question (Remove, Approve, Refuse, Delete): the question takes a line of
+   its own under the row's details and buttons, as wide as the row. The details grow from zero,
+   so wrapping never sends the buttons under them. */
+.admin-item-row--confirming {
+  flex-wrap: wrap;
+}
+
+.admin-item-row--confirming > :first-child {
+  flex: 1 1 0;
+}
+
+.admin-item-row > .inline-confirm {
+  flex: 1 1 100%;
+}
+
+/* Members: in a panel line under the row's buttons (.admin-users__panel), no wider than the
+   Bookings list. */
+.admin-users__panel > .inline-confirm {
+  max-width: 40rem;
+}
+
+/* Create Reservation: under the form's button. */
+.admin-create-reservation__form > .inline-confirm {
+  margin-top: 1rem;
+}
+
+/* MoreMenu.svelte: the "More" button and the list it opens, over the cards below it (in the
+   page flow on phones). */
+.more-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.more-menu__list {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  right: 0;
+  z-index: 20;
+  min-width: 15rem;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+
+.more-menu__list[hidden] {
+  display: none;
+}
+
+.more-menu__list > li + li {
+  border-top: 2px solid var(--color-dark);
+}
+
+.more-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 1rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-bg);
+  color: var(--color-dark);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  transition: background-color 80ms ease-out;
+}
+
+.more-menu__item:hover:not(:disabled) {
+  background: rgba(35, 31, 32, 0.08);
+}
+
+.more-menu__item:active:not(:disabled) {
+  transform: none;
+  background: rgba(35, 31, 32, 0.14);
+}
+
+/* Inset, since the list clips its corners. */
+.more-menu__item:focus-visible {
+  outline: 3px solid var(--color-grape);
+  outline-offset: -5px;
+}
+
+.more-menu__item--danger {
+  color: var(--color-plum);
+}
+
+.more-menu__item--danger:hover:not(:disabled) {
+  background: var(--f-plum-tint);
+}
+
+.more-menu__item:disabled {
+  color: var(--f-past-text);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+/* --- The /account agenda (AccountAgenda.svelte) ------------------------------------------- */
+
+.agenda {
+  max-width: 48rem;
+  margin-top: 2.5rem;
+}
+
+.agenda-section ~ .agenda-section {
+  margin-top: 3.5rem;
+}
+
+/* The section's title with its legend or count on the right; the rule under both. */
+.agenda-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 3px solid var(--color-dark);
+}
+
+.agenda-section__head .f-title {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.agenda-section__intro {
+  margin: 0.75rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.agenda-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A plain list of cards (needs you, waiting, changed, earlier). */
+.agenda-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A label heading followed by an ink rule to the edge: weeks, "Sent, waiting for a reply". */
+.agenda-week {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 2rem 0 1rem;
+}
+
+.agenda-week::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--color-dark);
+}
+
+/* The days of a week. They touch, so the timeline runs unbroken through the week. */
+.agenda-days {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-day {
+  /* From the entries' left edge back to the middle of the line column (gap + half the column). */
+  --agenda-node-offset: 1.625rem;
+  --agenda-node-top: 1.25rem;
+  display: grid;
+  grid-template-columns: 4rem 1.75rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+}
+
+.agenda-day__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.25rem 0 1.25rem;
+}
+
+.agenda-day__num {
+  color: var(--color-dark);
+  font-family: var(--font-brand);
+  font-size: 2.5rem;
+  font-weight: normal;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-day__num--today {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+  background: var(--color-lemon);
+}
+
+.agenda-day__line {
+  background: linear-gradient(var(--color-dark), var(--color-dark)) center / 3px 100% no-repeat;
+}
+
+.agenda-day__entries {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 1.25rem;
+  list-style: none;
+}
+
+.agenda-day:last-child .agenda-day__entries {
+  padding-bottom: 0;
+}
+
+/* One entry (card, due row or today marker); its node sits on the line beside it. */
+.agenda-day__item {
+  position: relative;
+  min-width: 0;
+}
+
+/* aria-hidden: the stickers carry the status in words. */
+.agenda-node {
+  position: absolute;
+  top: var(--agenda-node-top);
+  left: calc(-1 * var(--agenda-node-offset) - 9px);
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-dark);
+  background: var(--color-bg);
+}
+
+.agenda-node--progress {
+  background: linear-gradient(90deg, var(--color-pear) 50%, var(--color-bg) 50%);
+}
+
+.agenda-node--scheduled {
+  background: var(--color-pear);
+}
+
+.agenda-node--confirmed {
+  background: var(--color-bg);
+}
+
+.agenda-node--pending {
+  background: var(--color-lavender);
+}
+
+.agenda-node--due {
+  top: 0.375rem;
+  left: calc(-1 * var(--agenda-node-offset) - 6px);
+  width: 12px;
+  height: 12px;
+  border: 0;
+  background: var(--color-dark);
+  transform: rotate(45deg);
+}
+
+.agenda-node--past {
+  border-color: var(--f-past-border);
+  background: var(--f-past-fill);
+}
+
+/* "Due back: …" on the day a loan ends. */
+.agenda-due {
+  margin: 0;
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  line-height: 1.375rem;
+  overflow-wrap: anywhere;
+}
+
+.agenda-due__sub {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+}
+
+/* Today, when nothing is on it: an ink rule with a Lemon sticker on it. The rule starts on the
+   timeline and sits level with the day's numeral, as the board draws it. */
+.agenda-today {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-left: calc(-1 * var(--agenda-node-offset));
+  padding-top: 1.25rem;
+}
+
+.agenda-today::before,
+.agenda-today::after {
+  content: '';
+  height: 3px;
+  background: var(--color-dark);
+}
+
+.agenda-today::before {
+  flex: 0 0 1.5rem;
+}
+
+.agenda-today::after {
+  flex: 1 1 auto;
+}
+
+/* The card: article.agenda-entry.f-card. */
+.agenda-entry {
+  --f-card-pad-x: 1.25rem;
+  --f-card-pad-y: 1rem;
+  min-width: 0;
+  padding: var(--f-card-pad-y) var(--f-card-pad-x);
+}
+
+/* Meta and title on the left, the primary action and More on the right (they wrap below on a
+   narrow card). */
+.agenda-entry__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+}
+
+.agenda-entry__main {
+  flex: 1 1 15rem;
+  min-width: 0;
+}
+
+/* A <p> in the consultation card, a <div> in the booking card. */
+.agenda-entry__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+}
+
+.agenda-entry__when {
+  color: var(--color-dark);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* After the stickers on a consultation card's meta line: the bold time, then "· With …". */
+.agenda-entry__meta-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agenda-entry__title {
+  margin: 0.5rem 0 0;
+  color: var(--color-dark);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.agenda-entry__title a,
+.agenda-entry__item-title a {
+  color: var(--color-dark);
+  text-decoration: none;
+}
+
+.agenda-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* A form's buttons start from the left (a card's own actions sit on the right on desktop). */
+.agenda-entry__actions--start {
+  justify-content: flex-start;
+}
+
+/* Details under the title: fields, location, notes, hints. */
+.agenda-entry__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+/* What the member wrote runs the consultation card's full width. */
+.agenda-entry--consultation .consultation-field,
+.agenda-entry__details {
+  align-self: stretch;
+}
+
+.agenda-entry--consultation .consultation-field {
+  align-items: stretch;
+}
+
+/* "Show request details": the fields it reveals. */
+.agenda-entry__details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.agenda-entry__details[hidden] {
+  display: none;
+}
+
+/* A failed action's line under the entry; inside a panel or a column the gap spaces it. */
+.agenda-entry__error {
+  margin: 0.75rem 0 0;
+}
+
+.needs-you__answer > .agenda-entry__error,
+.agenda-entry__panel .consultation-follow-up > .agenda-entry__error {
+  margin: 0;
+}
+
+/* A confirmed booking's address, directions and map. */
+.agenda-location__address {
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.agenda-location .consultation-row__zoom {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.agenda-location .location-map {
+  max-width: 32rem;
+}
+
+/* Where a tool's form, a new time or new dates, or a confirmation opens. */
+.agenda-entry__panel {
+  margin-top: 1rem;
+}
+
+.agenda-entry__panel .consultation-follow-up {
+  gap: 0.75rem;
+  max-width: none;
+  padding: 1rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 10px;
+}
+
+.agenda-entry__panel .confirmation-message {
+  max-width: none;
+}
+
+/* Panel buttons (Save new dates, Send) sit a little apart, as everywhere in F. */
+.agenda-entry__panel .admin-pending-actions {
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.agenda a:focus-visible {
+  outline: 3px solid var(--color-grape);
+  outline-offset: 3px;
+}
+
+/* Several bookings with the same dates: one meta line, then a row per item. */
+.agenda-entry__items {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-entry__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 0;
+  border-top: 2px solid var(--color-dark);
+}
+
+.agenda-entry__item:last-child {
+  padding-bottom: 0;
+}
+
+.agenda-entry__item-title {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+/* An item's title and More on one line, then its purpose, error and panel below. */
+.agenda-entry__item > :is(.consultation-field, .agenda-entry__error, .agenda-entry__panel) {
+  flex: 1 1 100%;
+}
+
+.agenda-entry__item > .agenda-entry__error,
+.agenda-entry__item > .agenda-entry__panel {
+  margin-top: 0.25rem;
+}
+
+/* "Day 4 of 8 · due back Tue Nov 10" beside a bar. */
+.agenda-progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.agenda-progress {
+  flex: 0 1 13.75rem;
+  min-width: 8rem;
+  height: 14px;
+  overflow: hidden;
+  border: 2px solid var(--color-dark);
+  border-radius: 3px;
+  background: var(--color-bg);
+}
+
+.agenda-progress__fill {
+  height: 100%;
+  border-right: 2px solid var(--color-dark);
+  background: var(--color-pear);
+}
+
+.agenda-progress__text {
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* What waits on the viewer: a Lemon band with "Pick a time for …" / "Approve a booking for …",
+   then their words beside the form. */
+.needs-you {
+  padding: 0;
+}
+
+.needs-you__band {
+  padding: 0.875rem 1.25rem;
+  border-bottom: 2px solid var(--color-dark);
+  border-radius: 10px 10px 0 0;
+  background: var(--color-lemon);
+  color: var(--color-dark);
+}
+
+.needs-you__title {
+  margin: 0;
+  color: var(--color-dark);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.needs-you__meta {
+  margin: 0.125rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.needs-you__body {
+  --f-card-pad-x: 1.25rem;
+  --f-card-pad-y: 1.25rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem 2rem;
+  padding: var(--f-card-pad-y) var(--f-card-pad-x);
+}
+
+.needs-you__body .meeting-time-picker,
+.needs-you__body .confirmation-message {
+  max-width: none;
+}
+
+.needs-you__meta a {
+  color: var(--color-mint);
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.needs-you__meta a:hover {
+  color: var(--color-dark);
+}
+
+/* Approve a booking: the request on the left, the message and Approve on the right. */
+.needs-you__request,
+.needs-you__answer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.needs-you__answer .confirmation-message {
+  margin-top: 0;
+}
+
+.needs-you__answer .agenda-entry__actions {
+  justify-content: flex-start;
+}
+
+/* Pick a time: what the member wrote on the left, the time to pick on the right. */
+.needs-you__words,
+.needs-you__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.needs-you__form .meeting-time-picker,
+.needs-you__form .confirmation-message,
+.needs-you__form .agenda-entry__error {
+  margin-top: 0;
+}
+
+/* A tool's panel (or the Decline question) under both columns. */
+.needs-you__panel,
+.needs-you__body > .agenda-entry__panel {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+/* Earlier: the toggle, then compact past cards (no timeline). */
+.agenda-earlier__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-entry--past {
+  --f-card-pad-x: 1rem;
+  --f-card-pad-y: 0.875rem;
+}
+
+.agenda-entry--past .agenda-entry__title {
+  font-size: 0.9375rem;
+}
+
+/* --- The expert request form (ConsultationRequestForm.svelte) --------------------------------- */
+
+/* Date / From / To rows (up to three), their own words behind a disclosure, the summary, "Who
+   sees this", Send request. Spacing comes from gaps: the F field rule sets margin 0 on every
+   field here. */
+.consultation-request svg:not(.f-disclosure__icon) {
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.consultation-request .action-btn svg {
+  stroke-width: 3;
+}
+
+.consultation-request__intro {
+  margin: 0.75rem 0 0;
+  color: var(--color-dark);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+/* Padding 0 beats `.modal form`: the overlay is a modal. */
+.consultation-request .consultation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+}
+
+.consultation-form__group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.consultation-form__legend {
+  padding: 0;
+}
+
+.consultation-form__hint {
+  margin: 0.125rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+/* A field's error, and the slots' ("Add at least one time…") under the hint. */
+.consultation-form__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+  color: var(--color-plum);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+}
+
+.consultation-form__error svg,
+.consultation-form__alert svg {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+  stroke-width: 2.75;
+}
+
+/* Desktop: Date | From | To | remove under one row of column heads; each input's label (and the
+   row's name, "Time 2") is there for screen readers only. Phones stack each row under its name
+   with visible labels (below). */
+.consultation-slots__heads,
+.consultation-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8.25rem 8.25rem 2.75rem;
+  column-gap: 0.5rem;
+}
+
+.consultation-slots__heads {
+  grid-template-areas: 'date from to remove';
+  margin-top: 1rem;
+}
+
+.consultation-slot {
+  grid-template-areas: 'date from to remove';
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.consultation-slot__field {
+  min-width: 0;
+}
+
+.consultation-slot__field--date {
+  grid-area: date;
+}
+
+.consultation-slot__field--from {
+  grid-area: from;
+}
+
+.consultation-slot__field--to {
+  grid-area: to;
+}
+
+.consultation-slot__remove {
+  grid-area: remove;
+}
+
+.consultation-slot__error {
+  grid-column: 1 / -1;
+}
+
+.consultation-slot__label {
+  margin: 0 0 0.25rem;
+}
+
+@media (min-width: 641px) {
+  .consultation-slot__name,
+  .consultation-slot__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* Native date and time fields, as on the room times (.item-calendar__time-input): appearance
+   none and a min-height stop iOS collapsing an empty one, its value sits left (iOS centres it),
+   and touch screens get an icon, since only desktop browsers draw their own. A narrow right
+   padding beside the desktop icon keeps "11:00 AM" whole in its column. */
+.consultation-slot__input {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding-right: 0.5rem;
+  line-height: 1.4;
+}
+
+.consultation-slot__input::-webkit-date-and-time-value {
+  min-height: 1.4em;
+  margin: 0;
+  text-align: left;
+}
+
+@media (pointer: coarse) {
+  .consultation-slot__input {
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23231f20' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1.1rem;
+  }
+
+  .consultation-slot__input--time {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23231f20' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+  }
+
+  .consultation-slot__input::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+}
+
+.consultation-form__add {
+  margin-top: 0.75rem;
+}
+
+.consultation-form__own-words-toggle {
+  margin-top: 0.5rem;
+}
+
+/* A label with its counter on the right, then the field (and its error). */
+.consultation-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.consultation-form__field[hidden] {
+  display: none;
+}
+
+.consultation-form__field > .consultation-form__error {
+  margin-top: 0;
+}
+
+.consultation-form__own-words {
+  margin-top: 0.5rem;
+}
+
+.consultation-form__field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.consultation-form__count {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Their own words don't fit beside the times any more. */
+.consultation-form__count--over {
+  color: var(--color-plum);
+  font-weight: 700;
+}
+
+.consultation-request .consultation-form__textarea {
+  min-height: 6rem;
+  line-height: 1.45;
+}
+
+.consultation-request .consultation-form__textarea--summary {
+  min-height: 8.75rem;
+}
+
+/* "Who sees this" (.f-strip), right above Send request. */
+.consultation-form__sharing {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.consultation-form__sharing svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.125rem;
+  stroke-width: 2.25;
+}
+
+.consultation-form__sharing .f-label {
+  margin: 0;
+}
+
+.consultation-form__sharing-text {
+  margin: 0.25rem 0 0;
+}
+
+.consultation-form__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* What's missing, or the server's answer (focused from script when the request fails). */
+.consultation-form__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-plum);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-plum);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.consultation-form__alert:focus {
+  outline: none;
+}
+
+/* After sending: "Request sent" and the Lavender sticker on one ruled line, then what was sent. */
+.consultation-request__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 3px solid var(--color-dark);
+}
+
+.consultation-request__head .f-title {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* Focused from script once the request is saved; not a control, so no ring. */
+.consultation-request__head .f-title:focus {
+  outline: none;
+}
+
+.consultation-request__label {
+  margin: 1.5rem 0 0.5rem;
+}
+
+.consultation-request__account {
+  margin-top: 1.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .f-swipe,
+  .f-disclosure__text,
+  .agenda-entry__title a,
+  .agenda-entry__item-title a {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .f-title {
+    font-size: 1.875rem;
+  }
+
+  .f-title--sm {
+    font-size: 1.5rem;
+  }
+
+  .agenda {
+    margin-top: 2rem;
+  }
+
+  .agenda-day {
+    --agenda-node-offset: 1.125rem;
+    --agenda-node-top: 1.125rem;
+    grid-template-columns: 3rem 1.25rem minmax(0, 1fr);
+    column-gap: 0.5rem;
+  }
+
+  .agenda-day__num {
+    font-size: 1.875rem;
+  }
+
+  .agenda-entry {
+    --f-card-pad-x: 1rem;
+    --f-card-pad-y: 0.875rem;
+  }
+
+  /* Under the title on phones, from the left. */
+  .agenda-entry__actions {
+    justify-content: flex-start;
+  }
+
+  .needs-you__band {
+    padding: 0.75rem 1rem;
+  }
+
+  .needs-you__body {
+    --f-card-pad-x: 1rem;
+    --f-card-pad-y: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The open list pushes the card down instead of covering the next one. */
+  .more-menu:has(> .more-menu__list:not([hidden])) {
+    flex-basis: 100%;
+  }
+
+  .more-menu__list {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    margin-top: 0.5rem;
+  }
+
+  /* Each request-form row: its name and the remove button, the date, then From and To side by
+     side. */
+  .consultation-slots__heads {
+    display: none;
+  }
+
+  .consultation-slot {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'name remove'
+      'date date'
+      'from to';
+    gap: 0.5rem 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .consultation-slot__name {
+    grid-area: name;
+    align-self: center;
+  }
+
+  .consultation-slot__remove {
+    justify-self: end;
+  }
+
+  .consultation-slot__error {
+    margin-top: 0;
   }
 }
 
@@ -5149,6 +6717,8 @@ button:disabled {
   align-items: center;
   gap: 0.875rem;
   padding: 0.875rem 1rem;
+  /* The tiles' Design F edge, so nothing shifts when they arrive. */
+  border: 2px solid var(--color-dark);
 }
 
 .admin-attention .skeleton-tile__value {
@@ -5322,14 +6892,14 @@ button:disabled {
 
 .skeleton-detail__avatar {
   flex-shrink: 0;
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: 0.45rem;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 12px;
 }
 
 .skeleton-detail__name {
   width: 50%;
-  height: 1.15rem;
+  height: 1.75rem;
 }
 
 .skeleton-detail__form {
@@ -5765,9 +7335,14 @@ img.home-expert__photo {
   height: 5.5rem;
 }
 
-/* The heading centres the avatar against the title. */
+/* The heading centres the avatar against the title; the expert photo is a 5rem square with
+   Design F's 2px ink edge. */
 .expert-detail__heading:has(> img.expert-detail__avatar)::before {
   top: 50%;
+  width: 5rem;
+  height: 5rem;
+  border: 2px solid var(--color-dark);
+  border-radius: 12px;
   transform: translateY(-50%);
 }
 
@@ -5782,13 +7357,6 @@ img.admin-mentor-photo,
 img.admin-mentor-editor__photo,
 img.expert-detail__avatar {
   position: relative;
-}
-
-@media (max-width: 640px) {
-  .expert-detail__heading:has(> img.expert-detail__avatar)::before {
-    width: 3.5rem;
-    height: 3.5rem;
-  }
 }
 
 /* Rows kept after a failed background refresh sit just under the error line. */

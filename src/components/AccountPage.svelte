@@ -11,8 +11,7 @@
   import { INVENTORY_PATH, navigate } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
-  import AccountConsultations from './AccountConsultations.svelte';
-  import AccountReservations from './AccountReservations.svelte';
+  import AccountAgenda from './AccountAgenda.svelte';
   import AccountShareExpertise from './AccountShareExpertise.svelte';
   import BusyLabel from './BusyLabel.svelte';
   import MemberAgreementModal from './MemberAgreementModal.svelte';
@@ -188,9 +187,8 @@
       </div>
     {/if}
 
-    <AccountReservations />
-
-    <AccountConsultations />
+    <!-- Own bookings, bookings of the items this account hosts, and consultations in both roles. -->
+    <AccountAgenda />
 
     <MemberAgreementModal bind:this={agreementModal} readOnly />
   {/if}

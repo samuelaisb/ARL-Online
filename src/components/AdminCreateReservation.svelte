@@ -8,6 +8,7 @@
   import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import BusyLabel from './BusyLabel.svelte';
+  import InlineConfirm from './InlineConfirm.svelte';
   import { parseMeetingTimeInput, toLocalInputValue } from './MeetingTimePicker.svelte';
   import Skeleton from './Skeleton.svelte';
 
@@ -50,6 +51,12 @@
   let errors = $state({ item: '', email: '', open: '', dates: '', meeting: '' });
   let formError = $state('');
   let doneMessage = $state('');
+  // Create's question, as an InlineConfirm under the form's button once the fields are valid:
+  // { booking, fields, trigger }. `booking` is what Yes books, `fields` the fields the
+  // question names (see questionFields) and `trigger` the field or button that asked (Keep it,
+  // or a failure, returns focus there).
+  let asking = $state(null);
+  let confirmBox = $state();
   // Accounts for the email suggestions and the member hint; empty if they didn't load.
   let users = $state([]);
 
@@ -139,6 +146,17 @@
       ? $t(`admin.create_reservation_dates_hint_${selectedItem.tag}`)
       : $t('admin.create_reservation_dates_hint'),
   );
+
+  // What the question names: the item, the address, and the dates or the meeting time.
+  const questionFields = $derived([itemId, email.trim(), startDate, endDate, meetingTime].join('\n'));
+
+  // window.confirm was modal, but the form stays live around the question: changing what it
+  // names drops it (Create asks again), so Yes never books something the admin didn't read.
+  $effect(() => {
+    if (asking && !submitting && asking.fields !== questionFields) {
+      asking = null;
+    }
+  });
 
   onMount(async () => {
     try {
@@ -300,39 +318,71 @@
       firstInvalid = meetingInput;
     }
     if (firstInvalid) {
+      asking = null;
       firstInvalid.focus();
       return;
     }
 
-    const item = selectedItem;
-    const to = email.trim();
-    const consultation = isConsultation;
-    const noMentorEmail = mentorEmailMissing;
-    const meetingAt = consultation ? parseMeetingTimeInput(meetingTime).toISOString() : '';
-    let confirmText;
+    const active = document.activeElement;
+    asking = {
+      booking: {
+        item: selectedItem,
+        to: email.trim(),
+        consultation: isConsultation,
+        noMentorEmail: mentorEmailMissing,
+        meetingAt: isConsultation ? parseMeetingTimeInput(meetingTime).toISOString() : '',
+        startDate,
+        endDate,
+      },
+      fields: questionFields,
+      // Enter in a field submits too: back to that field, else to Create.
+      trigger: active && active !== document.body ? active : event.submitter,
+    };
+    // InlineConfirm focuses itself when it appears; asking again brings focus back to it.
+    await tick();
+    confirmBox?.focus();
+  }
+
+  /** The question, worded when shown (so it follows a language switch). */
+  function questionFor({ item, to, consultation, noMentorEmail, meetingAt, startDate: start, endDate: end }) {
     if (consultation) {
-      confirmText = $t(
+      return $t(
         noMentorEmail ? 'admin.create_consultation_confirm_no_expert_email' : 'admin.create_consultation_confirm',
         { title: item.title, time: formatMeetingTime(meetingAt), email: to },
       );
-    } else {
-      confirmText = $t('admin.create_reservation_confirm', {
-        title: item.title,
-        dates: formatRange(startDate, endDate),
-        email: to,
-      });
     }
+    return $t('admin.create_reservation_confirm', {
+      title: item.title,
+      dates: formatRange(start, end),
+      email: to,
+    });
+  }
 
-    if (!window.confirm(confirmText)) {
+  /** Keep it, or Escape: the question goes and focus returns to where Create was pressed. */
+  async function keepAsking() {
+    const trigger = asking?.trigger;
+    asking = null;
+    await tick();
+    if (trigger?.isConnected) {
+      trigger.focus();
+    }
+  }
+
+  async function createBooking({ item, to, consultation, noMentorEmail, meetingAt, startDate: start, endDate: end }) {
+    if (submitting) {
       return;
     }
 
+    const trigger = asking?.trigger;
     submitting = true;
+    let failed = false;
 
     try {
       const result = await createStaffReservation(
         item.id,
-        consultation ? { email: to, meetingAt, summary, message } : { email: to, startDate, endDate, message },
+        consultation
+          ? { email: to, meetingAt, summary, message }
+          : { email: to, startDate: start, endDate: end, message },
       );
       // When queued, the server sends GA's event an hour from now, unless the booking was a test.
       if (!result.gaEventQueued) {
@@ -364,12 +414,25 @@
       meetingTime = '';
       summary = '';
       message = '';
+      asking = null;
       await tick();
       emailInput?.focus();
     } catch (error) {
+      failed = true;
       formError = error.message || $t('admin.create_reservation_error');
     } finally {
       submitting = false;
+      asking = null;
+    }
+
+    // The question went with Yes's focus: back to where Create was pressed, unless the admin
+    // has moved on meanwhile.
+    if (failed) {
+      await tick();
+      const active = document.activeElement;
+      if ((!active || active === document.body) && trigger?.isConnected) {
+        trigger.focus();
+      }
     }
   }
 </script>
@@ -583,6 +646,21 @@
           />
         </button>
       </div>
+
+      {#if asking}
+        {@const consultationAsked = asking.booking.consultation}
+        <InlineConfirm
+          bind:this={confirmBox}
+          id="admin-create-reservation-confirm"
+          tone="primary"
+          message={questionFor(asking.booking)}
+          confirmLabel={$t(consultationAsked ? 'admin.create_consultation_submit' : 'admin.create_reservation_submit')}
+          busyLabel={$t(consultationAsked ? 'admin.create_consultation_submitting' : 'admin.create_reservation_submitting')}
+          busy={submitting}
+          onconfirm={() => createBooking(asking.booking)}
+          oncancel={keepAsking}
+        />
+      {/if}
     </form>
   {/if}
 

@@ -14,6 +14,7 @@
   import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
   import BusyLabel from './BusyLabel.svelte';
+  import InlineConfirm from './InlineConfirm.svelte';
   import Skeleton from './Skeleton.svelte';
 
   // `items`: AdminPanel's admin inventory. Reservations carry only the member's email, so
@@ -62,6 +63,13 @@
   let pinnedId = $state('');
   // Announced even when Kimchi is asleep (its bubbles are the only other confirmation).
   let statusMessage = $state('');
+  // The question Send password reset, Suspend, Lift suspension or Delete asks before it runs,
+  // as an InlineConfirm under the row's buttons, one at a time: { kind, id, question, label,
+  // busyLabel, tone, trigger, run }. `question()` words it when shown, the labels are Yes's
+  // (the action's own), `trigger` is the button that asked (Keep it returns focus there) and
+  // `run` acts on Yes.
+  let confirmState = $state(null);
+  let confirmBox = $state();
 
   let rowRefs = $state({});
   let editButtons = $state({});
@@ -205,6 +213,17 @@
     if (editingId && !visibleRows.some((row) => row.user.id === editingId)) {
       editingId = '';
       editError = '';
+    }
+  });
+
+  // Likewise a question whose row left the list, or whose buttons gave way to the name editor:
+  // Yes must never act on a member the admin can't see.
+  $effect(() => {
+    if (
+      confirmState &&
+      (editingId === confirmState.id || !visibleRows.some((row) => row.user.id === confirmState.id))
+    ) {
+      confirmState = null;
     }
   });
 
@@ -355,15 +374,16 @@
     return visibleRows.findIndex((row) => row.user.id === id);
   }
 
-  // Focus is only moved if it's still where the action left it (the pressed button, or the
-  // page once that button was disabled): an admin who moved on keeps their place.
+  // Focus is only moved if it's still where the action left it (the page, once Yes was
+  // disabled and its question removed, or the button that asked; Save, for a name): an admin
+  // who moved on keeps their place.
   function canMoveFocus(trigger) {
     const active = document.activeElement;
     return !active || active === document.body || active === trigger;
   }
 
   /**
-   * After an action, once the DOM has settled: to `target()` (by default the pressed button,
+   * After an action, once the DOM has settled: to `target()` (by default the button that asked,
    * disabled while the request ran). If that left the list (the member was deleted, or no
    * longer matches the filter), to the row now in its place, else to the heading.
    */
@@ -379,6 +399,33 @@
     }
     const next = visibleRows[Math.min(index, visibleRows.length - 1)];
     (rowRefs[next?.user.id] ?? heading)?.focus();
+  }
+
+  /**
+   * Shows an action's question under its row's buttons, in place of any other, with focus on
+   * it (InlineConfirm focuses itself when it appears; asking again brings focus back to it).
+   */
+  async function askConfirm(question) {
+    confirmState = question;
+    await tick();
+    confirmBox?.focus();
+  }
+
+  /** Keep it, or Escape: the question goes and focus returns to the button that asked. */
+  async function keepConfirm() {
+    const trigger = confirmState?.trigger;
+    confirmState = null;
+    await tick();
+    if (trigger && trigger !== document.body && trigger.isConnected) {
+      trigger.focus();
+    }
+  }
+
+  /** The action is over: its question goes, unless another one took its place meanwhile. */
+  function closeConfirm(kind, id) {
+    if (confirmState?.kind === kind && confirmState.id === id) {
+      confirmState = null;
+    }
   }
 
   async function startEdit(user) {
@@ -450,14 +497,25 @@
     await settleFocus(trigger, index, () => (failed ? trigger : editButtons[user.id]));
   }
 
-  async function handleReset(user) {
+  function handleReset(user, trigger) {
     if (actionState) {
       return;
     }
 
-    const trigger = document.activeElement;
-    const confirmed = window.confirm($t('admin.users_reset_confirm', { email: user.email }));
-    if (!confirmed) {
+    askConfirm({
+      kind: 'reset',
+      id: user.id,
+      question: () => $t('admin.users_reset_confirm', { email: user.email }),
+      label: 'admin.users_reset',
+      busyLabel: 'admin.users_resetting',
+      tone: 'primary',
+      trigger,
+      run: () => sendReset(user, trigger),
+    });
+  }
+
+  async function sendReset(user, trigger) {
+    if (actionState) {
       return;
     }
 
@@ -476,12 +534,13 @@
       rowError = { id: user.id, message: error.message || $t('admin.users_reset_error') };
     } finally {
       actionState = null;
+      closeConfirm('reset', user.id);
     }
 
     await settleFocus(trigger, index);
   }
 
-  async function handleSuspend(row) {
+  function handleSuspend(row, trigger) {
     const { user, mentor } = row;
     if (actionState) {
       return;
@@ -492,6 +551,8 @@
     // taking requests they can't answer. Lifting a suspension is always allowed.
     if (suspend && mentor) {
       statusMessage = '';
+      // No question stays up from an earlier press: this one answers with the error.
+      confirmState = null;
       rowError = {
         id: user.id,
         message: $t('admin.users_mentor_error', { email: user.email, title: mentor.title }),
@@ -499,11 +560,21 @@
       return;
     }
 
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(
-      $t(suspend ? 'admin.users_suspend_confirm' : 'admin.users_unsuspend_confirm', { email: user.email }),
-    );
-    if (!confirmed) {
+    askConfirm({
+      kind: 'suspend',
+      id: user.id,
+      question: () =>
+        $t(suspend ? 'admin.users_suspend_confirm' : 'admin.users_unsuspend_confirm', { email: user.email }),
+      label: suspend ? 'admin.users_suspend' : 'admin.users_unsuspend',
+      busyLabel: suspend ? 'admin.users_suspending' : 'admin.users_unsuspending',
+      tone: suspend ? 'danger' : 'primary',
+      trigger,
+      run: () => setSuspended(user, suspend, trigger),
+    });
+  }
+
+  async function setSuspended(user, suspend, trigger) {
+    if (actionState) {
       return;
     }
 
@@ -531,13 +602,14 @@
       };
     } finally {
       actionState = null;
+      closeConfirm('suspend', user.id);
     }
 
     // The same button flips between Suspend and Lift suspension, so focus stays on it.
     await settleFocus(trigger, index);
   }
 
-  async function handleDelete(row) {
+  function handleDelete(row, trigger) {
     const { user, mentor, activeCount } = row;
     if (actionState || !itemsLoaded) {
       return;
@@ -546,6 +618,7 @@
     // The server refuses too (409): a mentor's public profile would outlive the account.
     if (mentor) {
       statusMessage = '';
+      confirmState = null;
       rowError = {
         id: user.id,
         message: $t('admin.users_mentor_error', { email: user.email, title: mentor.title }),
@@ -553,13 +626,23 @@
       return;
     }
 
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(
-      activeCount > 0
-        ? $t('admin.users_delete_confirm_active', { email: user.email, count: formatNumber(activeCount) })
-        : $t('admin.users_delete_confirm', { email: user.email }),
-    );
-    if (!confirmed) {
+    askConfirm({
+      kind: 'delete',
+      id: user.id,
+      question: () =>
+        activeCount > 0
+          ? $t('admin.users_delete_confirm_active', { email: user.email, count: formatNumber(activeCount) })
+          : $t('admin.users_delete_confirm', { email: user.email }),
+      label: 'admin.users_delete',
+      busyLabel: 'admin.users_deleting',
+      tone: 'danger',
+      trigger,
+      run: () => deleteUser(user, trigger),
+    });
+  }
+
+  async function deleteUser(user, trigger) {
+    if (actionState || !itemsLoaded) {
       return;
     }
 
@@ -611,6 +694,7 @@
       }
     } finally {
       actionState = null;
+      closeConfirm('delete', user.id);
     }
 
     await settleFocus(trigger, index);
@@ -683,11 +767,11 @@
   {#if loading && !hasLoaded}
     <Skeleton count={6} avatar actions={2} label={$t('admin.loading')} />
   {:else if visibleRows.length > 0}
-    <!-- No aria-busy while a form or row error is up: it would hold back their alerts. -->
+    <!-- No aria-busy while a form, question or row error is up: it would hold back what they say. -->
     <ul
       class="admin-item-list admin-users__list"
       class:list-refreshing={loading}
-      aria-busy={(loading && !editingId && !rowError.id) || undefined}
+      aria-busy={(loading && !editingId && !confirmState && !rowError.id) || undefined}
     >
       {#each visibleRows as row (row.user.id)}
         {@const user = row.user}
@@ -810,7 +894,7 @@
                     class="btn-header btn-header--secondary"
                     aria-describedby={nameId}
                     disabled={Boolean(actionState)}
-                    onclick={() => handleReset(user)}
+                    onclick={(event) => handleReset(user, event.currentTarget)}
                   >
                     <BusyLabel
                       label={$t('admin.users_reset')}
@@ -825,7 +909,7 @@
                     class={user.suspended ? 'btn-approve' : 'btn-remove'}
                     aria-describedby={nameId}
                     disabled={Boolean(actionState)}
-                    onclick={() => handleSuspend(row)}
+                    onclick={(event) => handleSuspend(row, event.currentTarget)}
                   >
                     <BusyLabel
                       label={$t(user.suspended ? 'admin.users_unsuspend' : 'admin.users_suspend')}
@@ -838,7 +922,7 @@
                     class="btn-remove"
                     aria-describedby={nameId}
                     disabled={Boolean(actionState) || !itemsLoaded}
-                    onclick={() => handleDelete(row)}
+                    onclick={(event) => handleDelete(row, event.currentTarget)}
                   >
                     <BusyLabel
                       label={$t('admin.users_delete')}
@@ -854,6 +938,23 @@
                 </p>
               {/if}
             </div>
+
+            <!-- The question an action asked, on a line of its own under the buttons. -->
+            {#if confirmState?.id === user.id}
+              <div class="admin-users__panel">
+                <InlineConfirm
+                  bind:this={confirmBox}
+                  id="admin-user-{user.id}-confirm"
+                  message={confirmState.question()}
+                  confirmLabel={$t(confirmState.label)}
+                  busyLabel={$t(confirmState.busyLabel)}
+                  busy={isBusy(user.id, confirmState.kind)}
+                  tone={confirmState.tone}
+                  onconfirm={() => confirmState?.run()}
+                  oncancel={keepConfirm}
+                />
+              </div>
+            {/if}
 
             {#if bookingsOpen[user.id]}
               <div class="admin-users__panel">

@@ -136,7 +136,7 @@
     saving = true;
 
     try {
-      const item = await updateExpertiseItem(editingId, {
+      const { item, handover } = await updateExpertiseItem(editingId, {
         title: trimmedName,
         body: trimmedShort,
         longBody: trimmedLong,
@@ -144,7 +144,10 @@
         ...(replaceImage ? { image: imageDataUrl } : {}),
       });
       onupdated?.(item);
-      notify({ textKey: 'kimchi.mentor_updated' }, DEFAULT_NOTIFICATION_DURATION);
+      notify(
+        { textKey: handover?.emailSent ? 'kimchi.mentor_updated_handover' : 'kimchi.mentor_updated' },
+        DEFAULT_NOTIFICATION_DURATION,
+      );
       editingId = '';
     } catch (error) {
       formError = error.message || $t('admin.mentors_save_error');

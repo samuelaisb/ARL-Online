@@ -41,7 +41,7 @@ All values are plain strings suitable for Slack workflow trigger variables:
 | `end_date` | `reservation.endDate` | `YYYY-MM-DD` (same as start for expertise requests) |
 | `status` | `reservation.status` | `pending` on create. Staff alerts: `member_signed_up`, `mentor_profile_published`, `mentor_profile_updated`, `reservation_cancelled_by_member` or `consultation_follow_up` |
 | `user_email` | `reservation.userEmail` | Member email from JWT; empty string if missing |
-| `time_slots` | `reservation.timeSlots` | Member's free-text availability (expertise); the requested hours as `HH:MM-HH:MM` (room requests, e.g. `18:00-21:00`); empty string otherwise |
+| `time_slots` | `reservation.timeSlots` | Expertise: the member's availability as one string (max 500). Since 2026-11-05 the request form composes it from up to three **Date** / **From** / **To** rows, one line each in the member's language and device time zone (e.g. `Tue, Nov 10, 2:00 – 4:00 p.m. EST`, French `mar. 10 nov., 14 h 00 – 16 h 00 HNE`), then the member's own words if they opened that field; the API body is unchanged (`{ timeSlots, summary }`). Room requests: the requested hours as `HH:MM-HH:MM` (e.g. `18:00-21:00`). Empty string otherwise |
 | `request_summary` | `reservation.requestSummary` | Member's consultation topic summary (expertise); what the room is for (room requests); empty string otherwise. Staff alerts: one sentence describing the event |
 | `expert_email` | `item.expertEmail` | Expert contact from the item (expertise only; empty string otherwise) |
 | `admin_url` | `absoluteSiteUrl('/admin')` | Link to the admin page for reviewing the request |
@@ -75,7 +75,7 @@ All values are plain strings suitable for Slack workflow trigger variables:
 |----------|------|--------------|
 | `mentor_profile_published` | After a successful `POST /api/account/mentor-profile` (the profile is public at once) | `item_*` from the new expertise item; `user_email` and `expert_email` = the account email; `start_date` = `end_date` = today's date key; `reservation_id` and `time_slots` empty; `admin_url` |
 | `mentor_profile_updated` | After a successful `PATCH /api/account/mentor-profile` that changed the name, short text, long text or photo. A save with no changes sends nothing | Same as above, from the updated item |
-| `consultation_follow_up` | After an expert (or admin) books a follow-up with `POST /api/consultations/:reservationId/follow-up`. The follow-up is already scheduled with a Zoom meeting, so this is for information only | `item_*` from the expertise item; `reservation_id`, `start_date`, `end_date` from the new follow-up (dates = the booking day); `user_email` = the member; `expert_email` from the item; `time_slots` empty. `request_summary`: `Follow-up consultation "{title}" with {member} booked by the expert for {meeting time}.` (the expert's note is not sent) |
+| `consultation_follow_up` | After an expert (or the owner of a mentor with no expert email, or an admin) books a follow-up with `POST /api/consultations/:reservationId/follow-up`. The follow-up is already scheduled with a Zoom meeting, so this is for information only | `item_*` from the expertise item; `reservation_id`, `start_date`, `end_date` from the new follow-up (dates = the booking day); `user_email` = the member; `expert_email` from the item; `time_slots` empty. `request_summary`: `Follow-up consultation "{title}" with {member} booked by the {expert \| owner \| admin} for {meeting time}.` (`consultationHostRole()`; the expert's note is not sent) |
 | `member_signed_up` | Once per account, when `sendWelcomeEmailIfNeeded()` claims the welcome email (`POST /api/auth/welcome-email`, which the client calls on the first sign-in). The claim in `user_metadata.welcome_email_sent` keeps it to one post; it posts even if Resend then fails. Not sent for accounts that first sign in more than 7 days after creation (the welcome window), or that never sign in. `request_summary`: `New member account: {email}.` | `user_email` = the new member; every `item_*`, `reservation_id`, `time_slots` and `expert_email` empty; dates today |
 | `reservation_cancelled_by_member` | After a member cancels an **approved** (`reserved`) equipment, book or room reservation from `/account` (`POST /api/account/reservations/:reservationId/cancel`). Withdrawing a still-pending request sends nothing | `item_*` from the item; `reservation_id`, `start_date`, `end_date` from the reservation; `user_email` = the member; `time_slots` and `expert_email` empty |
 
@@ -122,6 +122,8 @@ Slack reservation webhook → configured
 | Reservation delete / patch (admin) | No Slack call |
 | Member withdraws a pending request from `/account` | No Slack call (cancelling an approved booking does send `reservation_cancelled_by_member`) |
 | Consultation schedule / cancel | No Slack call (booking a follow-up does send `consultation_follow_up`) |
+| `/account` tools: a member's message or suggested time, a host's message, a consultation moved to a new time, an owner's approve / decline / new dates / cancel (`POST /api/reservations/:id/message`, `POST /api/consultations/:id/reschedule`, `POST /api/account/hosted-reservations/:id/*`) | No Slack call: the email goes straight to the other person (`docs/automated-emails.md` triggers 13–18) |
+| Day-before reminders | No Slack call (emails only, trigger 12) |
 | `/admin` → **Create Reservation** (equipment, a book, a room or a meeting with a mentor) | No Slack call: staff made the booking themselves |
 | Add / remove inventory item, admin **Mentors** edits | No Slack call (only member mentor-profile saves send an alert) |
 | Mentor profile `PATCH` that changed nothing | No Slack call |
@@ -143,7 +145,7 @@ Slack reservation webhook → configured
 | Gap | Notes |
 |-----|-------|
 | **Single webhook only** | No Discord, Teams, Zapier, or generic webhook abstraction |
-| **Few events** | New reservations, new members, mentor profile saves, follow-ups and member cancellations of approved bookings only. Approve, refuse, admin deletes and consultation schedule/cancel do not notify Slack |
+| **Few events** | New reservations, new members, mentor profile saves, follow-ups and member cancellations of approved bookings only. Approve, refuse, admin deletes, consultation schedule/cancel/move, messages, reminders and owners' actions on `/account` do not notify Slack |
 | **No retry** | Failed POSTs are logged once; no queue or retry |
 | **No authentication headers** | Relies on obscurity of the Slack trigger URL |
 

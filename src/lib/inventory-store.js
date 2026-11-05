@@ -2,8 +2,23 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
-import { compareDateKeys, hasReservationCollision, normalizeReservationStatus, parseDateKey } from './calendar.js';
-import { isConsultationHeld, validateReservationDates } from './reservation-rules.js';
+import {
+  compareDateKeys,
+  hasReservationCollision,
+  libraryTodayKey,
+  normalizeReservationStatus,
+  parseDateKey,
+} from './calendar.js';
+import {
+  addDays,
+  isConsultationHeld,
+  isReminderDue,
+  REMINDER_LEAD_MS,
+  REMINDER_MIN_LEAD_MS,
+  reminderStateFor,
+  reservationStartsAt,
+  validateReservationDates,
+} from './reservation-rules.js';
 import { EXPERT_LONG_TEXT_MAX, EXPERT_NAME_MAX, EXPERT_SHORT_TEXT_MAX } from './expertise-fields.js';
 import {
   hasPhysicalLocation,
@@ -58,6 +73,7 @@ const SCHEDULING_SCHEMA_MIGRATION = 'supabase/migrations/006_consultation_schedu
 const EXPERTISE_COPY_SCHEMA_MIGRATION = 'supabase/migrations/007_expertise_copy.sql';
 const FOLLOW_UP_SCHEMA_MIGRATION = 'supabase/migrations/008_consultation_follow_up.sql';
 const ITEM_LOCATIONS_SCHEMA_MIGRATION = 'supabase/migrations/010_item_locations.sql';
+const ITEM_OWNERS_SCHEMA_MIGRATION = 'supabase/migrations/015_item_owners_and_reminders.sql';
 
 export { INVENTORY_TAGS, DEFAULT_INVENTORY_TAG, INVENTORY_IMAGE_BASE };
 
@@ -66,13 +82,13 @@ export function isReservationSchemaError(message) {
     return false;
   }
 
-  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|follow_up_of|zoom_|cancelled_|location_id|item_locations|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
+  return /user_email|time_slots|request_summary|meeting_at|expert_email|long_body|follow_up_of|zoom_|cancelled_|location_id|item_locations|owner_email|reminder_email|inventory_items_tag_check|schema cache|reservations_status_check|check constraint.*status/i.test(
     message,
   );
 }
 
 export function reservationSchemaErrorMessage() {
-  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, ${EXPERTISE_COPY_SCHEMA_MIGRATION}, ${FOLLOW_UP_SCHEMA_MIGRATION}, and ${ITEM_LOCATIONS_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, expertise long text, follow-up consultations, and item locations).`;
+  return `Database schema is out of date. Apply ${RESERVATION_SCHEMA_MIGRATION}, ${EXPERTISE_SCHEMA_MIGRATION}, ${SCHEDULING_SCHEMA_MIGRATION}, ${EXPERTISE_COPY_SCHEMA_MIGRATION}, ${FOLLOW_UP_SCHEMA_MIGRATION}, ${ITEM_LOCATIONS_SCHEMA_MIGRATION}, and ${ITEM_OWNERS_SCHEMA_MIGRATION} in the Supabase SQL Editor (adds user_email, pending/refused/cancelled statuses, the expertise tag, consultation request fields, Zoom meeting fields, expertise long text, follow-up consultations, item locations, and item owners and booking reminders).`;
 }
 
 /*
@@ -220,21 +236,49 @@ function withDefaultLocation(item, locations) {
   return { ...item, locationId: OFFICE_LOCATION_ID };
 }
 
+/** Item columns from later migrations that an insert drops when the database doesn't have them. */
+const OPTIONAL_ITEM_COLUMNS = ['location_id', 'owner_email'];
+let itemOwnerInsertNoticeLogged = false;
+
+/**
+ * The optional column a failed item insert says is missing: the one its message names, else
+ * (any 42703 or PGRST204) the first one the rows have, as before owner_email existed.
+ */
+function missingItemColumn(error, rows) {
+  if (!error) {
+    return null;
+  }
+
+  const present = OPTIONAL_ITEM_COLUMNS.filter((column) => rows.some((row) => column in row));
+  const named = present.find((column) => new RegExp(column, 'i').test(error.message ?? ''));
+
+  if (named) {
+    return named;
+  }
+
+  return error.code === 'PGRST204' || error.code === '42703' ? present[0] ?? null : null;
+}
+
 /**
  * Inserts item rows; if inventory_items.location_id doesn't exist (010 only half run by hand),
- * inserts them again without it, as the item would read back as the office anyway.
+ * inserts them again without it, as the item would read back as the office anyway. Likewise
+ * owner_email before 015: the item is saved with no owner (one warning).
  */
 async function insertItemRows(supabase, rows) {
-  let { error } = await supabase.from('inventory_items').insert(rows);
+  let current = rows;
+  let { error } = await supabase.from('inventory_items').insert(current);
 
-  if (
-    error &&
-    rows.some((row) => 'location_id' in row) &&
-    (error.code === 'PGRST204' || isMissingColumnError(error, 'location_id'))
-  ) {
-    ({ error } = await supabase
-      .from('inventory_items')
-      .insert(rows.map(({ location_id: _locationId, ...row }) => row)));
+  // Each retry drops one column, so this stops after at most two.
+  let missingColumn = missingItemColumn(error, current);
+  while (missingColumn) {
+    if (missingColumn === 'owner_email' && !itemOwnerInsertNoticeLogged) {
+      itemOwnerInsertNoticeLogged = true;
+      console.warn(`[inventory] Apply ${ITEM_OWNERS_SCHEMA_MIGRATION} so new items get an owner.`);
+    }
+    const dropped = missingColumn;
+    current = current.map(({ [dropped]: _dropped, ...row }) => row);
+    ({ error } = await supabase.from('inventory_items').insert(current));
+    missingColumn = missingItemColumn(error, current);
   }
 
   return error;
@@ -375,8 +419,24 @@ export function normalizeInventoryItem(raw, { requireAll = true } = {}) {
   // Not taken from the input: there's no location picker yet, and the store gives new
   // equipment, books and rooms the office (withDefaultLocation). Imports keep their row's value.
   const locationId = null;
+  // Not taken from the input either: callers set it on the result (the signed-in creator), so a
+  // request body can't name someone else as the owner. Imports keep their row's value.
+  const ownerEmail = null;
 
-  return { id, title, body, image, createdAt, reservations, tag, slug, expertEmail, longBody, locationId };
+  return {
+    id,
+    title,
+    body,
+    image,
+    createdAt,
+    reservations,
+    tag,
+    slug,
+    expertEmail,
+    longBody,
+    locationId,
+    ownerEmail,
+  };
 }
 
 /** A timestamptz from PostgREST (`…+00:00`, microseconds) as `toISOString()`, or null. */
@@ -426,6 +486,9 @@ function itemRowToApi(itemRow, reservationRows = [], locations = itemLocations) 
     expertEmail: itemRow.expert_email ?? null,
     longBody: itemRow.tag === 'expertise' ? itemRow.long_body ?? null : null,
     locationId,
+    // Who hosts the item (015; undefined before it). Server side only, like expertEmail: see
+    // itemOwnerEmail for who actually manages a mentor's consultations.
+    ownerEmail: itemRow.owner_email ?? null,
     // The full address and exact point: server side only. Public routes send toPublicItem().
     location: resolveItemLocation(itemRow.tag, locationId, locations),
     reservations: reservationRows.map(reservationRowToApi),
@@ -457,6 +520,12 @@ function itemToRow(item) {
   // import's upsert keeps the location an item already has.
   if (item.locationId) {
     row.location_id = item.locationId;
+  }
+
+  // Only when set (015), and never cleared from here, so an import's upsert keeps the owner an
+  // item already has. insertItemRows drops it again if the column doesn't exist yet.
+  if (item.ownerEmail) {
+    row.owner_email = item.ownerEmail;
   }
 
   return row;
@@ -788,6 +857,7 @@ export async function createInventoryItem(item) {
  * Update an expertise mentor's public copy and contact email.
  * The slug stays as created so existing /expertise/{slug} links keep working.
  * `image` is omitted to keep the current photo. `expertEmail` null clears it.
+ * Returns `{ item, previousExpertEmail }` (the address before this save, or null).
  */
 export async function updateExpertiseItem(id, updates) {
   const itemId = typeof id === 'string' ? id.trim() : '';
@@ -838,7 +908,7 @@ export async function updateExpertiseItem(id, updates) {
       return { notFound: true };
     }
 
-    return { item };
+    return { item, previousExpertEmail: existing.expertEmail ?? null };
   });
 }
 
@@ -1156,6 +1226,193 @@ export async function moveGaEvent(reservationId, from, to) {
   return (data ?? []).length > 0;
 }
 
+/** A reminder pass looks at this many bookings of each kind at most; the rest wait for the next. */
+const REMINDER_BATCH_SIZE = 50;
+let reminderSchemaNoticeLogged = false;
+
+/** reservations.reminder_email doesn't exist (015 not applied): one warning, then reminders are off. */
+function isMissingReminderColumn(error) {
+  if (!isMissingColumnError(error, 'reminder_email')) {
+    return false;
+  }
+  if (!reminderSchemaNoticeLogged) {
+    reminderSchemaNoticeLogged = true;
+    console.warn(
+      `[reservations] No booking reminders are sent: apply ${ITEM_OWNERS_SCHEMA_MIGRATION} in the Supabase SQL Editor.`,
+    );
+  }
+  return true;
+}
+
+/**
+ * Confirmed bookings whose day-before reminder is due at `now` and not sent yet
+ * (`reminder_email` null), as `{ id, itemId, tag }` only: the pass claims each one, then reads
+ * it in full. Consultations by `meeting_at`; rooms and pickups starting today or tomorrow
+ * (Montréal) by their start (reservationStartsAt). At most 50 of each. Empty before 015 (one
+ * warning).
+ */
+export async function listReminderCandidates(now = Date.now()) {
+  const supabase = getSupabaseAdmin();
+  const today = libraryTodayKey(new Date(now));
+  const columns = 'id, item_id, start_date, time_slots, meeting_at, inventory_items(tag)';
+  const [consultations, others] = await Promise.all([
+    supabase
+      .from('reservations')
+      .select(columns)
+      .eq('status', 'reserved')
+      .is('reminder_email', null)
+      .not('meeting_at', 'is', null)
+      .gt('meeting_at', new Date(now + REMINDER_MIN_LEAD_MS).toISOString())
+      .lte('meeting_at', new Date(now + REMINDER_LEAD_MS).toISOString())
+      .order('meeting_at', { ascending: true })
+      .limit(REMINDER_BATCH_SIZE),
+    supabase
+      .from('reservations')
+      .select(columns)
+      .eq('status', 'reserved')
+      .is('reminder_email', null)
+      .is('meeting_at', null)
+      .gte('start_date', today)
+      .lte('start_date', addDays(today, 1))
+      .order('start_date', { ascending: true })
+      .limit(REMINDER_BATCH_SIZE),
+  ]);
+  const error = consultations.error ?? others.error;
+
+  if (error) {
+    if (isMissingReminderColumn(error)) {
+      return [];
+    }
+    throw new Error(error.message || 'Could not load the bookings due a reminder.');
+  }
+
+  const tagOf = (row) =>
+    (Array.isArray(row.inventory_items) ? row.inventory_items[0] : row.inventory_items)?.tag ?? null;
+  const candidates = (consultations.data ?? []).map((row) => ({
+    id: row.id,
+    itemId: row.item_id,
+    tag: tagOf(row),
+  }));
+
+  for (const row of others.data ?? []) {
+    const tag = tagOf(row);
+    const startsAt = reservationStartsAt(
+      { startDate: row.start_date, timeSlots: row.time_slots ?? null, meetingAt: row.meeting_at ?? null },
+      tag,
+    );
+
+    if (tag !== 'expertise' && isReminderDue(startsAt, now)) {
+      candidates.push({ id: row.id, itemId: row.item_id, tag });
+    }
+  }
+
+  return candidates;
+}
+
+/** A claim older than this was left by a pass that stopped (a deploy, a crash): released. */
+export const REMINDER_CLAIM_STALE_MS = 30 * 60 * 1000;
+
+/**
+ * Hands back claims ('sending') older than REMINDER_CLAIM_STALE_MS, so a pass that stopped
+ * between claim and settle doesn't lose those reminders; the next listing finds them again if
+ * they are still due. Passes are time-boxed well under this. Best effort: never throws.
+ */
+export async function releaseStaleReminderClaims(now = Date.now()) {
+  try {
+    const { error } = await getSupabaseAdmin()
+      .from('reservations')
+      .update({ reminder_email: null, reminder_email_at: null })
+      .eq('reminder_email', 'sending')
+      .lt('reminder_email_at', new Date(now - REMINDER_CLAIM_STALE_MS).toISOString());
+
+    if (error && !isMissingReminderColumn(error)) {
+      console.error('[reminder] Could not release stale reminder claims:', error.message);
+    }
+  } catch (error) {
+    console.error('[reminder] Could not release stale reminder claims:', error?.message || error);
+  }
+}
+
+/**
+ * Claims a booking's reminder for this pass (`reminder_email` null → 'sending', stamped with the
+ * claim time for releaseStaleReminderClaims), only if it is still reserved and unclaimed, so two
+ * passes can't both send it. Resolves whether it moved (false before 015).
+ */
+export async function claimReminder(reservationId) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .update({ reminder_email: 'sending', reminder_email_at: new Date().toISOString() })
+    .eq('id', reservationId)
+    .eq('status', 'reserved')
+    .is('reminder_email', null)
+    .select('id');
+
+  if (error) {
+    if (isMissingReminderColumn(error)) {
+      return false;
+    }
+    throw new Error(error.message || 'Could not claim the reminder.');
+  }
+
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Settles a claimed reminder: 'sent' or 'skipped' (with `reminder_email_at`), or null to release
+ * it for the next pass. Only a row still at 'sending' moves (a confirm or move meanwhile reset
+ * it through setReminderState). Resolves whether it moved.
+ */
+export async function settleReminder(reservationId, outcome) {
+  const values =
+    outcome === 'sent' || outcome === 'skipped'
+      ? { reminder_email: outcome, reminder_email_at: new Date().toISOString() }
+      : { reminder_email: null, reminder_email_at: null };
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('reservations')
+    .update(values)
+    .eq('id', reservationId)
+    .eq('reminder_email', 'sending')
+    .select('id');
+
+  if (error) {
+    if (isMissingReminderColumn(error)) {
+      return false;
+    }
+    throw new Error(error.message || 'Could not update the reminder.');
+  }
+
+  return (data ?? []).length > 0;
+}
+
+/**
+ * After a booking is confirmed or gets a new time: 'skipped' when it now starts within a day (the
+ * email just sent is its reminder), else null so the pass sends one the day before, also after
+ * a reminder for the old time went out (reminderStateFor). `notified: false` (a change nobody was
+ * emailed about) always leaves it null, so the reminder is the member's notice. Best effort: it
+ * never throws, since the booking itself is already saved; errors are logged.
+ */
+export async function setReminderState(reservationId, startsAt, now = Date.now(), { notified = true } = {}) {
+  const state = notified ? reminderStateFor(startsAt, now) : null;
+
+  try {
+    const { error } = await getSupabaseAdmin()
+      .from('reservations')
+      .update({ reminder_email: state, reminder_email_at: state ? new Date(now).toISOString() : null })
+      .eq('id', reservationId);
+
+    if (error && !isMissingReminderColumn(error)) {
+      console.error(`[reminder] Could not set the reminder state of reservation ${reservationId}:`, error.message);
+    }
+  } catch (error) {
+    console.error(
+      `[reminder] Could not set the reminder state of reservation ${reservationId}:`,
+      error?.message || error,
+    );
+  }
+}
+
 export async function removeReservation(itemId, reservationId) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
@@ -1438,7 +1695,9 @@ export async function createMentorProfileForEmail(email, fields) {
       return { invalid: true };
     }
 
-    const saved = await createInventoryItem(item);
+    // The account that shared its expertise owns the item too (015), so it stays theirs to
+    // manage even if staff later clear or change the mentor's address.
+    const saved = await createInventoryItem({ ...item, ownerEmail });
     return { item: saved };
   });
 }
@@ -1640,12 +1899,123 @@ export async function cancelConsultation(itemId, reservationId, { cancelledBy })
 }
 
 /**
- * Books a follow-up to a scheduled consultation whose meeting has started: a new row for the
- * same member and expert, written straight as `reserved` with its own Zoom meeting and
- * `follow_up_of` set to the source. The one-open-request rule still holds, ignoring the source
- * itself (so the follow-up can be booked at the end of the call). A source without a member
- * email (the account was deleted) is `invalidStatus`, before any Zoom meeting is made.
- * `createMeeting` and `deleteMeeting` work as in scheduleConsultation.
+ * The mentor (or the item's owner, or staff) moves a scheduled consultation that hasn't started
+ * to a new time. `moveMeeting(item, reservation, meetingIso)` runs inside the item lock and
+ * resolves null when the Zoom meeting was moved in place (or there is no Zoom), or the
+ * `{ id, joinUrl, password }` of a new meeting that replaces it; if it throws, nothing is saved.
+ * `deleteMeeting(id)` (optional) removes such a new meeting again if the database write fails.
+ * Resolves `{ item, reservation, previousMeetingAt }`, or `{ notFound }`, `{ reservationNotFound }`,
+ * `{ invalidStatus }` (not scheduled, or started), `{ meetingTimeRequired }`, `{ unchanged }` or
+ * `{ followUpBeforeSource }` (a follow-up would no longer come after the meeting it follows).
+ */
+export async function rescheduleConsultation(
+  itemId,
+  reservationId,
+  { meetingAt, moveMeeting = null, deleteMeeting = null },
+) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item || item.tag !== 'expertise') {
+      return { notFound: true };
+    }
+
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+    const currentStart = Date.parse(existing.meetingAt ?? '');
+
+    if (existing.status !== 'reserved' || Number.isNaN(currentStart) || currentStart <= Date.now()) {
+      return { invalidStatus: true };
+    }
+
+    const normalizedMeetingAt =
+      typeof meetingAt === 'string' && meetingAt.trim() ? meetingAt.trim() : null;
+    const nextStart = normalizedMeetingAt ? Date.parse(normalizedMeetingAt) : NaN;
+
+    if (Number.isNaN(nextStart)) {
+      return { meetingTimeRequired: true };
+    }
+
+    if (nextStart === currentStart) {
+      return { unchanged: true };
+    }
+
+    // Follow-ups can be booked on the day of a meeting, before it starts, so a move must keep a
+    // follow-up after the meeting it follows, both ways.
+    const startOf = (entry) => Date.parse(entry?.meetingAt ?? '');
+    const source = existing.followUpOf
+      ? item.reservations.find((entry) => entry.id === existing.followUpOf)
+      : null;
+    const beforeSource = source?.status === 'reserved' && nextStart <= startOf(source);
+    const afterFollowUp = item.reservations.some(
+      (entry) => entry.followUpOf === existing.id && entry.status === 'reserved' && startOf(entry) <= nextStart,
+    );
+
+    if (beforeSource || afterFollowUp) {
+      return { followUpBeforeSource: true };
+    }
+
+    const meetingIso = new Date(nextStart).toISOString();
+    const meeting = moveMeeting ? await moveMeeting(item, existing, meetingIso) : null;
+
+    const updateRow = { meeting_at: meetingIso };
+    if (meeting) {
+      updateRow.zoom_meeting_id = meeting.id;
+      updateRow.zoom_join_url = meeting.joinUrl;
+      updateRow.zoom_password = meeting.password || null;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from('reservations')
+      .update(updateRow)
+      .eq('id', reservationId)
+      .eq('item_id', itemId)
+      .eq('status', 'reserved')
+      .select('id');
+
+    // Zero rows: cancelled or deleted meanwhile outside the lock (supabase-js reports no error).
+    const unchanged = !error && (!data || data.length === 0);
+
+    if (error || unchanged) {
+      if (meeting && deleteMeeting) {
+        await deleteMeeting(meeting.id).catch((cleanupError) =>
+          console.error('Could not remove Zoom meeting after failed reschedule:', cleanupError),
+        );
+      }
+      if (unchanged) {
+        return { invalidStatus: true };
+      }
+      throw new Error(error.message || 'Could not move the consultation.');
+    }
+
+    const updated = {
+      ...existing,
+      meetingAt: meetingIso,
+      ...(meeting
+        ? { zoomMeetingId: meeting.id, zoomJoinUrl: meeting.joinUrl, zoomPassword: meeting.password || null }
+        : {}),
+    };
+
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return { item, reservation: updated, previousMeetingAt: existing.meetingAt };
+  });
+}
+
+/**
+ * Books a follow-up to a scheduled consultation whose meeting is on `today` (a libraryTodayKey())
+ * or earlier: a new row for the same member and expert, written straight as `reserved` with its
+ * own Zoom meeting and `follow_up_of` set to the source. The one-open-request rule still holds,
+ * ignoring the source itself (so the follow-up can be booked on the day, before or after the
+ * call). The follow-up must start after the source meeting (`followUpBeforeSource`). A source
+ * without a member email (the account was deleted) is `invalidStatus`, before any Zoom meeting
+ * is made. `createMeeting` and `deleteMeeting` work as in scheduleConsultation.
  */
 export async function bookFollowUpConsultation(
   itemId,
@@ -1669,10 +2039,11 @@ export async function bookFollowUpConsultation(
     // A deleted member's held consultation stays as history with no email: no one to meet again.
     const sourceMember = typeof source.userEmail === 'string' ? source.userEmail.trim() : '';
 
+    // From the day of the meeting (Montréal dates), as canBookFollowUp shows it.
     if (
       source.status !== 'reserved' ||
       Number.isNaN(sourceStart) ||
-      sourceStart > Date.now() ||
+      compareDateKeys(libraryTodayKey(new Date(sourceStart)), today) > 0 ||
       !sourceMember
     ) {
       return { invalidStatus: true };
@@ -1697,6 +2068,12 @@ export async function bookFollowUpConsultation(
     }
 
     const meetingIso = new Date(normalizedMeetingAt).toISOString();
+
+    // Booked before the meeting on its day, a follow-up could otherwise land before it.
+    if (Date.parse(meetingIso) <= sourceStart) {
+      return { followUpBeforeSource: true };
+    }
+
     const reservation = {
       id: randomUUID(),
       startDate: today,
@@ -1774,8 +2151,24 @@ export function isConsultationMember(reservation, email) {
 }
 
 /**
- * Consultations visible on /account: requests the user made (`asMember`) and
- * requests addressed to them as the item's expert (`asExpert`, confirmed email only).
+ * Who hosts an item, trimmed, or null: for a mentor, their own address (expert_email) when set,
+ * else the item's owner (015); for equipment, books and rooms, the owner. Members' messages about
+ * a booking go to this address, and this account manages the bookings from /account.
+ */
+export function itemOwnerEmail(item) {
+  const expertEmail = item?.tag === 'expertise' ? normalizeOptionalText(item.expertEmail) : null;
+  return expertEmail ?? normalizeOptionalText(item?.ownerEmail);
+}
+
+/** This account email hosts the item (itemOwnerEmail; trimmed, case-insensitive). */
+export function isItemOwner(item, email) {
+  return emailsMatch(itemOwnerEmail(item), email);
+}
+
+/**
+ * Consultations visible on /account: requests the user made (`asMember`) and requests
+ * addressed to them as the item's host (`asExpert`, confirmed email only): the mentor, or the
+ * owner of a mentor item with no address of its own (itemOwnerEmail).
  */
 export async function listConsultationsForUser(email, { includeExpert = false } = {}) {
   const supabase = getSupabaseAdmin();
@@ -1793,7 +2186,7 @@ export async function listConsultationsForUser(email, { includeExpert = false } 
 
   for (const row of data ?? []) {
     const item = itemRowToApi(row, Array.isArray(row.reservations) ? row.reservations : []);
-    const isExpert = includeExpert && isConsultationExpert(item, email);
+    const isHost = includeExpert && isItemOwner(item, email);
 
     for (const reservation of item.reservations) {
       if (reservation.status === 'available') {
@@ -1802,7 +2195,7 @@ export async function listConsultationsForUser(email, { includeExpert = false } 
       if (isConsultationMember(reservation, email)) {
         asMember.push({ item, reservation });
       }
-      if (isExpert) {
+      if (isHost) {
         asExpert.push({ item, reservation });
       }
     }
@@ -1837,12 +2230,13 @@ export async function listReservationsForMember(email) {
 
   const supabase = getSupabaseAdmin();
   const cachedLocations = await loadItemLocations();
+  // Every reservation column (`*`, as the item loads do), so the room hours, purpose, staff flag
+  // and cancel details reach /account, and a migration not applied yet can't break the list.
+  // reservationRowToApi maps what the store uses; the server's serializer picks what /account sees.
   const selectReservations = (withLocation) =>
     supabase
       .from('reservations')
-      .select(
-        `id, item_id, start_date, end_date, status, user_email, inventory_items(id, title, slug, tag${withLocation ? ', location_id' : ''})`,
-      )
+      .select(`*, inventory_items(id, title, slug, tag${withLocation ? ', location_id' : ''})`)
       .ilike('user_email', literalLikePattern(memberEmail))
       .in('status', MEMBER_RESERVATION_STATUSES);
 
@@ -1891,6 +2285,200 @@ export async function listReservationsForMember(email) {
 
   entries.sort((a, b) => compareDateKeys(a.reservation.startDate, b.reservation.startDate));
   return entries;
+}
+
+/**
+ * Gives every item `email` owns (owner_email, case-insensitive) to `newOwnerEmail`. Called before
+ * an account is deleted, so a later account with that address can't become the host, and members'
+ * messages about those items reach the library instead. Resolves the number of items moved (0
+ * before 015).
+ */
+export async function reassignItemsOwnedBy(email, newOwnerEmail) {
+  const ownerEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!ownerEmail || emailsMatch(ownerEmail, newOwnerEmail)) {
+    return 0;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('id, owner_email')
+    .ilike('owner_email', literalLikePattern(ownerEmail));
+
+  if (error) {
+    if (isMissingColumnError(error, 'owner_email')) {
+      return 0;
+    }
+    throw new Error(error.message || 'Could not load the items this account owns.');
+  }
+
+  // The ilike only narrows the query; ownership is decided here.
+  const ids = (data ?? []).filter((row) => emailsMatch(row.owner_email, ownerEmail)).map((row) => row.id);
+
+  if (ids.length === 0) {
+    return 0;
+  }
+
+  const { error: updateError } = await supabase
+    .from('inventory_items')
+    .update({ owner_email: newOwnerEmail })
+    .in('id', ids);
+
+  if (updateError) {
+    throw new Error(updateError.message || 'Could not give the items a new owner.');
+  }
+
+  return ids.length;
+}
+
+let hostedReservationsNoticeLogged = false;
+
+/**
+ * Bookings of the equipment, books and rooms this account email owns (015's owner_email,
+ * compared case-insensitively), as `{ item, reservation }` with the full item and its location,
+ * earliest start first: pending, reserved, refused and cancelled. Mentors' consultations are in
+ * listConsultationsForUser instead. Empty before 015 (one warning).
+ */
+export async function listHostedReservationsForOwner(email) {
+  const ownerEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (!ownerEmail) {
+    return [];
+  }
+
+  const supabase = getSupabaseAdmin();
+  const [{ data, error }, cachedLocations] = await Promise.all([
+    supabase
+      .from('inventory_items')
+      .select('*, reservations(*)')
+      .neq('tag', 'expertise')
+      .ilike('owner_email', literalLikePattern(ownerEmail)),
+    loadItemLocations(),
+  ]);
+
+  if (error) {
+    if (isMissingColumnError(error, 'owner_email')) {
+      if (!hostedReservationsNoticeLogged) {
+        hostedReservationsNoticeLogged = true;
+        console.warn(
+          `[inventory] Items have no owner yet, so nobody sees their bookings on /account: apply ${ITEM_OWNERS_SCHEMA_MIGRATION} in the Supabase SQL Editor.`,
+        );
+      }
+      return [];
+    }
+    throw new Error(error.message || 'Could not load the bookings of your items.');
+  }
+
+  const rows = data ?? [];
+  const locations = await itemLocationsCovering(
+    cachedLocations,
+    rows.map((row) => row.location_id),
+  );
+  const entries = [];
+
+  for (const row of rows) {
+    const item = itemRowToApi(row, Array.isArray(row.reservations) ? row.reservations : [], locations);
+
+    // The ilike only narrows the query; ownership is decided here.
+    if (item.tag === 'expertise' || !emailsMatch(item.ownerEmail, ownerEmail)) {
+      continue;
+    }
+
+    for (const reservation of item.reservations) {
+      if (MEMBER_RESERVATION_STATUSES.includes(reservation.status)) {
+        entries.push({ item, reservation });
+      }
+    }
+  }
+
+  entries.sort((a, b) => compareDateKeys(a.reservation.startDate, b.reservation.startDate));
+  return entries;
+}
+
+/**
+ * The host (or staff) moves an equipment, book or room booking to new dates: `pending`, or
+ * `reserved` and not over (`endDate` on or after `today`, a libraryTodayKey()). The caller has
+ * checked the dates. `timeSlots` is a room's `HH:MM-HH:MM`: undefined keeps the current hours,
+ * null clears them; other tags ignore it. Resolves `{ item, reservation, previous }` (`previous`:
+ * the `{ startDate, endDate, timeSlots }` before), or `{ notFound }`, `{ isConsultation }`,
+ * `{ reservationNotFound }`, `{ invalidStatus }`, `{ unchanged }` (same dates and hours) or
+ * `{ collision }` (another pending or reserved booking of the item overlaps the new dates).
+ */
+export async function rescheduleReservation(itemId, reservationId, { startDate, endDate, timeSlots, today }) {
+  return withItemLock(itemId, async () => {
+    const item = await findInventoryItem(itemId);
+
+    if (!item) {
+      return { notFound: true };
+    }
+
+    if (item.tag === 'expertise') {
+      return { isConsultation: true };
+    }
+
+    const reservationIndex = item.reservations.findIndex((entry) => entry.id === reservationId);
+
+    if (reservationIndex === -1) {
+      return { reservationNotFound: true };
+    }
+
+    const existing = item.reservations[reservationIndex];
+
+    if (
+      (existing.status !== 'pending' && existing.status !== 'reserved') ||
+      (existing.status === 'reserved' && compareDateKeys(existing.endDate, today) < 0)
+    ) {
+      return { invalidStatus: true };
+    }
+
+    const currentTimeSlots = existing.timeSlots ?? null;
+    const changesTimes = item.tag === 'rooms' && timeSlots !== undefined;
+    const nextTimeSlots = changesTimes ? normalizeOptionalText(timeSlots) : currentTimeSlots;
+
+    if (
+      startDate === existing.startDate &&
+      endDate === existing.endDate &&
+      nextTimeSlots === currentTimeSlots
+    ) {
+      return { unchanged: true };
+    }
+
+    if (hasReservationCollision(item.reservations, startDate, endDate, reservationId)) {
+      return { collision: true };
+    }
+
+    const values = { start_date: startDate, end_date: endDate };
+    if (changesTimes) {
+      values.time_slots = nextTimeSlots;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from('reservations')
+      .update(values)
+      .eq('id', reservationId)
+      .eq('item_id', itemId)
+      .in('status', ['pending', 'reserved'])
+      .select('id');
+
+    if (error) {
+      throw new Error(error.message || 'Could not move the reservation.');
+    }
+
+    if (!data || data.length === 0) {
+      return { invalidStatus: true };
+    }
+
+    const updated = { ...existing, startDate, endDate, timeSlots: nextTimeSlots };
+    item.reservations = [...item.reservations];
+    item.reservations[reservationIndex] = updated;
+    return {
+      item,
+      reservation: updated,
+      previous: { startDate: existing.startDate, endDate: existing.endDate, timeSlots: currentTimeSlots },
+    };
+  });
 }
 
 /**
@@ -1964,11 +2552,12 @@ export async function cancelReservationForMember(reservationId, email, { today }
 }
 
 /**
- * Staff cancel an equipment, book or room reservation (deleting a member account): `pending`
- * or `reserved` → `cancelled`, `cancelled_by: 'admin'`, even once the loan has started. The row
- * stays as history. Consultations go through cancelConsultation instead (`isConsultation`).
+ * Staff cancel an equipment, book or room reservation (deleting a member account), or its host
+ * does from /account: `pending` or `reserved` → `cancelled`, `cancelled_by` = `cancelledBy`
+ * ('admin', or 'owner' for the host), even once the loan has started. The row stays as history.
+ * Consultations go through cancelConsultation instead (`isConsultation`).
  */
-export async function cancelReservationByAdmin(itemId, reservationId) {
+export async function cancelReservationByAdmin(itemId, reservationId, { cancelledBy = 'admin' } = {}) {
   return withItemLock(itemId, async () => {
     const item = await findInventoryItem(itemId);
 
@@ -1996,7 +2585,7 @@ export async function cancelReservationByAdmin(itemId, reservationId) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase
       .from('reservations')
-      .update({ status: 'cancelled', cancelled_at: cancelledAt, cancelled_by: 'admin' })
+      .update({ status: 'cancelled', cancelled_at: cancelledAt, cancelled_by: cancelledBy })
       .eq('id', reservationId)
       .eq('item_id', itemId);
 
@@ -2004,7 +2593,7 @@ export async function cancelReservationByAdmin(itemId, reservationId) {
       throw new Error(error.message || 'Could not cancel reservation.');
     }
 
-    const updated = { ...existing, status: 'cancelled', cancelledAt, cancelledBy: 'admin' };
+    const updated = { ...existing, status: 'cancelled', cancelledAt, cancelledBy };
     item.reservations = [...item.reservations];
     item.reservations[reservationIndex] = updated;
     return { item, reservation: updated, previousStatus: existing.status };

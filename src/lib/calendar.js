@@ -58,6 +58,61 @@ export function libraryTodayKey(now = new Date()) {
   }
 }
 
+const TIME_OF_DAY_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+let libraryDateTimeFormat;
+
+/** Montréal's offset from UTC at instant `ms`, in ms (-4 h in summer, -5 h in winter). */
+function libraryZoneOffsetMs(ms) {
+  libraryDateTimeFormat ??= new Intl.DateTimeFormat('en-CA', {
+    timeZone: LIBRARY_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(
+    libraryDateTimeFormat.formatToParts(new Date(ms)).map(({ type, value }) => [type, value]),
+  );
+  const wallAsUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return wallAsUtc - Math.floor(ms / 1000) * 1000;
+}
+
+/**
+ * The instant (epoch ms) of a Montréal wall time: a `YYYY-MM-DD` key and an `HH:MM` value, as
+ * room hours and pickup times are stored. NaN for bad input. The offset is read at a first guess
+ * and checked once more at the result, so it is right on both sides of a DST change; a time the
+ * spring change skips (2:00 to 2:59) lands an hour early, and one the autumn change repeats is its
+ * first (EDT) occurrence. Falls back to the runtime's own zone if it has no time zone data.
+ */
+export function libraryWallTimeToMs(dateKey, time) {
+  const match = TIME_OF_DAY_RE.exec(typeof time === 'string' ? time.trim() : '');
+  if (!parseDateKey(dateKey) || !match) {
+    return NaN;
+  }
+
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const wallAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+
+  try {
+    const firstGuess = wallAsUtc - libraryZoneOffsetMs(wallAsUtc);
+    return wallAsUtc - libraryZoneOffsetMs(firstGuess);
+  } catch {
+    return new Date(year, month - 1, day, hour, minute).getTime();
+  }
+}
+
 export function parseDateKey(key) {
   if (typeof key !== 'string' || !DATE_KEY_RE.test(key)) {
     return null;

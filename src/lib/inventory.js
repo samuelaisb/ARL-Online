@@ -40,9 +40,22 @@ const ERROR_CODE_KEYS = {
   consultation_already_held: 'account_consultations.already_held',
   follow_up_not_available: 'account_consultations.follow_up_not_available',
   follow_up_already_open: 'account_consultations.follow_up_already_open',
+  follow_up_before_meeting: 'account_consultations.follow_up_before_meeting',
+  consultation_reschedule_unavailable: 'account_consultations.reschedule_unavailable',
+  consultation_time_unchanged: 'account_consultations.reschedule_unchanged',
+  consultation_zoom_failed: 'account_consultations.reschedule_zoom_failed',
   reservation_already_started: 'account_reservations.already_started',
   reservation_not_active: 'account_reservations.not_active',
   reservation_action_limit: 'account_reservations.rate_limited',
+  reservation_not_pending: 'account_hosted.not_pending',
+  reservation_time_unchanged: 'account_hosted.reschedule_unchanged',
+  message_required: 'reservation_message.required',
+  message_too_long: 'reservation_message.too_long',
+  message_kind_invalid: 'reservation_message.send_error',
+  message_not_available: 'reservation_message.not_available',
+  message_no_recipient: 'reservation_message.no_recipient',
+  message_send_failed: 'reservation_message.send_failed',
+  message_rate_limited: 'reservation_message.rate_limited',
   account_suspended: 'auth.account_suspended',
   user_protected: 'admin.users_protected_error',
   password_reset_unavailable: 'admin.users_reset_unavailable',
@@ -220,6 +233,10 @@ export async function updateMentorProfile(payload) {
   return result.profile;
 }
 
+/**
+ * `{ item, handover }`. `handover` is `{ count, emailSent }` when the mentor got a new email
+ * address with open consultations (the server emailed it each one), otherwise null.
+ */
 export async function updateExpertiseItem(id, item) {
   const response = await fetch(`/api/inventory/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -233,7 +250,7 @@ export async function updateExpertiseItem(id, item) {
     throw new Error(imageWriteErrorMessage(response, result, 'admin.mentors_save_error'));
   }
 
-  return result.item;
+  return { item: result.item, handover: result.handover ?? null };
 }
 
 export async function deleteInventoryItem(id) {
@@ -456,6 +473,47 @@ export async function cancelConsultation(reservationId) {
   };
 }
 
+/**
+ * The mentor (or the item's host) moves a scheduled meeting that hasn't started. The server moves
+ * the Zoom meeting and emails the new time, with the optional `message` to the member. Returns
+ * `{ consultation, emailSent }` like scheduleConsultation.
+ */
+export async function rescheduleConsultation(reservationId, meetingAt, message = '') {
+  const response = await fetch(`/api/consultations/${encodeURIComponent(reservationId)}/reschedule`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ meetingAt, message: message.trim() }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'account_consultations.reschedule_error'));
+  }
+
+  return { consultation: result.consultation, emailSent: result.emailSent };
+}
+
+/**
+ * Emails the other side of a booking (any tag) from /account: a member writes to the item's host
+ * (`as` 'member'; `kind` 'new_time' words it as a request for another time), or the host writes
+ * to the member (`as` 'owner'). Reply-To is the sender, and nothing is stored. Returns
+ * `{ emailSent }`; a message that could not be sent throws.
+ */
+export async function sendReservationMessage(reservationId, { message = '', kind = 'message', as = 'member' } = {}) {
+  const response = await fetch(`/api/reservations/${encodeURIComponent(reservationId)}/message`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ message: message.trim(), kind, as }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'reservation_message.send_error'));
+  }
+
+  return { emailSent: result.emailSent };
+}
+
 /** The signed-in member's equipment, book and room reservations (all statuses but `available`). */
 export async function fetchAccountReservations() {
   const response = await fetch('/api/account/reservations', {
@@ -483,6 +541,79 @@ export async function cancelAccountReservation(reservationId) {
   }
 
   return result.reservation;
+}
+
+/**
+ * Bookings of the equipment, books and rooms the signed-in member hosts (owns), every status but
+ * `available`, each with the member's email. Empty for most members.
+ */
+export async function fetchHostedReservations() {
+  const response = await fetch('/api/account/hosted-reservations', {
+    headers: await authHeaders(),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'account_hosted.load_error'));
+  }
+
+  return Array.isArray(result.reservations) ? result.reservations : [];
+}
+
+/** One host action on a booking of their item; returns `{ reservation, emailSent }`. */
+async function postHostedReservationAction(reservationId, action, body, fallbackKey) {
+  const response = await fetch(
+    `/api/account/hosted-reservations/${encodeURIComponent(reservationId)}/${action}`,
+    { method: 'POST', headers: await authHeaders(true), body: JSON.stringify(body) },
+  );
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, fallbackKey));
+  }
+
+  return { reservation: result.reservation, emailSent: result.emailSent };
+}
+
+/** Host approves a pending request; the optional `message` goes into the member's email. */
+export function approveHostedReservation(reservationId, message = '') {
+  return postHostedReservationAction(
+    reservationId,
+    'approve',
+    { message: message.trim() },
+    'account_hosted.approve_error',
+  );
+}
+
+/** Host declines a pending request; the member is emailed. */
+export function refuseHostedReservation(reservationId) {
+  return postHostedReservationAction(reservationId, 'refuse', {}, 'account_hosted.refuse_error');
+}
+
+/**
+ * Host gives a pending or upcoming booking new dates (and, for a room, new hours as `HH:MM`;
+ * both empty keep a room booked without hours that way). The member is emailed the change.
+ */
+export function rescheduleHostedReservation(
+  reservationId,
+  { startDate, endDate, startTime = '', endTime = '', message = '' },
+) {
+  return postHostedReservationAction(
+    reservationId,
+    'reschedule',
+    { startDate, endDate, startTime, endTime, message: message.trim() },
+    'account_hosted.reschedule_error',
+  );
+}
+
+/** Host cancels a confirmed booking that hasn't ended; the member is emailed. */
+export function cancelHostedReservation(reservationId, message = '') {
+  return postHostedReservationAction(
+    reservationId,
+    'cancel',
+    { message: message.trim() },
+    'account_hosted.cancel_error',
+  );
 }
 
 export async function refuseReservation(itemId, reservationId) {

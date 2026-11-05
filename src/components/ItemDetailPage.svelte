@@ -258,14 +258,15 @@
       onItemUpdated?.(updatedItem);
     }
 
-    setStatus(
-      isExpertise
-        ? $t('consultation.request_pending')
-        : detail?.reservation?.status === 'pending'
+    // An expert's request form gives way to its own "Request sent" panel.
+    if (!isExpertise) {
+      setStatus(
+        detail?.reservation?.status === 'pending'
           ? $t('inventory.reservation_pending')
           : $t('inventory.reservation_complete'),
-      'success',
-    );
+        'success',
+      );
+    }
     onReserveSuccess?.(detail);
     clearReserveIntent();
   }
@@ -273,6 +274,9 @@
   $effect(() => {
     if (overlayDialog && !overlayDialog.open) {
       overlayDialog.showModal();
+      // showModal() puts focus on the first control, the Home link, where the browser can
+      // draw its ring. Start on the dialog itself (tabindex="-1"); Tab reaches the breadcrumb.
+      overlayDialog.focus();
     }
   });
 
@@ -302,13 +306,9 @@
 
   $effect(() => {
     const { id, at, pending } = reserveSuccessTick ?? {};
-    if (item && id === item.id && at) {
+    if (item && !isExpertise && id === item.id && at) {
       setStatus(
-        isExpertise
-          ? $t('consultation.request_pending')
-          : pending
-            ? $t('inventory.reservation_pending')
-            : $t('inventory.reservation_complete'),
+        pending ? $t('inventory.reservation_pending') : $t('inventory.reservation_complete'),
         'success',
       );
     }
@@ -341,6 +341,7 @@
 
 <dialog
   bind:this={overlayDialog}
+  tabindex="-1"
   class="modal modal--item-detail"
   class:modal--expertise={routeParams?.tag === 'expertise'}
   aria-label={item ? item.title : $t('item_detail.breadcrumb_home')}
@@ -445,28 +446,20 @@
             height="80"
             decoding="async"
           />
-          <h1>{item.title}</h1>
+          <div class="expert-detail__identity">
+            <h1>{item.title}</h1>
+            <p class="consultation-status expert-detail__online">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                <rect x="2.5" y="6" width="13" height="12" rx="2" />
+                <path d="M15.5 10.5l6-3.5v10l-6-3.5z" />
+              </svg>
+              {$t('item_detail.meetings_online')}
+            </p>
+          </div>
         </header>
         <p class="expert-detail__bio">{expertiseCopy.longText}</p>
-        <p class="item-location item-location--online">
-          <svg class="item-location__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-            <rect x="2" y="6" width="14" height="12" rx="2" />
-            <path d="m16 10 6-3v10l-6-3z" />
-          </svg>
-          {$t('item_detail.meetings_online')}
-        </p>
 
-        {#if statusMessage}
-          <p
-            class="card-status status {statusType} item-detail__status"
-            class:fade-out={fadeOut}
-            role="status"
-            aria-live="polite"
-          >
-            {statusMessage}
-          </p>
-        {/if}
-
+        <!-- No overlay status line here: the request form shows its own "Request sent". -->
         <aside
           bind:this={calendarColumn}
           class="item-detail__calendar"

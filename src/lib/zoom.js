@@ -1,6 +1,6 @@
 /**
  * Zoom Server-to-Server OAuth client (server only).
- * Creates and deletes consultation meetings hosted by ZOOM_HOST_USER (default "me").
+ * Creates, moves and deletes consultation meetings hosted by ZOOM_HOST_USER (default "me").
  */
 
 const ZOOM_OAUTH_URL = 'https://zoom.us/oauth/token';
@@ -163,6 +163,30 @@ export async function createConsultationMeeting({ topic, agenda, startTime }) {
     joinUrl: meeting.join_url,
     password: meeting.password ?? '',
   };
+}
+
+/**
+ * Moves a meeting to a new start (`startTime`, any ISO instant), keeping its id, join link and
+ * passcode. Resolves true, or false when Zoom no longer has it (404, or no id) so the caller can
+ * make a new one. Other errors throw (zoomRequest's, with `.status`).
+ */
+export async function moveConsultationMeeting(meetingId, { startTime }) {
+  if (!meetingId) {
+    return false;
+  }
+
+  try {
+    await zoomRequest('PATCH', `/meetings/${encodeURIComponent(meetingId)}`, {
+      start_time: toZoomLocalStartTime(startTime, CONSULTATION_TIMEZONE),
+      timezone: CONSULTATION_TIMEZONE,
+    });
+    return true;
+  } catch (error) {
+    if (error.status === 404) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 /** Deletes a meeting; already-deleted meetings (404) count as success. */

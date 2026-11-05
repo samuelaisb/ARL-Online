@@ -21,11 +21,15 @@ import {
   addDays,
   formatTimeOfDay,
   isConsultationHeld,
+  isReminderDue,
   isTestCancellation,
   parseRoomTimes,
+  RESERVATION_MESSAGE_MAX,
+  reservationStartsAt,
   TEST_CANCEL_WINDOW_MS,
   validateReservationDates,
   validateRoomRequest,
+  validateRoomTimes,
 } from './src/lib/reservation-rules.js';
 import {
   addReservation,
@@ -36,6 +40,7 @@ import {
   cancelReservationByAdmin,
   cancelReservationForMember,
   checkReservationSchema,
+  claimReminder,
   countPendingReservationsByEmail,
   createInventoryItem,
   createMentorProfileForEmail,
@@ -51,11 +56,15 @@ import {
   findReservationWithItem,
   isConsultationExpert,
   isConsultationMember,
+  isItemOwner,
   isReservationSchemaError,
   isValidInventoryImage,
   isValidTag,
+  itemOwnerEmail,
   listConsultationsForUser,
+  listHostedReservationsForOwner,
   listPendingGaEvents,
+  listReminderCandidates,
   listReservationsForMember,
   loadItemViewStats,
   moveGaEvent,
@@ -65,7 +74,13 @@ import {
   recordItemView,
   refuseReservation,
   removeReservation,
+  rescheduleConsultation,
+  rescheduleReservation,
   scheduleConsultation,
+  setReminderState,
+  releaseStaleReminderClaims,
+  reassignItemsOwnedBy,
+  settleReminder,
   updateMentorProfileForEmail,
 } from './src/lib/inventory-store.js';
 import {
@@ -74,6 +89,7 @@ import {
   createConsultationMeeting,
   deleteConsultationMeeting,
   isZoomConfigured,
+  moveConsultationMeeting,
 } from './src/lib/zoom.js';
 import {
   GA_BACKDATE_LIMIT_MS,
@@ -468,6 +484,7 @@ const APPROVAL_PICKUP_NOTICE_NO_ADDRESS =
 const APPROVAL_ROOM_NO_ADDRESS = "Reply to this email and we will send you the room's address.";
 
 const RESERVATION_CHANGES_NOTICE = 'If anything changes, just reply to this email.';
+const APPROVAL_SEE_YOU_AT_PICKUP = 'We look forward to seeing you at pickup.';
 
 const WELCOME_EQUIPMENT_PICKUP_NOTICE = `Equipment reservations are typically on Tuesdays at ${orgContact.address}.`;
 
@@ -490,6 +507,8 @@ const EMAIL_WHY = {
     'You are receiving this because you requested a consultation through the Activist Resource Library.',
   consultationExpert:
     'You are receiving this because your email is listed as the expert for an Activist Resource Library consultation.',
+  itemOwner:
+    'You are receiving this email because you are listed as the host of this item in the Activist Resource Library.',
   welcome:
     'You are receiving this because you created an Activist Resource Library member account.',
   passwordReset:
@@ -559,6 +578,17 @@ function consultationTitle(item) {
   return trimmedOrNull(item?.title) ?? 'Consultation';
 }
 
+/**
+ * A subject line from text that may hold a title or an address someone typed: control characters
+ * (a line break above all) become spaces, so the subject stays one line.
+ */
+function emailSubject(text) {
+  return String(text ?? '')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
+
 function bareEmailAddress(address) {
   const match = /<([^>]+)>/.exec(address ?? '');
   return (match ? match[1] : address ?? '').trim();
@@ -625,7 +655,13 @@ function icsTimestamp(date) {
   return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
-/** RFC 5545 invite (METHOD:REQUEST) or cancellation (METHOD:CANCEL) for a consultation. */
+/**
+ * RFC 5545 invite (METHOD:REQUEST) or cancellation (METHOD:CANCEL) for a consultation. The UID is
+ * the reservation's, so a new time, a handover or a cancellation updates the same calendar event.
+ * SEQUENCE is the time it was built, in seconds since 1970 (nothing stores a revision number):
+ * calendars apply the highest one for a UID, so a later invite or cancellation always replaces an
+ * earlier one, and an old email opened late can't undo it. It fits RFC 5545's integer until 2038.
+ */
 function buildConsultationIcs(item, reservation, method) {
   const start = new Date(reservation.meetingAt);
   const end = new Date(start.getTime() + CONSULTATION_DURATION_MINUTES * 60 * 1000);
@@ -647,7 +683,7 @@ function buildConsultationIcs(item, reservation, method) {
     `METHOD:${method}`,
     'BEGIN:VEVENT',
     `UID:${reservation.id}@activistresourcelibrary.com`,
-    `SEQUENCE:${cancelled ? 1 : 0}`,
+    `SEQUENCE:${Math.floor(Date.now() / 1000)}`,
     `DTSTAMP:${icsTimestamp(new Date())}`,
     `DTSTART:${icsTimestamp(start)}`,
     `DTEND:${icsTimestamp(end)}`,
@@ -741,11 +777,12 @@ function staffBookingAccountParagraph(account, what) {
  * as in buildStaffReservationEmailPayload) when staff booked the meeting themselves (admin
  * **Create Reservation**): the member never asked through the site, so their email says who
  * booked it, shows the topic staff typed, and asks them to log in or register with the address.
+ * `onlyExpert` leaves the member's email out (a mentor email handover).
  */
 function buildConsultationScheduledEmailPayloads(
   item,
   reservation,
-  { message = '', messageFrom = 'expert', account = null } = {},
+  { message = '', messageFrom = 'expert', account = null, onlyExpert = false } = {},
 ) {
   const title = consultationTitle(item);
   const fromStaff = messageFrom === 'admin';
@@ -763,7 +800,7 @@ function buildConsultationScheduledEmailPayloads(
   const memberEmail = trimmedOrNull(reservation.userEmail);
   const expertEmail = trimmedOrNull(item.expertEmail);
 
-  if (memberEmail) {
+  if (memberEmail && !onlyExpert) {
     const accountLabel = account === 'new' ? 'Create your account' : 'Your account panel';
     const cta = consultationCta(reservation, accountUrl, accountLabel);
     // A staff booking's account sentence is in the intro, so the inbox preview says what to do.
@@ -838,10 +875,97 @@ function buildConsultationScheduledEmailPayloads(
   return payloads;
 }
 
+/**
+ * A scheduled consultation moved to a new time (POST /api/consultations/:id/reschedule) → member
+ * and expert, each with the new time, the old one, the optional `message` and an updated invite
+ * (same UID, later SEQUENCE: calendars move the event). `messageFrom` as in
+ * buildConsultationScheduledEmailPayloads: 'expert' (the mentor) or 'admin' (staff, or the owner
+ * of a mentor with no address of its own, who has the library team's wording).
+ */
+function buildConsultationRescheduledEmailPayloads(
+  item,
+  reservation,
+  previousMeetingAt,
+  { message = '', messageFrom = 'expert' } = {},
+) {
+  const title = consultationTitle(item);
+  const fromStaff = messageFrom === 'admin';
+  const kind = reservation.followUpOf ? 'Follow-up consultation' : 'Consultation';
+  const newTime = formatMeetingDateTime(reservation.meetingAt);
+  const previousTime = previousMeetingAt ? formatMeetingDateTime(previousMeetingAt) : '';
+  const accountUrl = absoluteSiteUrl('/account');
+  const roomNotice = reservation.zoomJoinUrl ? ZOOM_ROOM_NOTICE : NO_ZOOM_NOTICE;
+  const subject = emailSubject(`${kind} moved: ${title}`);
+  const memberEmail = trimmedOrNull(reservation.userEmail);
+  const expertEmail = trimmedOrNull(item.expertEmail);
+  const payloads = [];
+
+  if (memberEmail) {
+    const who = fromStaff ? 'The Activist Resource Library team' : title;
+    const cta = consultationCta(reservation, accountUrl);
+    payloads.push(
+      buildConsultationEmail({
+        to: memberEmail,
+        subject,
+        heading: `${kind} moved`,
+        intro: `${who} moved your ${kind.toLowerCase()} to ${newTime}.`,
+        details: [
+          ['Consultation', title, itemPageUrl(item)],
+          ['New time', newTime],
+          ['Was', previousTime],
+          [fromStaff ? 'Message from the library team' : `Message from ${title}`, message],
+          ...zoomDetailRows(reservation),
+        ],
+        paragraphs: [
+          roomNotice,
+          'If the new time does not work for you, you can message them, suggest another time or cancel from your account panel.',
+        ],
+        cta,
+        links: cta.href === accountUrl ? [] : [['Your account panel', accountUrl]],
+        why: reservation.bookedByStaff ? EMAIL_WHY.staffConsultation : EMAIL_WHY.consultationMember,
+        funderStrip: true,
+        attachments: [buildConsultationIcs(item, reservation, 'REQUEST')],
+      }),
+    );
+  }
+
+  if (expertEmail) {
+    const member = memberEmail ?? 'a member';
+    const cta = consultationCta(reservation, accountUrl);
+    payloads.push(
+      buildConsultationEmail({
+        to: expertEmail,
+        subject,
+        heading: `${kind} moved`,
+        intro: fromStaff
+          ? `The Activist Resource Library team moved your ${kind.toLowerCase()} with ${member} to ${newTime}.`
+          : `You moved your ${kind.toLowerCase()} with ${member} to ${newTime}.`,
+        details: [
+          ['Consultation', title],
+          ['New time', newTime],
+          ['Was', previousTime],
+          ['Member', memberEmail],
+          [fromStaff ? 'Message from the library team to the member' : 'Your message to the member', message],
+          ...zoomDetailRows(reservation),
+        ],
+        paragraphs: [roomNotice],
+        cta,
+        links: cta.href === accountUrl ? [] : [['Your account panel', accountUrl]],
+        why: EMAIL_WHY.consultationExpert,
+        attachments: [buildConsultationIcs(item, reservation, 'REQUEST')],
+      }),
+    );
+  }
+
+  return payloads;
+}
+
 const CANCELLED_BY_LABELS = {
   member: 'the member',
   expert: 'the expert',
   admin: 'the Activist Resource Library team',
+  // A host cancelling a booking of their own item (rooms, equipment, books) from /account.
+  owner: 'the Activist Resource Library team',
 };
 
 /** Cancelled → member and expert; scheduled meetings also get an iCalendar CANCEL. */
@@ -1039,6 +1163,50 @@ async function sendConsultationScheduledEmails(item, reservation, messageOptions
   );
 }
 
+/** Member and expert "moved", each with the new time and the updated `.ics`. */
+async function sendConsultationRescheduledEmails(item, reservation, previousMeetingAt, messageOptions) {
+  return sendEmailPayloads(
+    buildConsultationRescheduledEmailPayloads(item, reservation, previousMeetingAt, messageOptions),
+    'Consultation moved',
+  );
+}
+
+/**
+ * Staff gave a mentor a new email address (`/admin` → Mentors → Edit). Their consultations
+ * follow the item, but the emails about them went to the old address, or nowhere. The new
+ * address gets those emails again: "New consultation request" for each pending request, and
+ * the expert's "Consultation scheduled" (Zoom link and `.ics`) for each meeting not yet held.
+ * Members are not emailed. Returns null when the address didn't change (case-insensitive), was
+ * cleared, or nothing is open; otherwise `{ count, emailSent }`.
+ */
+async function sendMentorEmailHandover(item, previousExpertEmail) {
+  const expertEmail = trimmedOrNull(item?.expertEmail);
+  if (!expertEmail || emailsMatch(expertEmail, previousExpertEmail)) {
+    return null;
+  }
+
+  const open = (item.reservations ?? []).filter(
+    (reservation) =>
+      reservation.status === 'pending' ||
+      (reservation.status === 'reserved' && reservation.meetingAt && !isConsultationHeld(reservation)),
+  );
+  if (open.length === 0) {
+    return null;
+  }
+
+  // Paced rounds, as for an admin item delete, so a busy mentor doesn't hit Resend's rate limit.
+  // The callback is async so a builder that throws fails its round, not the saved edit.
+  const emailSent = await settleNotificationRounds('Mentor email handover', open, 1, async (reservation) =>
+    sendEmailPayloads(
+      reservation.status === 'pending'
+        ? [buildExpertRequestEmailPayload(item, reservation)]
+        : buildConsultationScheduledEmailPayloads(item, reservation, { onlyExpert: true }),
+      'Mentor email handover',
+    ),
+  );
+  return { count: open.length, emailSent: emailSent === true };
+}
+
 /** "Apathy is Boring\n5310 Boulevard Saint-Laurent\nMontréal QC H2T 1S1": the email's Where row. */
 function itemPlaceLines(location) {
   return [location.name, location.streetAddress, locationAreaLine(location)]
@@ -1062,7 +1230,7 @@ function confirmedReservationEmailParts(item) {
   } else {
     paragraphs = [
       where ? APPROVAL_PICKUP_NOTICE : APPROVAL_PICKUP_NOTICE_NO_ADDRESS,
-      'We look forward to seeing you at pickup.',
+      APPROVAL_SEE_YOU_AT_PICKUP,
     ];
   }
 
@@ -1239,10 +1407,12 @@ function isUpcomingMemberReservation(reservation, today) {
 }
 
 /**
- * Admin deleted the reservation, or its whole item → the member. `today` (a libraryTodayKey())
- * tells a booking still ahead of its pickup from a loan already under way.
+ * Admin deleted the reservation, or its whole item, or the item's host cancelled it from /account
+ * → the member. `today` (a libraryTodayKey()) tells a booking still ahead of its pickup from a
+ * loan already under way; `reservation.status` is the one it had before. `message`: the host's
+ * optional note (staff deletes have none).
  */
-function buildReservationCancelledByTeamEmailPayload(item, reservation, today) {
+function buildReservationCancelledByTeamEmailPayload(item, reservation, today, message = '') {
   const to = trimmedOrNull(reservation?.userEmail);
   if (!to) {
     return null;
@@ -1266,6 +1436,7 @@ function buildReservationCancelledByTeamEmailPayload(item, reservation, today) {
     subject: `Reservation cancelled: ${title}`,
     heading: 'Reservation cancelled',
     intro,
+    details: [['Message from the library team', message]],
     paragraphs: [
       pickupNotice,
       'You are welcome to choose other dates or another item from the library. If you have questions, just reply to this email.',
@@ -1277,8 +1448,8 @@ function buildReservationCancelledByTeamEmailPayload(item, reservation, today) {
 }
 
 /** Resolves false when the reservation has no member email or the send failed (logged). */
-async function sendReservationCancelledByTeamEmail(item, reservation, today) {
-  const emailPayload = buildReservationCancelledByTeamEmailPayload(item, reservation, today);
+async function sendReservationCancelledByTeamEmail(item, reservation, today, message = '') {
+  const emailPayload = buildReservationCancelledByTeamEmailPayload(item, reservation, today, message);
 
   if (!emailPayload) {
     console.warn(`Skipping cancellation email: no member email on reservation ${reservation?.id}.`);
@@ -1286,6 +1457,325 @@ async function sendReservationCancelledByTeamEmail(item, reservation, today) {
   }
 
   return sendEmailPayloads([emailPayload], 'Reservation cancelled');
+}
+
+/**
+ * The host of a room, equipment or book moved a booking from /account → the member. A pending
+ * request stays a request; a confirmed booking shows where to go again, as its approval did.
+ * `previous` is `{ startDate, endDate, timeSlots }` before the move, `message` the host's optional
+ * note, and `today` a libraryTodayKey(): members can cancel online only before the first day.
+ * Hosts are staff today, so the email speaks for the library team.
+ */
+function buildReservationRescheduledEmailPayload(item, reservation, previous, { message = '', today } = {}) {
+  const to = trimmedOrNull(reservation?.userEmail);
+  if (!to) {
+    return null;
+  }
+
+  const title = trimmedOrNull(item?.title) ?? 'Inventory item';
+  const isRoom = item.tag === 'rooms';
+  const pending = reservation.status === 'pending';
+  const confirmed = pending ? null : confirmedReservationEmailParts(item);
+  const location = confirmed?.location ?? null;
+  const directions = confirmed?.directions ?? '';
+  const datesChanged =
+    previous.startDate !== reservation.startDate || previous.endDate !== reservation.endDate;
+  const timesChanged = isRoom && (previous.timeSlots ?? null) !== (reservation.timeSlots ?? null);
+  let change = 'dates';
+  if (timesChanged) {
+    change = datesChanged ? 'dates and times' : 'times';
+  }
+  const what = pending ? 'request' : 'reservation';
+  const previousTimes = formatRoomTimes(item, previous);
+  const started = !pending && compareDateKeys(reservation.startDate ?? '', today) <= 0;
+  let changeNotice = `If the new ${change} do not work for you, just reply to this email.`;
+  if (pending) {
+    changeNotice = `If the new ${change} do not work for you, you can withdraw your request from your account panel or reply to this email.`;
+  } else if (compareDateKeys(reservation.startDate ?? '', today) > 0) {
+    changeNotice = `If the new ${change} do not work for you, you can cancel from your account panel or reply to this email.`;
+  }
+
+  return buildConsultationEmail({
+    to,
+    subject: emailSubject(`New ${change} for your ${what}: ${title}`),
+    heading: `Your ${what} has new ${change}`,
+    intro: `The Activist Resource Library team changed the ${change} of your ${pending ? 'reservation request' : 'reservation'} for ${title}.`,
+    details: [
+      [isRoom ? 'Room' : 'Item', title, itemPageUrl(item)],
+      ['New dates', formatReservationDates(reservation)],
+      ['New times', formatRoomTimes(item, reservation)],
+      ['Was', `${formatReservationDates(previous)}${previousTimes ? `, ${previousTimes}` : ''}`],
+      ['Where', confirmed?.where ?? ''],
+      ['Getting there', location?.transitNoteEn ?? ''],
+      ['Message from the library team', message],
+    ],
+    // changeNotice replaces the rooms' "just reply" line; a loan already under way has had its
+    // pickup (the Tuesday hours line stays: drop-offs keep them).
+    paragraphs: [
+      ...(confirmed?.paragraphs ?? []).filter(
+        (paragraph) =>
+          paragraph !== RESERVATION_CHANGES_NOTICE && (!started || paragraph !== APPROVAL_SEE_YOU_AT_PICKUP),
+      ),
+      changeNotice,
+    ],
+    cta: { label: 'See your reservation', href: absoluteSiteUrl('/account') },
+    // In links, not on the Where row, so the plain-text part carries the URL too.
+    links: [
+      ...(directions ? [['Get directions', directions]] : []),
+      ['Browse the library', absoluteSiteUrl('/')],
+    ],
+    why: reservation.bookedByStaff ? EMAIL_WHY.staffReservation : EMAIL_WHY.reservation,
+  });
+}
+
+/** Resolves false when the reservation has no member email or the send failed (logged). */
+async function sendReservationRescheduledEmail(item, reservation, previous, options) {
+  const emailPayload = buildReservationRescheduledEmailPayload(item, reservation, previous, options);
+
+  if (!emailPayload) {
+    console.warn(`Skipping new dates email: no member email on reservation ${reservation?.id}.`);
+    return false;
+  }
+
+  return sendEmailPayloads([emailPayload], 'Reservation moved');
+}
+
+/**
+ * The day-before reminder of a confirmed booking (sendDueReservationReminders, about 24 hours
+ * before reservationStartsAt). Equipment, books and rooms → the member, with where and when as in
+ * the approval. Consultations → member and expert, with the Zoom link; no `.ics`, the invite went
+ * out when it was scheduled. Each only with an address: an empty array when nobody has one.
+ */
+function buildReservationReminderEmailPayloads(item, reservation) {
+  const accountUrl = absoluteSiteUrl('/account');
+  const memberEmail = trimmedOrNull(reservation?.userEmail);
+
+  if (item?.tag === 'expertise') {
+    const title = consultationTitle(item);
+    const kind = reservation.followUpOf ? 'follow-up consultation' : 'consultation';
+    const meetingTime = formatMeetingDateTime(reservation.meetingAt);
+    const roomNotice = reservation.zoomJoinUrl ? ZOOM_ROOM_NOTICE : NO_ZOOM_NOTICE;
+    const subject = emailSubject(`Your consultation is coming up: ${title}`);
+    const expertEmail = trimmedOrNull(item.expertEmail);
+    const cta = consultationCta(reservation, accountUrl);
+    const links = cta.href === accountUrl ? [] : [['Your account panel', accountUrl]];
+    const payloads = [];
+
+    if (memberEmail) {
+      payloads.push(
+        buildConsultationEmail({
+          to: memberEmail,
+          subject,
+          heading: 'Your consultation is coming up!',
+          intro: `Just a reminder: your ${kind} with ${title} is on ${meetingTime}.`,
+          details: [
+            ['Consultation', title, itemPageUrl(item)],
+            ['When', meetingTime],
+            ...zoomDetailRows(reservation),
+          ],
+          paragraphs: [
+            roomNotice,
+            `Need to change something? From your account panel you can message ${title}, suggest a new time or cancel.`,
+          ],
+          cta,
+          links,
+          why: reservation.bookedByStaff ? EMAIL_WHY.staffConsultation : EMAIL_WHY.consultationMember,
+          funderStrip: true,
+        }),
+      );
+    }
+
+    if (expertEmail) {
+      payloads.push(
+        buildConsultationEmail({
+          to: expertEmail,
+          subject,
+          heading: 'Your consultation is coming up!',
+          intro: `Just a reminder: your ${kind} with ${memberEmail ?? 'a member'} is on ${meetingTime}.`,
+          details: [
+            ['Consultation', title],
+            ['When', meetingTime],
+            ['Member', memberEmail],
+            ...zoomDetailRows(reservation),
+          ],
+          paragraphs: [
+            roomNotice,
+            'Need to change something? From your account panel you can message the member, choose a new time or cancel.',
+          ],
+          cta,
+          links,
+          why: EMAIL_WHY.consultationExpert,
+        }),
+      );
+    }
+
+    return payloads;
+  }
+
+  if (!memberEmail) {
+    return [];
+  }
+
+  const title = trimmedOrNull(item?.title) ?? 'Inventory item';
+  const { isRoom, location, where, paragraphs, directions } = confirmedReservationEmailParts(item);
+  const dates = formatReservationDates(reservation);
+  const times = formatRoomTimes(item, reservation);
+  const intro = isRoom
+    ? endSentence(
+        `Just a reminder: ${title} is booked for you ${reservation.startDate === reservation.endDate ? 'on' : 'from'} ${dates}${times ? `, ${times}` : ''}`,
+      )
+    : `Just a reminder: your pickup for ${title} is on ${formatReadableDate(reservation.startDate)}.`;
+
+  return [
+    buildConsultationEmail({
+      to: memberEmail,
+      subject: emailSubject(`Your reservation is coming up: ${title}`),
+      heading: 'Your reservation is coming up!',
+      intro,
+      details: [
+        [isRoom ? 'Room' : 'Item', title, itemPageUrl(item)],
+        ['Dates', dates],
+        ['Times', times],
+        ['Where', where],
+        ['Getting there', location?.transitNoteEn ?? ''],
+      ],
+      // The account panel line replaces the rooms' "just reply" one.
+      paragraphs: [
+        ...paragraphs.filter((paragraph) => paragraph !== RESERVATION_CHANGES_NOTICE),
+        'Need to change something? From your account panel you can message the host, suggest a new time or cancel before the first day.',
+      ],
+      cta: { label: 'See your reservation', href: accountUrl },
+      // In links, not on the Where row, so the plain-text part carries the URL too.
+      links: [
+        ...(directions ? [['Get directions', directions]] : []),
+        ['Browse the library', absoluteSiteUrl('/')],
+      ],
+      why: reservation.bookedByStaff ? EMAIL_WHY.staffReservation : EMAIL_WHY.reservation,
+    }),
+  ];
+}
+
+const RESERVATION_MESSAGE_NOUNS = { expertise: 'consultation', rooms: 'room reservation' };
+
+/** Adds the closing period unless the sentence already ends with one ("… 12:00 p.m."). */
+function endSentence(text) {
+  return text.endsWith('.') ? text : `${text}.`;
+}
+
+/**
+ * A message about a booking typed on /account (POST /api/reservations/:id/message): emailed to
+ * `to`, never stored. `from` 'member': the member writes to the host (itemOwnerEmail, or the
+ * library inbox), `kind` 'message' or 'new_time' (a time they'd prefer; nothing moves until the
+ * host moves it). `from` 'owner': the host writes to the member. Reply-To is `senderEmail`, so a
+ * reply goes straight to them (as the contact form's does). `senderIsExpert` (the mentor) and
+ * `senderIsStaff` choose how a host is named: staff speak as the library team, anyone else
+ * hosting a mentor as the mentor (consultationHostVoice).
+ */
+function buildReservationMessageEmailPayload({
+  item,
+  reservation,
+  kind,
+  from,
+  senderEmail,
+  to,
+  message,
+  senderIsExpert = false,
+  senderIsStaff = false,
+}) {
+  const isConsultation = item.tag === 'expertise';
+  const title = isConsultation ? consultationTitle(item) : trimmedOrNull(item.title) ?? 'Inventory item';
+  const noun = RESERVATION_MESSAGE_NOUNS[item.tag] ?? 'reservation';
+  const scheduled = isConsultation && Boolean(reservation.meetingAt);
+  // Follows the noun in the intro ("their consultation on …"); a meeting time already ends in
+  // "(Montreal time)", so no parentheses around it.
+  let when;
+  let whenRows;
+  if (isConsultation) {
+    when = scheduled
+      ? ` on ${formatMeetingDateTime(reservation.meetingAt)}`
+      : `, requested on ${formatReadableDate(reservation.startDate)}`;
+    whenRows = [
+      scheduled
+        ? ['When', formatMeetingDateTime(reservation.meetingAt)]
+        : ['Requested on', formatReadableDate(reservation.startDate)],
+    ];
+  } else {
+    const dates = formatReservationDates(reservation);
+    const times = formatRoomTimes(item, reservation);
+    when = ` for ${times ? `${dates}, ${times}` : dates}`;
+    whenRows = [
+      ['Dates', dates],
+      ['Times', times],
+    ];
+  }
+  let itemLabel = 'Item';
+  if (isConsultation) {
+    itemLabel = 'Consultation';
+  } else if (item.tag === 'rooms') {
+    itemLabel = 'Room';
+  }
+  const itemRow = [itemLabel, title, itemPageUrl(item)];
+  const cta = { label: 'Your account panel', href: absoluteSiteUrl('/account') };
+  const replyNotice = 'Reply to this email to answer them directly.';
+  let payload;
+
+  if (from === 'member') {
+    const suggestion = kind === 'new_time';
+    let moveNotice = '';
+    if (suggestion) {
+      moveNotice =
+        isConsultation && reservation.status === 'pending'
+          ? 'To schedule it, pick the time from your account panel; you will both get the invitation by email.'
+          : 'To move it, choose the new time from your account panel; they will get an email with it.';
+    }
+    let status = 'Waiting for review';
+    if (reservation.status === 'reserved') {
+      status = isConsultation ? 'Scheduled' : 'Confirmed';
+    }
+    payload = buildConsultationEmail({
+      to,
+      subject: emailSubject(suggestion ? `New time suggested for ${title}` : `New message about ${title}`),
+      heading: suggestion ? 'A new time was suggested' : 'New message from a member',
+      intro: endSentence(
+        suggestion
+          ? `${senderEmail} would like a new time for their ${noun}${when}`
+          : `${senderEmail} sent you a message about their ${noun}${when}`,
+      ),
+      details: [
+        itemRow,
+        ...whenRows,
+        ['Status', status],
+        ['From', senderEmail, `mailto:${senderEmail}`],
+        [suggestion ? 'Their suggestion' : 'Message', message],
+      ],
+      paragraphs: [replyNotice, moveNotice],
+      cta,
+      // The mentor gets the expert's line; anyone else hosting it (or the library inbox), the host's.
+      why: isConsultation && emailsMatch(to, item.expertEmail) ? EMAIL_WHY.consultationExpert : EMAIL_WHY.itemOwner,
+    });
+  } else {
+    let senderLabel = senderIsStaff ? 'The Activist Resource Library team' : `The host of ${title}`;
+    const asMentor = isConsultation && (senderIsExpert || !senderIsStaff);
+    if (isConsultation) {
+      senderLabel = asMentor ? title : 'The Activist Resource Library team';
+    }
+    let why = reservation.bookedByStaff ? EMAIL_WHY.staffReservation : EMAIL_WHY.reservation;
+    if (isConsultation) {
+      why = reservation.bookedByStaff ? EMAIL_WHY.staffConsultation : EMAIL_WHY.consultationMember;
+    }
+    payload = buildConsultationEmail({
+      to,
+      subject: emailSubject(`Message about your ${noun}: ${title}`),
+      heading: asMentor ? `A message from ${title}` : `A message about your ${noun}`,
+      intro: endSentence(`${senderLabel} sent you a message about your ${noun}${when}`),
+      details: [itemRow, ...whenRows, ['Message', message]],
+      paragraphs: [replyNotice],
+      cta,
+      why,
+    });
+  }
+
+  return { ...payload, replyTo: senderEmail };
 }
 
 function isWithinWelcomeEmailSignupWindow(user) {
@@ -1504,6 +1994,32 @@ async function createZoomMeetingForConsultation(item, reservation) {
   }
 }
 
+/**
+ * rescheduleConsultation's `moveMeeting`: moves the consultation's Zoom meeting to `meetingIso`
+ * and resolves null (same id, link and passcode). With no meeting yet (scheduled while Zoom was
+ * off) or one Zoom no longer has, it makes a new one and resolves its `{ id, joinUrl, password }`.
+ * Without Zoom, null: the time moves and the meeting, if any, stays. A Zoom error throws
+ * `zoomFailed`, and nothing is saved.
+ */
+async function moveZoomMeetingForConsultation(item, reservation, meetingIso) {
+  if (!isZoomConfigured()) {
+    console.warn(`Zoom is not configured; consultation ${reservation.id} moved without its meeting.`);
+    return null;
+  }
+
+  let moved;
+  try {
+    moved = await moveConsultationMeeting(reservation.zoomMeetingId, { startTime: meetingIso });
+  } catch (error) {
+    console.error(`Zoom meeting move failed for consultation ${reservation.id}:`, error);
+    const wrapped = new Error('Could not move the Zoom meeting.');
+    wrapped.zoomFailed = true;
+    throw wrapped;
+  }
+
+  return moved ? null : createZoomMeetingForConsultation(item, { ...reservation, meetingAt: meetingIso });
+}
+
 async function removeZoomMeeting(reservation) {
   if (!reservation?.zoomMeetingId || !isZoomConfigured()) {
     return;
@@ -1603,11 +2119,27 @@ async function runScheduleConsultation({ itemId, reservationId, meetingAt, messa
     };
   }
 
+  // Scheduled within a day of the meeting: this email is its reminder.
+  await setReminderState(result.reservation.id, reservationStartsAt(result.reservation, result.item.tag));
   const emailSent = await settleNotifications('Consultation scheduled', [
     sendConsultationScheduledEmails(result.item, result.reservation, { message, messageFrom }),
   ]);
+  await restoreReminderIfNotEmailed(result.reservation, result.item.tag, emailSent);
 
   return { status: 200, result, emailSent };
+}
+
+/**
+ * setReminderState marks a booking confirmed or moved less than a day ahead 'skipped', because
+ * the email about it stands in for the reminder. When that email didn't all go out, the reminder
+ * is due again instead, so the member still hears about it before it starts.
+ */
+async function restoreReminderIfNotEmailed(reservation, tag, emailSent) {
+  if (emailSent !== true && reservation?.status === 'reserved') {
+    await setReminderState(reservation.id, reservationStartsAt(reservation, tag), Date.now(), {
+      notified: false,
+    });
+  }
 }
 
 /** Account-panel view of one consultation; each role only sees the other party's email. */
@@ -1634,7 +2166,11 @@ function serializeConsultationForUser({ item, reservation }, role) {
   };
 }
 
-/** Resolves the caller's relationship to a consultation (member, expert, admin). */
+/**
+ * Resolves the caller's relationship to a consultation (member, expert, owner, admin). `isOwner`:
+ * the item's owner (015) when the mentor has no address of their own (itemOwnerEmail), who
+ * manages its consultations as the mentor would, with the library team's wording.
+ */
 async function loadConsultationForUser(user, reservationId) {
   const found = await findReservationWithItem(reservationId);
 
@@ -1645,13 +2181,31 @@ async function loadConsultationForUser(user, reservationId) {
   const email = user?.email ?? '';
   const isMember = isConsultationMember(found.reservation, email);
   const isExpert = isConfirmedUser(user) && isConsultationExpert(found.item, email);
+  const isOwner = isConfirmedUser(user) && !isExpert && isItemOwner(found.item, email);
   const isAdmin = isAdminUser(user);
 
-  if (!isMember && !isExpert && !isAdmin) {
+  if (!isMember && !isExpert && !isOwner && !isAdmin) {
     return null;
   }
 
-  return { ...found, isMember, isExpert, isAdmin };
+  return { ...found, isMember, isExpert, isOwner, isAdmin };
+}
+
+/** Who acted for the mentor (a loadConsultationForUser result), for logs and Slack. */
+function consultationHostRole(found) {
+  if (found.isExpert) {
+    return 'expert';
+  }
+  return found.isOwner ? 'owner' : 'admin';
+}
+
+/**
+ * How emails word an action taken for the mentor: 'expert' (in the mentor's name) or 'admin'
+ * (the library team), as `messageFrom` and `cancelledBy`. Staff speak for the library; an owner
+ * who isn't staff (a member whose own profile lost its expert email) speaks as the mentor.
+ */
+function consultationHostVoice(found) {
+  return found.isExpert || (found.isOwner && !found.isAdmin) ? 'expert' : 'admin';
 }
 
 function reservationItemPayload(item) {
@@ -1883,7 +2437,8 @@ const STAFF_BOOKING_GA_EVENTS_HERE =
   isGaMeasurementProtocolConfigured() &&
   (process.env.NODE_ENV === 'production' || Boolean(process.env.K_SERVICE));
 const GA_EVENT_PASS_INTERVAL_MS = 10 * 60 * 1000;
-const GA_EVENT_PASS_WAIT_MS = 3000;
+// How long a request waits for the passes it started (GA events and reminders, together).
+const PASS_REQUEST_WAIT_MS = 3000;
 let gaEventPassStartedAt = 0;
 let gaEventPass = null;
 
@@ -1929,24 +2484,128 @@ async function sendDueStaffBookingEvents(now = Date.now()) {
   }
 }
 
+// Day-before reminders (015): about 24 hours before a confirmed booking starts
+// (reservationStartsAt), the member gets "Your reservation is coming up!", and for a consultation
+// the mentor too. A booking confirmed or moved less than a day ahead gets none (setReminderState:
+// that email was its reminder). Only the deployed service sends them, as with the GA events
+// (local .env is production), and only with Resend configured.
+const RESERVATION_REMINDERS_HERE =
+  Boolean(apiKey) && (process.env.NODE_ENV === 'production' || Boolean(process.env.K_SERVICE));
+const REMINDER_PASS_INTERVAL_MS = 10 * 60 * 1000;
+// No new claim after this much of a pass: a consultation's two paced emails still fit in the
+// request's 3 s wait.
+const REMINDER_PASS_CLAIM_WINDOW_MS = 1500;
+let reminderPassStartedAt = 0;
+let reminderPass = null;
+
 /**
- * No timers: Cloud Run throttles CPU between requests, so the pass runs on whatever request comes
- * in, at most every 10 minutes, and that request waits for it (3 s at most; a longer pass carries
- * on, and the claims make it safe to cut short).
+ * One pass over the confirmed bookings whose reminder is due. Each is claimed (`reminder_email`
+ * null → 'sending', so two passes can't both send it), then read again in full: no longer
+ * confirmed, or moved out of the window, → released (null; a new time is picked up when it is
+ * due); already started → 'skipped'. Its emails go one at a time, paced for Resend's rate limit:
+ * any accepted → 'sent'; none → released for the next pass; nobody to email → 'skipped'.
+ */
+async function sendDueReservationReminders(now = Date.now()) {
+  await releaseStaleReminderClaims(now);
+  const due = await listReminderCandidates(now);
+  let lastSentAt = 0;
+
+  for (const candidate of due) {
+    // Time-boxed so the pass ends inside the request that waits for it (Cloud Run throttles CPU
+    // once the response is out); the rest stay unclaimed for the next pass, 10 minutes later.
+    if (Date.now() - now > REMINDER_PASS_CLAIM_WINDOW_MS) {
+      break;
+    }
+
+    if (!(await claimReminder(candidate.id))) {
+      continue;
+    }
+
+    let outcome = null;
+    try {
+      const found = await findReservationWithItem(candidate.id);
+      const startsAt =
+        found?.reservation.status === 'reserved'
+          ? reservationStartsAt(found.reservation, found.item.tag)
+          : NaN;
+
+      if (startsAt <= now) {
+        outcome = 'skipped';
+      } else if (isReminderDue(startsAt, now)) {
+        const payloads = buildReservationReminderEmailPayloads(found.item, found.reservation);
+        let accepted = 0;
+        for (const payload of payloads) {
+          const wait = lastSentAt + EMAIL_PACING_MS_PER_EMAIL - Date.now();
+          if (wait > 0) {
+            await delay(wait);
+          }
+          lastSentAt = Date.now();
+          if (await sendEmailPayloads([payload], 'Reservation reminder')) {
+            accepted += 1;
+          }
+        }
+
+        if (payloads.length === 0) {
+          outcome = 'skipped';
+        } else if (accepted > 0) {
+          outcome = 'sent';
+        }
+      }
+    } catch (error) {
+      console.error(`[reminder] Could not send the reminder for reservation ${candidate.id}, will retry:`, error);
+    }
+
+    try {
+      await settleReminder(candidate.id, outcome);
+    } catch (error) {
+      // Left at 'sending': releaseStaleReminderClaims hands it back after half an hour.
+      console.error(`[reminder] Could not settle the reminder for reservation ${candidate.id}:`, error);
+    }
+    if (outcome === 'sent') {
+      console.info(`[reminder] Sent reminder for reservation ${candidate.id}.`);
+    }
+  }
+}
+
+/**
+ * No timers: Cloud Run throttles CPU between requests, so each pass runs on whatever request comes
+ * in, at most every 10 minutes, and that request waits for the passes it started (3 s at most in
+ * all; a longer pass carries on, and the claims make it safe to cut short).
  */
 app.use(async (_req, _res, next) => {
+  const now = Date.now();
+  const started = [];
+
   if (
     STAFF_BOOKING_GA_EVENTS_HERE &&
     !gaEventPass &&
-    Date.now() - gaEventPassStartedAt >= GA_EVENT_PASS_INTERVAL_MS
+    now - gaEventPassStartedAt >= GA_EVENT_PASS_INTERVAL_MS
   ) {
-    gaEventPassStartedAt = Date.now();
+    gaEventPassStartedAt = now;
     gaEventPass = sendDueStaffBookingEvents()
       .catch((error) => console.error('[ga] Staff booking events pass failed:', error))
       .finally(() => {
         gaEventPass = null;
       });
-    await Promise.race([gaEventPass, delay(GA_EVENT_PASS_WAIT_MS, undefined, { ref: false })]);
+    started.push(gaEventPass);
+  }
+
+  if (
+    RESERVATION_REMINDERS_HERE &&
+    !reminderPass &&
+    now - reminderPassStartedAt >= REMINDER_PASS_INTERVAL_MS
+  ) {
+    reminderPassStartedAt = now;
+    reminderPass = sendDueReservationReminders()
+      .catch((error) => console.error('[reminder] Reservation reminders pass failed:', error))
+      .finally(() => {
+        reminderPass = null;
+      });
+    started.push(reminderPass);
+  }
+
+  if (started.length > 0) {
+    await Promise.race([Promise.allSettled(started), delay(PASS_REQUEST_WAIT_MS, undefined, { ref: false })]);
   }
   next();
 });
@@ -2116,7 +2775,8 @@ app.post('/api/inventory', imageUploadJson, requireAuth, requireAdmin, async (re
 
   try {
     await ensureInventory();
-    const savedItem = await createInventoryItem(item);
+    // The admin who adds it owns it (015): its bookings are theirs to manage on /account.
+    const savedItem = await createInventoryItem({ ...item, ownerEmail: req.user.email.trim() });
     auditAdminAction(req, 'create_inventory_item', { itemId: savedItem.id });
     res.status(201).json({ item: withPublicItemImage(savedItem) });
   } catch (error) {
@@ -2196,8 +2856,12 @@ app.patch(
         return res.status(400).json({ error: 'Only expertise mentors can be edited here.' });
       }
 
-      auditAdminAction(req, 'update_expertise_item', { itemId: id });
-      res.json({ item: withPublicItemImage(result.item) });
+      const handover = await sendMentorEmailHandover(result.item, result.previousExpertEmail);
+      auditAdminAction(req, 'update_expertise_item', {
+        itemId: id,
+        ...(handover ? { handedOver: handover.count } : {}),
+      });
+      res.json({ item: withPublicItemImage(result.item), handover });
     } catch (error) {
       console.error('Failed to update mentor:', error);
       const detail = error?.message || '';
@@ -3037,6 +3701,17 @@ app.patch('/api/inventory/:id/reservations/:reservationId', requireAuth, require
       return res.status(409).json({ error: 'Updated dates overlap an existing reservation.' });
     }
 
+    // Confirmed, or confirmed with new dates: the reminder follows the start. No email goes out
+    // here, so it stays due even less than a day ahead (the reminder is the member's notice).
+    if (result.reservation.status === 'reserved' && Object.keys(updates).length > 0) {
+      await setReminderState(
+        result.reservation.id,
+        reservationStartsAt(result.reservation, result.item.tag),
+        Date.now(),
+        { notified: false },
+      );
+    }
+
     auditAdminAction(req, 'patch_reservation', { itemId, reservationId, updates });
     res.json({ item: withPublicItemImage(result.item), reservation: result.reservation });
   } catch (error) {
@@ -3099,9 +3774,11 @@ app.post('/api/inventory/:id/reservations/:reservationId/approve', requireAuth, 
       return res.status(409).json({ error: 'Approved dates overlap an existing reservation.' });
     }
 
+    await setReminderState(result.reservation.id, reservationStartsAt(result.reservation, result.item.tag));
     const emailSent = await settleNotifications('Reservation approval', [
       sendMemberDecisionEmail(result.item, result.reservation, 'approved', message),
     ]);
+    await restoreReminderIfNotEmailed(result.reservation, result.item.tag, emailSent);
 
     auditAdminAction(req, 'approve_reservation', { itemId, reservationId });
     res.json({ item: withPublicItemImage(result.item), reservation: result.reservation, emailSent });
@@ -3309,6 +3986,8 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       });
     }
 
+    // New rows start without a reminder state; one booked less than a day ahead needs 'skipped'.
+    await setReminderState(result.reservation.id, reservationStartsAt(result.reservation, result.item.tag));
     const emailSent = isConsultation
       ? await settleNotifications('Staff consultation', [
           sendConsultationScheduledEmails(result.item, result.reservation, { message, messageFrom: 'admin', account }),
@@ -3316,6 +3995,7 @@ app.post('/api/admin/inventory/:id/reservations', requireAuth, requireAdmin, asy
       : await settleNotifications('Staff reservation', [
           sendStaffReservationEmail(result.item, result.reservation, { account, message, today }),
         ]);
+    await restoreReminderIfNotEmailed(result.reservation, result.item.tag, emailSent);
 
     auditAdminAction(req, isConsultation ? 'create_consultation' : 'create_reservation', {
       itemId,
@@ -3913,6 +4593,13 @@ async function deleteMemberAccount(id, currentUser) {
 
   try {
     await anonymizeReservationsForEmail(email ?? '');
+    // Items this address owns (015; a member's own mentor profile whose expert email staff
+    // cleared) go to the library inbox, so a new account with the address can't host them and
+    // members' messages about them reach the team. Before the delete, so a retry redoes it.
+    const reassigned = await reassignItemsOwnedBy(email ?? '', CONTACT_TO);
+    if (reassigned > 0) {
+      console.log('[admin-audit]', { action: 'reassign_owned_items', userId: id, count: reassigned });
+    }
 
     const { error: deleteError } = await getSupabaseAdmin().auth.admin.deleteUser(id);
 
@@ -4074,6 +4761,33 @@ const accountReservationActionLimiter = rateLimit({
   },
 });
 
+// A host working through a backlog from the office shares its IP with members, so the host
+// actions on /account count per account (after requireAuth); the IP limit before it is looser
+// and only stops floods of unauthenticated calls. In-memory, single instance.
+const hostedReservationIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many reservation updates. Please try again later.',
+    code: 'reservation_action_limit',
+  },
+});
+
+const hostedReservationActionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  keyGenerator: reservationAccountKey,
+  store: new MemoryStore(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many reservation updates. Please try again later.',
+    code: 'reservation_action_limit',
+  },
+});
+
 /**
  * Where the member goes, by status: a confirmed reservation that hasn't ended gets the full
  * address, exact point, transit note and directions (as in its approval email); a pending one
@@ -4186,6 +4900,478 @@ app.post(
   },
 );
 
+/**
+ * /account view of one booking of a room, equipment or book the account owns (015): the member's
+ * email, the room's hours and purpose, and how it was booked and cancelled. Whitelisted: never
+ * the item itself (withPublicItemImage would carry every booking) or the location.
+ */
+function serializeHostedReservation({ item, reservation }) {
+  return {
+    id: reservation.id,
+    itemId: item.id,
+    title: item.title,
+    slug: item.slug ?? null,
+    tag: item.tag,
+    startDate: reservation.startDate,
+    endDate: reservation.endDate,
+    status: reservation.status,
+    timeSlots: item.tag === 'rooms' ? reservation.timeSlots ?? null : null,
+    purpose: item.tag === 'rooms' ? reservation.requestSummary ?? null : null,
+    memberEmail: reservation.userEmail ?? null,
+    bookedByStaff: reservation.bookedByStaff === true,
+    cancelledBy: reservation.cancelledBy ?? null,
+    createdAt: reservation.createdAt ?? null,
+  };
+}
+
+/**
+ * A room, equipment or book booking with its item, when the item's owner is this confirmed
+ * account; otherwise null (missing, a consultation, or not theirs: the same 404 for all three).
+ * Mentors' consultations go through loadConsultationForUser instead.
+ */
+async function loadHostedReservation(user, reservationId) {
+  if (!isConfirmedUser(user)) {
+    return null;
+  }
+
+  const found = await findReservationWithItem(reservationId);
+  if (!found || found.item.tag === 'expertise' || !emailsMatch(found.item.ownerEmail, user?.email)) {
+    return null;
+  }
+
+  return found;
+}
+
+const HOSTED_RESERVATION_COLLISION = {
+  error: 'These dates overlap another reservation of this item.',
+  code: 'reservation_collision',
+};
+
+// Bookings of the rooms, equipment and books this account owns. Most accounts own none, and an
+// unconfirmed one owns nothing, so both get an empty list.
+app.get('/api/account/hosted-reservations', requireAuth, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  if (!isConfirmedUser(req.user)) {
+    return res.json({ reservations: [] });
+  }
+
+  try {
+    const entries = await listHostedReservationsForOwner(req.user?.email?.trim() ?? '');
+    res.json({ reservations: entries.map(serializeHostedReservation) });
+  } catch (error) {
+    console.error('Failed to load hosted reservations:', error);
+    res.status(500).json({ error: 'Could not load the bookings of your items.' });
+  }
+});
+
+// The owner approves a pending request: the same confirmation email (and optional message) as
+// /admin's approve.
+app.post(
+  '/api/account/hosted-reservations/:reservationId/approve',
+  hostedReservationIpLimiter,
+  requireAuth,
+  hostedReservationActionLimiter,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+
+    const { message, error: messageError } = readConfirmationMessage(req.body);
+    if (messageError) {
+      return res.status(400).json({ error: messageError });
+    }
+
+    try {
+      const found = await loadHostedReservation(req.user, reservationId);
+
+      if (!found) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      const result = await approveReservation(found.item.id, reservationId);
+
+      if (result.notFound || result.isConsultation || result.reservationNotFound) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json({
+          error: 'Only pending requests can be approved.',
+          code: 'reservation_not_pending',
+        });
+      }
+
+      if (result.collision) {
+        return res.status(409).json(HOSTED_RESERVATION_COLLISION);
+      }
+
+      await setReminderState(result.reservation.id, reservationStartsAt(result.reservation, result.item.tag));
+      const emailSent = await settleNotifications('Reservation approval', [
+        sendMemberDecisionEmail(result.item, result.reservation, 'approved', message),
+      ]);
+      await restoreReminderIfNotEmailed(result.reservation, result.item.tag, emailSent);
+
+      console.log('[hosted-reservation]', { action: 'approve', reservationId });
+      res.json({ reservation: serializeHostedReservation(result), emailSent });
+    } catch (error) {
+      console.error('Failed to approve hosted reservation:', error);
+      res.status(500).json({ error: 'Could not approve the reservation.' });
+    }
+  },
+);
+
+// The owner declines a pending request: the same "not available" email as /admin's refuse.
+app.post(
+  '/api/account/hosted-reservations/:reservationId/refuse',
+  hostedReservationIpLimiter,
+  requireAuth,
+  hostedReservationActionLimiter,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+
+    try {
+      const found = await loadHostedReservation(req.user, reservationId);
+
+      if (!found) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      const result = await refuseReservation(found.item.id, reservationId);
+
+      if (result.notFound || result.reservationNotFound) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json({
+          error: 'Only pending requests can be declined.',
+          code: 'reservation_not_pending',
+        });
+      }
+
+      const emailSent = await settleNotifications('Reservation refusal', [
+        sendMemberDecisionEmail(result.item, result.reservation, 'refused'),
+      ]);
+
+      console.log('[hosted-reservation]', { action: 'refuse', reservationId });
+      res.json({ reservation: serializeHostedReservation(result), emailSent });
+    } catch (error) {
+      console.error('Failed to refuse hosted reservation:', error);
+      res.status(500).json({ error: 'Could not decline the request.' });
+    }
+  },
+);
+
+/**
+ * The owner moves a pending request, or a confirmed booking that hasn't ended, to new dates
+ * (staff rules: any days, up to a year, not over yet), and a room to new hours. It applies at
+ * once and the member is emailed. A room's hours come as both `startTime` and `endTime`; neither
+ * keeps a booking that has no hours (staff bookings) as it is.
+ */
+app.post(
+  '/api/account/hosted-reservations/:reservationId/reschedule',
+  hostedReservationIpLimiter,
+  requireAuth,
+  hostedReservationActionLimiter,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+    const today = libraryTodayKey();
+
+    const dates = readStaffBookingDates(req.body, today);
+    if (dates.error) {
+      return res.status(400).json(dates.error);
+    }
+
+    const { message, error: messageError } = readConfirmationMessage(req.body);
+    if (messageError) {
+      return res.status(400).json({ error: messageError });
+    }
+
+    try {
+      const found = await loadHostedReservation(req.user, reservationId);
+
+      if (!found) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      // Undefined keeps the current hours (rescheduleReservation); other items have none.
+      let timeSlots;
+      if (found.item.tag === 'rooms') {
+        const startTime = typeof req.body?.startTime === 'string' ? req.body.startTime.trim() : '';
+        const endTime = typeof req.body?.endTime === 'string' ? req.body.endTime.trim() : '';
+
+        if (startTime || endTime || parseRoomTimes(found.reservation.timeSlots)) {
+          const times = validateRoomTimes({ startTime, endTime });
+          if (!times.ok) {
+            return res.status(400).json({ error: times.error, code: times.code });
+          }
+          timeSlots = times.timeSlots;
+        }
+      }
+
+      const result = await rescheduleReservation(found.item.id, reservationId, {
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        timeSlots,
+        today,
+      });
+
+      if (result.notFound || result.isConsultation || result.reservationNotFound) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json({
+          error: 'This reservation is no longer active.',
+          code: 'reservation_not_active',
+        });
+      }
+
+      if (result.unchanged) {
+        return res.status(400).json({
+          error: 'The reservation already has those dates and times.',
+          code: 'reservation_time_unchanged',
+        });
+      }
+
+      if (result.collision) {
+        return res.status(409).json(HOSTED_RESERVATION_COLLISION);
+      }
+
+      const { item, reservation, previous } = result;
+      // A request gets its reminder state when it is approved.
+      if (reservation.status === 'reserved') {
+        await setReminderState(reservation.id, reservationStartsAt(reservation, item.tag));
+      }
+      const emailSent = await settleNotifications('Reservation moved', [
+        sendReservationRescheduledEmail(item, reservation, previous, { message, today }),
+      ]);
+      await restoreReminderIfNotEmailed(reservation, item.tag, emailSent);
+
+      console.log('[hosted-reservation]', { action: 'reschedule', reservationId });
+      res.json({ reservation: serializeHostedReservation(result), emailSent });
+    } catch (error) {
+      console.error('Failed to move hosted reservation:', error);
+      res.status(500).json({ error: 'Could not move the reservation.' });
+    }
+  },
+);
+
+// The owner cancels a confirmed booking that hasn't ended (a pending request is declined
+// instead): recorded as cancelled_by 'owner', and the member gets the library team's email.
+app.post(
+  '/api/account/hosted-reservations/:reservationId/cancel',
+  hostedReservationIpLimiter,
+  requireAuth,
+  hostedReservationActionLimiter,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+    const notActive = {
+      error: 'Only a confirmed reservation that has not ended can be cancelled here.',
+      code: 'reservation_not_active',
+    };
+
+    const { message, error: messageError } = readConfirmationMessage(req.body);
+    if (messageError) {
+      return res.status(400).json({ error: messageError });
+    }
+
+    try {
+      const found = await loadHostedReservation(req.user, reservationId);
+
+      if (!found) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      const today = libraryTodayKey();
+      if (found.reservation.status !== 'reserved' || compareDateKeys(found.reservation.endDate, today) < 0) {
+        return res.status(400).json(notActive);
+      }
+
+      const result = await cancelReservationByAdmin(found.item.id, reservationId, { cancelledBy: 'owner' });
+
+      if (result.notFound || result.isConsultation || result.reservationNotFound) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json(notActive);
+      }
+
+      // The email reads the status the booking had (pickup lines), as an admin delete's does.
+      const emailSent = await settleNotifications('Reservation cancelled', [
+        sendReservationCancelledByTeamEmail(
+          result.item,
+          { ...result.reservation, status: result.previousStatus },
+          today,
+          message,
+        ),
+      ]);
+
+      console.log('[hosted-reservation]', { action: 'cancel', reservationId });
+      res.json({ reservation: serializeHostedReservation(result), emailSent });
+    } catch (error) {
+      console.error('Failed to cancel hosted reservation:', error);
+      const detail = error?.message || '';
+      res.status(500).json({
+        error: isReservationSchemaError(detail)
+          ? reservationSchemaErrorMessage()
+          : 'Could not cancel the reservation.',
+      });
+    }
+  },
+);
+
+const RESERVATION_MESSAGE_LIMIT_BODY = {
+  error: 'Too many messages in a short time. Please try again later.',
+  code: 'message_rate_limited',
+};
+
+// Per IP, before requireAuth, and loose (members share the office's IP); the per-account limit
+// below is the real one.
+const reservationMessageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: RESERVATION_MESSAGE_LIMIT_BODY,
+});
+
+const RESERVATION_MESSAGES_PER_ACCOUNT_PER_HOUR = 10;
+const reservationMessageAccountStore = new MemoryStore();
+
+// Runs after requireAuth, keyed by account, so nobody can keep emailing a host (or a member) from
+// many IPs. Only messages that went out count: the route hands the hit back otherwise, once it
+// has finished (skipFailedRequests would also hand it back when the client hangs up while the
+// email is on its way; see countSavedReservationCreates). In-memory, single instance.
+const reservationMessageAccountLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: RESERVATION_MESSAGES_PER_ACCOUNT_PER_HOUR,
+  keyGenerator: reservationAccountKey,
+  store: reservationMessageAccountStore,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: RESERVATION_MESSAGE_LIMIT_BODY,
+});
+
+const RESERVATION_MESSAGE_KINDS = ['message', 'new_time'];
+const RESERVATION_MESSAGE_SENDERS = ['member', 'owner'];
+
+/**
+ * "Message the host" and "Suggest a new time" (`as` 'member', the person who booked) and "Message
+ * the member" (`as` 'owner', the item's host: itemOwnerEmail, a confirmed account) on /account,
+ * for every kind of booking. One email (buildReservationMessageEmailPayload) with Reply-To the
+ * sender; nothing is stored and nothing changes. Anyone else gets the 404 of a missing booking.
+ */
+app.post(
+  '/api/reservations/:reservationId/message',
+  reservationMessageLimiter,
+  requireAuth,
+  reservationMessageAccountLimiter,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    const kind = req.body?.kind ?? 'message';
+    const as = req.body?.as ?? 'member';
+    const senderEmail = req.user?.email?.trim() ?? '';
+    let sent = false;
+
+    try {
+      if (!message) {
+        return res.status(400).json({ error: 'Write a message first.', code: 'message_required' });
+      }
+
+      if (message.length > RESERVATION_MESSAGE_MAX) {
+        return res.status(400).json({
+          error: `The message must be ${RESERVATION_MESSAGE_MAX} characters or fewer.`,
+          code: 'message_too_long',
+        });
+      }
+
+      if (
+        !RESERVATION_MESSAGE_KINDS.includes(kind) ||
+        !RESERVATION_MESSAGE_SENDERS.includes(as) ||
+        (as === 'owner' && kind === 'new_time')
+      ) {
+        return res.status(400).json({ error: 'This kind of message is not available.', code: 'message_kind_invalid' });
+      }
+
+      const found = await findReservationWithItem(reservationId);
+      const allowed =
+        found &&
+        (as === 'member'
+          ? emailsMatch(found.reservation.userEmail, senderEmail)
+          : isConfirmedUser(req.user) && isItemOwner(found.item, senderEmail));
+
+      if (!allowed) {
+        return res.status(404).json({ error: 'Reservation not found.' });
+      }
+
+      const { item, reservation } = found;
+      const active = reservation.status === 'pending' || reservation.status === 'reserved';
+      // A new time only for a booking that hasn't started (a request has no start yet).
+      const notStarted =
+        reservation.status === 'pending' || reservationStartsAt(reservation, item.tag) > Date.now();
+
+      if (!active || (kind === 'new_time' && !notStarted)) {
+        return res.status(400).json({
+          error: 'This reservation can no longer be changed here.',
+          code: 'message_not_available',
+        });
+      }
+
+      // The host, or the library inbox for an item with no owner yet (before 015).
+      const to = as === 'member' ? itemOwnerEmail(item) ?? CONTACT_TO : trimmedOrNull(reservation.userEmail);
+
+      if (!to) {
+        return res.status(400).json({
+          error: "This member's account was deleted, so there is no one to email.",
+          code: 'message_no_recipient',
+        });
+      }
+
+      sent = await sendEmailPayloads(
+        [
+          buildReservationMessageEmailPayload({
+            item,
+            reservation,
+            kind,
+            from: as,
+            senderEmail,
+            to,
+            message,
+            senderIsExpert: isConsultationExpert(item, senderEmail),
+            senderIsStaff: isAdminUser(req.user),
+          }),
+        ],
+        'Reservation message',
+      );
+
+      if (!sent) {
+        return res.status(502).json({
+          error: 'Your message could not be sent. Please try again in a moment.',
+          code: 'message_send_failed',
+        });
+      }
+
+      // No content and no addresses in the log.
+      console.log('[reservation-message]', { reservationId, kind, as });
+      res.json({ emailSent: true });
+    } catch (error) {
+      console.error('Failed to send reservation message:', error);
+      res.status(500).json({ error: 'Could not send your message.' });
+    } finally {
+      if (!sent) {
+        await reservationMessageAccountStore.decrement(reservationAccountKey(req));
+      }
+    }
+  },
+);
+
 app.post(
   '/api/consultations/:reservationId/schedule',
   consultationActionLimiter,
@@ -4201,7 +5387,7 @@ app.post(
         return res.status(404).json({ error: 'Consultation not found.' });
       }
 
-      if (!found.isExpert && !found.isAdmin) {
+      if (!found.isExpert && !found.isOwner && !found.isAdmin) {
         return res.status(403).json({ error: 'Only the expert can schedule this consultation.' });
       }
 
@@ -4215,15 +5401,14 @@ app.post(
         reservationId,
         meetingAt: typeof req.body?.meetingAt === 'string' ? req.body.meetingAt : '',
         message,
-        messageFrom: found.isExpert ? 'expert' : 'admin',
+        messageFrom: consultationHostVoice(found),
       });
 
       if (scheduled.status !== 200) {
         return res.status(scheduled.status).json(scheduled.body);
       }
 
-      const role = found.isExpert ? 'expert' : 'admin';
-      console.log('[consultation]', { action: 'schedule', reservationId, by: role });
+      console.log('[consultation]', { action: 'schedule', reservationId, by: consultationHostRole(found) });
       res.json({
         consultation: serializeConsultationForUser(scheduled.result, 'expert'),
         emailSent: scheduled.emailSent,
@@ -4231,6 +5416,112 @@ app.post(
     } catch (error) {
       console.error('Failed to schedule consultation:', error);
       res.status(500).json({ error: 'Could not schedule the consultation.' });
+    }
+  },
+);
+
+// The expert (or the owner of a mentor with no address, or an admin) moves a scheduled meeting
+// that hasn't started. It applies at once: the Zoom meeting moves (or is replaced), and member
+// and expert get the new time with an updated invite.
+app.post(
+  '/api/consultations/:reservationId/reschedule',
+  consultationActionLimiter,
+  requireAuth,
+  async (req, res) => {
+    const reservationId =
+      typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+    const meetingAt = typeof req.body?.meetingAt === 'string' ? req.body.meetingAt : '';
+
+    try {
+      const found = await loadConsultationForUser(req.user, reservationId);
+
+      if (!found) {
+        return res.status(404).json({ error: 'Consultation not found.' });
+      }
+
+      if (!found.isExpert && !found.isOwner && !found.isAdmin) {
+        return res.status(403).json({ error: 'Only the expert can move this consultation.' });
+      }
+
+      const { message, error: messageError } = readConfirmationMessage(req.body);
+      if (messageError) {
+        return res.status(400).json({ error: messageError });
+      }
+
+      const meetingError = validateMeetingAt(meetingAt);
+      if (meetingError) {
+        return res.status(400).json({ error: meetingError });
+      }
+
+      let result;
+      try {
+        result = await rescheduleConsultation(found.item.id, reservationId, {
+          meetingAt: meetingAt.trim(),
+          moveMeeting: moveZoomMeetingForConsultation,
+          deleteMeeting: deleteConsultationMeeting,
+        });
+      } catch (error) {
+        if (error.zoomFailed) {
+          return res.status(502).json({
+            error: 'Could not move the Zoom meeting. Please try again in a moment.',
+            code: 'consultation_zoom_failed',
+          });
+        }
+        throw error;
+      }
+
+      if (result.notFound || result.reservationNotFound) {
+        return res.status(404).json({ error: 'Consultation not found.' });
+      }
+
+      if (result.invalidStatus) {
+        return res.status(400).json({
+          error: 'Only a scheduled meeting that has not started can be moved.',
+          code: 'consultation_reschedule_unavailable',
+        });
+      }
+
+      if (result.unchanged) {
+        return res.status(400).json({
+          error: 'The meeting is already at that time.',
+          code: 'consultation_time_unchanged',
+        });
+      }
+
+      if (result.followUpBeforeSource) {
+        return res.status(400).json({
+          error: 'A follow-up must start after the meeting it follows.',
+          code: 'follow_up_before_meeting',
+        });
+      }
+
+      if (result.meetingTimeRequired) {
+        return res.status(400).json({
+          error: 'A valid meeting date and time is required to schedule a consultation.',
+        });
+      }
+
+      const { item, reservation, previousMeetingAt } = result;
+      // Moved to within a day of the meeting: this email is its reminder; otherwise a new one is due.
+      await setReminderState(reservation.id, reservationStartsAt(reservation, item.tag));
+      const emailSent = await settleNotifications('Consultation moved', [
+        sendConsultationRescheduledEmails(item, reservation, previousMeetingAt, {
+          message,
+          messageFrom: consultationHostVoice(found),
+        }),
+      ]);
+      await restoreReminderIfNotEmailed(reservation, item.tag, emailSent);
+
+      console.log('[consultation]', { action: 'reschedule', reservationId, by: consultationHostRole(found) });
+      res.json({ consultation: serializeConsultationForUser(result, 'expert'), emailSent });
+    } catch (error) {
+      console.error('Failed to move consultation:', error);
+      const detail = error?.message || '';
+      res.status(500).json({
+        error: isReservationSchemaError(detail)
+          ? reservationSchemaErrorMessage()
+          : 'Could not move the consultation.',
+      });
     }
   },
 );
@@ -4250,7 +5541,7 @@ app.post(
         return res.status(404).json({ error: 'Consultation not found.' });
       }
 
-      const cancelledBy = found.isMember ? 'member' : found.isExpert ? 'expert' : 'admin';
+      const cancelledBy = found.isMember ? 'member' : consultationHostVoice(found);
       const result = await cancelConsultation(found.item.id, reservationId, { cancelledBy });
 
       if (result.notFound || result.reservationNotFound) {
@@ -4272,15 +5563,12 @@ app.post(
         handleConsultationCancelled(result.item, result.reservation, result.previousStatus),
       ]);
       // Whether the other side was told by email: a mentor with no address on file is skipped
-      // while the member's email still goes out (emailSent stays true). An admin cancel needs both.
+      // while the member's email still goes out (emailSent stays true). Whoever cancels for the
+      // mentor (the mentor, the owner of a mentor with no email, staff) told the member when the
+      // member has an address; a mentor with one is emailed as well.
       const memberEmail = trimmedOrNull(result.reservation.userEmail);
       const expertEmail = trimmedOrNull(result.item.expertEmail);
-      const otherPartyHasEmail =
-        cancelledBy === 'member'
-          ? Boolean(expertEmail)
-          : cancelledBy === 'expert'
-            ? Boolean(memberEmail)
-            : Boolean(memberEmail && expertEmail);
+      const otherPartyHasEmail = cancelledBy === 'member' ? Boolean(expertEmail) : Boolean(memberEmail);
 
       console.log('[consultation]', { action: 'cancel', reservationId, by: cancelledBy });
       res.json({
@@ -4303,7 +5591,8 @@ app.post(
   },
 );
 
-// The expert (or an admin) books the next meeting from one that has started. The follow-up is
+// The expert (or the owner of a mentor with no address, or an admin) books the next meeting, from
+// the day of one that is scheduled (Montréal dates), to start after it. The follow-up is
 // scheduled at once: Zoom meeting, invitations to both, and a Slack note for staff.
 app.post(
   '/api/consultations/:reservationId/follow-up',
@@ -4322,7 +5611,7 @@ app.post(
         return res.status(404).json({ error: 'Consultation not found.' });
       }
 
-      if (!found.isExpert && !found.isAdmin) {
+      if (!found.isExpert && !found.isOwner && !found.isAdmin) {
         return res.status(403).json({ error: 'Only the expert can book a follow-up.' });
       }
 
@@ -4357,7 +5646,7 @@ app.post(
 
       if (result.invalidStatus) {
         return res.status(400).json({
-          error: 'A follow-up can only be booked once a scheduled meeting has started.',
+          error: 'A follow-up can be booked from the day of the meeting.',
           code: 'follow_up_not_available',
         });
       }
@@ -4375,10 +5664,19 @@ app.post(
         });
       }
 
+      if (result.followUpBeforeSource) {
+        return res.status(400).json({
+          error: 'The follow-up must start after the meeting it follows.',
+          code: 'follow_up_before_meeting',
+        });
+      }
+
       const { item, reservation } = result;
-      const role = found.isExpert ? 'expert' : 'admin';
+      const role = consultationHostRole(found);
+      // Booked less than a day ahead: the invitation is its reminder.
+      await setReminderState(reservation.id, reservationStartsAt(reservation, item.tag));
       const emailSent = await settleNotifications('Follow-up consultation', [
-        sendConsultationScheduledEmails(item, reservation),
+        sendConsultationScheduledEmails(item, reservation, { messageFrom: consultationHostVoice(found) }),
         notifySlackAlert({
           status: 'consultation_follow_up',
           item,
@@ -4387,6 +5685,7 @@ app.post(
           summary: `Follow-up consultation "${item.title}" with ${reservation.userEmail ?? 'a member'} booked by the ${role} for ${formatMeetingDateTime(reservation.meetingAt)}.`,
         }),
       ]);
+      await restoreReminderIfNotEmailed(reservation, item.tag, emailSent);
 
       console.log('[consultation]', { action: 'follow_up', reservationId, followUpId: reservation.id, by: role });
       res.status(201).json({

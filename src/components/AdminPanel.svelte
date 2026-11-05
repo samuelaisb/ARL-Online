@@ -39,6 +39,7 @@
   import AdminStats from './AdminStats.svelte';
   import BusyLabel from './BusyLabel.svelte';
   import ConfirmationMessage from './ConfirmationMessage.svelte';
+  import InlineConfirm from './InlineConfirm.svelte';
   import Skeleton from './Skeleton.svelte';
 
   // `loading` here is App's public inventory load (AdminPage passes it through).
@@ -104,6 +105,14 @@
   let removeToggle = $state();
   let pendingToggle = $state();
   let reservationToggle = $state();
+
+  // The question a remove, approve, refuse, delete or follow-up asks before it runs, as an
+  // InlineConfirm in its row: { kind, id, question, trigger, run, pickedTime }. One at a time on
+  // the panel. `question()` words it when shown (so it follows a language switch), `trigger` is
+  // the button that asked (Keep it and a failure return focus there), `run` acts on Yes, and
+  // `pickedTime` is the meeting time it names, as typed.
+  let confirmState = $state(null);
+  let confirmBox = $state();
 
   // Kimchi bubbles that say more than a short line (mentor without email, removals, arrival).
   const LONG_NOTIFICATION_DURATION = 9000;
@@ -298,7 +307,7 @@
     followUpError = '';
   }
 
-  async function handleFollowUp(entry) {
+  function handleFollowUp(entry, trigger) {
     if (followUpActionId) {
       return;
     }
@@ -312,22 +321,30 @@
 
     followUpTimeErrors[entry.id] = timeError;
     if (timeError) {
+      confirmState = null;
       followUpPickers[entry.id]?.focus();
       return;
     }
 
     followUpError = '';
     const meetingAt = parsed.toISOString();
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(
-      $t(entry.mentorEmailMissing ? 'admin.follow_up_confirm_no_expert_email' : 'admin.follow_up_confirm', {
-        title: entry.itemTitle,
-        email: entry.userEmail ?? '',
-        time: formatMeetingTime(meetingAt),
-      }),
-    );
+    askConfirm({
+      kind: 'follow-up',
+      id: entry.id,
+      question: () =>
+        $t(entry.mentorEmailMissing ? 'admin.follow_up_confirm_no_expert_email' : 'admin.follow_up_confirm', {
+          title: entry.itemTitle,
+          email: entry.userEmail ?? '',
+          time: formatMeetingTime(meetingAt),
+        }),
+      trigger,
+      pickedTime: followUpTimes[entry.id],
+      run: () => bookFollowUp(entry, meetingAt, trigger),
+    });
+  }
 
-    if (!confirmed) {
+  async function bookFollowUp(entry, meetingAt, trigger) {
+    if (followUpActionId) {
       return;
     }
 
@@ -356,6 +373,7 @@
       followUpError = error.message || $t('account_consultations.follow_up_error');
     } finally {
       followUpActionId = '';
+      closeConfirm('follow-up', entry.id);
     }
 
     // The form closed with its button: focus the new follow-up's row (else this one). On an
@@ -413,8 +431,9 @@
     statusMessage = [$t(key, { title }), ...notes].join(' ');
   }
 
-  // Focus is only moved if it's still where the action left it (the pressed button, or the
-  // page once that button was disabled): an admin who moved on keeps their place.
+  // Focus is only moved if it's still where the action left it (the page, once Yes was
+  // disabled and its question removed, or the button that asked): an admin who moved on keeps
+  // their place.
   function canMoveFocus(trigger) {
     const active = document.activeElement;
     return !active || active === document.body || active === trigger;
@@ -446,6 +465,62 @@
     const next = rows[Math.min(index, rows.length - 1)];
     (rowRefs[next?.id] ?? toggle)?.focus();
   }
+
+  function isAsking(kind, id) {
+    return confirmState?.kind === kind && confirmState.id === id;
+  }
+
+  /**
+   * Shows an action's question in its row, in place of any other on the panel, with focus on
+   * it (InlineConfirm focuses itself when it appears; asking again brings focus back to it).
+   */
+  async function askConfirm(question) {
+    confirmState = question;
+    await tick();
+    confirmBox?.focus();
+  }
+
+  /** Keep it, or Escape: the question goes and focus returns to the button that asked. */
+  async function keepConfirm() {
+    const trigger = confirmState?.trigger;
+    confirmState = null;
+    await tick();
+    restoreFocus(trigger);
+  }
+
+  /** The action is over: its question goes, unless another one took its place meanwhile. */
+  function closeConfirm(kind, id) {
+    if (isAsking(kind, id)) {
+      confirmState = null;
+    }
+  }
+
+  // A question stands only while its row is on screen and, for a meeting, while the time in
+  // the picker is still the one it names: window.confirm was modal, but the rows stay live
+  // around an InlineConfirm, and Yes must never act on something the admin didn't read.
+  function questionStands({ kind, id, pickedTime }) {
+    if (kind === 'remove') {
+      return showRemoveList && adminItems.some((item) => item.id === id);
+    }
+    if (kind === 'approve' || kind === 'refuse') {
+      return (
+        showPendingList &&
+        pendingEntries.some((entry) => entry.id === id) &&
+        (kind === 'refuse' || meetingTimes[id] === pickedTime)
+      );
+    }
+    const entry = showReservationList ? reservationEntries.find((candidate) => candidate.id === id) : null;
+    if (kind === 'delete') {
+      return Boolean(entry);
+    }
+    return Boolean(entry) && followUpOpenId === id && followUpAllowedFor(entry) && followUpTimes[id] === pickedTime;
+  }
+
+  $effect(() => {
+    if (confirmState && !questionStands(confirmState)) {
+      confirmState = null;
+    }
+  });
 
   /**
    * A "Needs attention" tile: open the list it counts (Pending, or Edit Reservations for the
@@ -611,7 +686,7 @@
     }
   }
 
-  async function handleRemove(item) {
+  function handleRemove(item, trigger) {
     if (removingId) {
       return;
     }
@@ -621,18 +696,28 @@
     const consultationCount = item.tag === 'expertise' ? (item.reservations ?? []).length : 0;
     const upcomingCount =
       item.tag === 'expertise' ? 0 : (item.reservations ?? []).filter(isUpcomingReservation).length;
-    let message = $t('admin.remove_confirm', { title: item.title });
-    if (consultationCount > 0) {
-      message = $t(
-        item.expertEmail ? 'admin.remove_expertise_confirm' : 'admin.remove_expertise_confirm_no_expert_email',
-        { title: item.title, count: consultationCount },
-      );
-    } else if (upcomingCount > 0) {
-      message = $t('admin.remove_with_reservations_confirm', { title: item.title, count: upcomingCount });
-    }
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(message);
-    if (!confirmed) {
+    askConfirm({
+      kind: 'remove',
+      id: item.id,
+      question: () => {
+        if (consultationCount > 0) {
+          return $t(
+            item.expertEmail ? 'admin.remove_expertise_confirm' : 'admin.remove_expertise_confirm_no_expert_email',
+            { title: item.title, count: consultationCount },
+          );
+        }
+        if (upcomingCount > 0) {
+          return $t('admin.remove_with_reservations_confirm', { title: item.title, count: upcomingCount });
+        }
+        return $t('admin.remove_confirm', { title: item.title });
+      },
+      trigger,
+      run: () => removeItem(item, upcomingCount, trigger),
+    });
+  }
+
+  async function removeItem(item, upcomingCount, trigger) {
+    if (removingId) {
       return;
     }
 
@@ -673,6 +758,7 @@
       removeError = error.message || $t('admin.remove_error');
     } finally {
       removingId = '';
+      closeConfirm('remove', item.id);
     }
 
     await focusAfterAction({
@@ -685,36 +771,42 @@
     });
   }
 
-  async function handleDeleteReservation(entry) {
+  function handleDeleteReservation(entry, trigger) {
     if (deletingReservationId) {
       return;
     }
 
-    const email = entry.userEmail || $t('admin.no_member_email');
-    let message;
-    if (entry.itemTag === 'expertise' && entry.meetingAt) {
-      let key = 'admin.delete_consultation_confirm';
-      if (entry.held) {
-        key = 'admin.delete_held_consultation_confirm';
-      } else if (entry.mentorEmailMissing) {
-        key = 'admin.delete_consultation_confirm_no_expert_email';
-      }
-      message = $t(key, { title: entry.itemTitle, time: formatMeetingTime(entry.meetingAt), email });
-    } else {
-      message = $t(
-        entry.silent ? 'admin.delete_reservation_silent_confirm' : 'admin.delete_reservation_confirm',
-        {
-          title: entry.itemTitle,
-          start: formatDateKey(entry.startDate),
-          end: formatDateKey(entry.endDate),
-          email,
-        },
-      );
-    }
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(message);
+    askConfirm({
+      kind: 'delete',
+      id: entry.id,
+      question: () => {
+        const email = entry.userEmail || $t('admin.no_member_email');
+        if (entry.itemTag === 'expertise' && entry.meetingAt) {
+          let key = 'admin.delete_consultation_confirm';
+          if (entry.held) {
+            key = 'admin.delete_held_consultation_confirm';
+          } else if (entry.mentorEmailMissing) {
+            key = 'admin.delete_consultation_confirm_no_expert_email';
+          }
+          return $t(key, { title: entry.itemTitle, time: formatMeetingTime(entry.meetingAt), email });
+        }
+        return $t(
+          entry.silent ? 'admin.delete_reservation_silent_confirm' : 'admin.delete_reservation_confirm',
+          {
+            title: entry.itemTitle,
+            start: formatDateKey(entry.startDate),
+            end: formatDateKey(entry.endDate),
+            email,
+          },
+        );
+      },
+      trigger,
+      run: () => deleteEntry(entry, trigger),
+    });
+  }
 
-    if (!confirmed) {
+  async function deleteEntry(entry, trigger) {
+    if (deletingReservationId) {
       return;
     }
 
@@ -751,6 +843,7 @@
       reservationError = error.message || $t('admin.delete_reservation_error');
     } finally {
       deletingReservationId = '';
+      closeConfirm('delete', entry.id);
     }
 
     await focusAfterAction({
@@ -763,7 +856,7 @@
     });
   }
 
-  async function handleApprove(entry) {
+  function handleApprove(entry, trigger) {
     if (pendingAction) {
       return;
     }
@@ -782,6 +875,8 @@
 
       meetingTimeErrors[entry.id] = timeError;
       if (timeError) {
+        // No question stays up from an earlier press: the admin is fixing this one.
+        confirmState = null;
         meetingPickers[entry.id]?.focus();
         return;
       }
@@ -789,32 +884,41 @@
       meetingAt = parsed.toISOString();
     }
 
-    const email = entry.userEmail || $t('admin.no_member_email');
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(
-      isExpertise
-        ? $t(
-            entry.mentorEmailMissing
-              ? 'admin.approve_consultation_confirm_no_expert_email'
-              : 'admin.approve_consultation_confirm',
-            {
+    askConfirm({
+      kind: 'approve',
+      id: entry.id,
+      question: () => {
+        const email = entry.userEmail || $t('admin.no_member_email');
+        return isExpertise
+          ? $t(
+              entry.mentorEmailMissing
+                ? 'admin.approve_consultation_confirm_no_expert_email'
+                : 'admin.approve_consultation_confirm',
+              {
+                title: entry.itemTitle,
+                time: formatMeetingTime(meetingAt),
+                email,
+              },
+            )
+          : $t('admin.approve_reservation_confirm', {
               title: entry.itemTitle,
-              time: formatMeetingTime(meetingAt),
+              start: formatDateKey(entry.startDate),
+              end: formatDateKey(entry.endDate),
               email,
-            },
-          )
-        : $t('admin.approve_reservation_confirm', {
-            title: entry.itemTitle,
-            start: formatDateKey(entry.startDate),
-            end: formatDateKey(entry.endDate),
-            email,
-          }),
-    );
+            });
+      },
+      trigger,
+      pickedTime: meetingTimes[entry.id],
+      run: () => approve(entry, meetingAt, trigger),
+    });
+  }
 
-    if (!confirmed) {
+  async function approve(entry, meetingAt, trigger) {
+    if (pendingAction) {
       return;
     }
 
+    const isExpertise = entry.itemTag === 'expertise';
     const index = pendingEntries.findIndex((candidate) => candidate.id === entry.id);
     pendingAction = { id: entry.id, kind: 'approve' };
     pendingError = '';
@@ -853,6 +957,7 @@
       pendingError = error.message || $t('admin.approve_reservation_error');
     } finally {
       pendingAction = null;
+      closeConfirm('approve', entry.id);
     }
 
     await focusAfterAction({
@@ -865,32 +970,39 @@
     });
   }
 
-  async function handleRefuse(entry) {
+  function handleRefuse(entry, trigger) {
+    if (pendingAction) {
+      return;
+    }
+
+    askConfirm({
+      kind: 'refuse',
+      id: entry.id,
+      question: () => {
+        const email = entry.userEmail || $t('admin.no_member_email');
+        return entry.itemTag === 'expertise'
+          ? $t('admin.refuse_consultation_confirm', {
+              title: entry.itemTitle,
+              email,
+            })
+          : $t('admin.refuse_reservation_confirm', {
+              title: entry.itemTitle,
+              start: formatDateKey(entry.startDate),
+              end: formatDateKey(entry.endDate),
+              email,
+            });
+      },
+      trigger,
+      run: () => refuse(entry, trigger),
+    });
+  }
+
+  async function refuse(entry, trigger) {
     if (pendingAction) {
       return;
     }
 
     const isExpertise = entry.itemTag === 'expertise';
-    const email = entry.userEmail || $t('admin.no_member_email');
-    const trigger = document.activeElement;
-    const confirmed = window.confirm(
-      isExpertise
-        ? $t('admin.refuse_consultation_confirm', {
-            title: entry.itemTitle,
-            email,
-          })
-        : $t('admin.refuse_reservation_confirm', {
-            title: entry.itemTitle,
-            start: formatDateKey(entry.startDate),
-            end: formatDateKey(entry.endDate),
-            email,
-          }),
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
     const index = pendingEntries.findIndex((candidate) => candidate.id === entry.id);
     pendingAction = { id: entry.id, kind: 'refuse' };
     pendingError = '';
@@ -918,6 +1030,7 @@
       pendingError = error.message || $t('admin.refuse_reservation_error');
     } finally {
       pendingAction = null;
+      closeConfirm('refuse', entry.id);
     }
 
     await focusAfterAction({
@@ -1034,8 +1147,27 @@
     />
   {/if}
 
+  <!-- An action's question (confirmState), in its row once asked: Yes repeats the action's
+       label. Danger for what deletes or refuses, primary for what books or approves. -->
+  {#snippet question(kind, id, label, busyLabel, busy, tone = 'danger')}
+    {#if isAsking(kind, id)}
+      <InlineConfirm
+        bind:this={confirmBox}
+        id="admin-confirm-{kind}-{id}"
+        message={confirmState.question()}
+        confirmLabel={label}
+        {busyLabel}
+        {busy}
+        {tone}
+        onconfirm={() => confirmState?.run()}
+        oncancel={keepConfirm}
+      />
+    {/if}
+  {/snippet}
+
   <!-- Each list: skeleton until the first fetch lands, then the rows stay put through
-       later refreshes (.list-refreshing), with a failed refresh's error above them. -->
+       later refreshes (.list-refreshing), with a failed refresh's error above them. No
+       aria-busy while a question is up: it would hold back what the question says. -->
   {#if showRemoveList}
     <div id="admin-remove-list">
       {#if loadError}
@@ -1047,16 +1179,21 @@
         <ul
           class="admin-item-list"
           class:list-refreshing={loading}
-          aria-busy={loading || undefined}
+          aria-busy={(loading && !confirmState) || undefined}
         >
           {#each adminItems as item (item.id)}
-            <li bind:this={removeRows[item.id]} class="admin-item-row" tabindex="-1">
+            <li
+              bind:this={removeRows[item.id]}
+              class="admin-item-row"
+              class:admin-item-row--confirming={isAsking('remove', item.id)}
+              tabindex="-1"
+            >
               <span class="admin-item-title">{item.title}</span>
               <button
                 type="button"
                 class="btn-remove"
                 disabled={Boolean(removingId)}
-                onclick={() => handleRemove(item)}
+                onclick={(event) => handleRemove(item, event.currentTarget)}
               >
                 <BusyLabel
                   label={$t('admin.remove')}
@@ -1064,6 +1201,7 @@
                   busy={removingId === item.id}
                 />
               </button>
+              {@render question('remove', item.id, $t('admin.remove'), $t('admin.removing'), removingId === item.id)}
             </li>
           {/each}
         </ul>
@@ -1106,16 +1244,18 @@
         <ul
           class="admin-item-list"
           class:list-refreshing={loading}
-          aria-busy={loading || undefined}
+          aria-busy={(loading && !confirmState) || undefined}
         >
           {#each pendingEntries as entry (entry.id)}
             {@const isExpertiseEntry = entry.itemTag === 'expertise'}
             {@const startVsToday = isExpertiseEntry ? 1 : compareDateKeys(entry.startDate, todayKey)}
+            {@const rowBusy = pendingAction?.id === entry.id}
             <!-- The chips carry what Kimchi's arrival note (B2) counts, for when she's asleep. -->
             <li
               bind:this={pendingRows[entry.id]}
               class="admin-item-row admin-item-row--pending"
               class:consultation-row={isExpertiseEntry}
+              class:admin-item-row--confirming={isAsking('approve', entry.id) || isAsking('refuse', entry.id)}
               tabindex="-1"
             >
               <div class="admin-reservation-details">
@@ -1195,27 +1335,36 @@
                   type="button"
                   class="btn-approve"
                   disabled={Boolean(pendingAction)}
-                  onclick={() => handleApprove(entry)}
+                  onclick={(event) => handleApprove(entry, event.currentTarget)}
                 >
                   <BusyLabel
                     label={$t('admin.approve_reservation')}
                     busyLabel={$t('admin.approving_reservation')}
-                    busy={pendingAction?.id === entry.id && pendingAction.kind === 'approve'}
+                    busy={rowBusy && pendingAction.kind === 'approve'}
                   />
                 </button>
                 <button
                   type="button"
                   class="btn-remove"
                   disabled={Boolean(pendingAction)}
-                  onclick={() => handleRefuse(entry)}
+                  onclick={(event) => handleRefuse(entry, event.currentTarget)}
                 >
                   <BusyLabel
                     label={$t('admin.refuse_reservation')}
                     busyLabel={$t('admin.refusing_reservation')}
-                    busy={pendingAction?.id === entry.id && pendingAction.kind === 'refuse'}
+                    busy={rowBusy && pendingAction.kind === 'refuse'}
                   />
                 </button>
               </div>
+              {@render question(
+                'approve',
+                entry.id,
+                $t('admin.approve_reservation'),
+                $t('admin.approving_reservation'),
+                rowBusy,
+                'primary',
+              )}
+              {@render question('refuse', entry.id, $t('admin.refuse_reservation'), $t('admin.refusing_reservation'), rowBusy)}
             </li>
           {/each}
         </ul>
@@ -1241,7 +1390,7 @@
         <ul
           class="admin-item-list"
           class:list-refreshing={loading}
-          aria-busy={(loading && !followUpOpenId) || undefined}
+          aria-busy={(loading && !followUpOpenId && !confirmState) || undefined}
         >
           {#each reservationEntries as entry (entry.id)}
             {@const followUpAllowed = followUpAllowedFor(entry)}
@@ -1250,6 +1399,7 @@
               bind:this={reservationRows[entry.id]}
               class="admin-item-row"
               class:consultation-row={entry.itemTag === 'expertise'}
+              class:admin-item-row--confirming={isAsking('delete', entry.id)}
               tabindex="-1"
             >
               <div class="admin-reservation-details">
@@ -1344,7 +1494,7 @@
                           type="button"
                           class="btn-approve"
                           disabled={Boolean(followUpActionId)}
-                          onclick={() => handleFollowUp(entry)}
+                          onclick={(event) => handleFollowUp(entry, event.currentTarget)}
                         >
                           <BusyLabel
                             label={$t('account_consultations.follow_up_book')}
@@ -1353,6 +1503,14 @@
                           />
                         </button>
                       </div>
+                      {@render question(
+                        'follow-up',
+                        entry.id,
+                        $t('account_consultations.follow_up_book'),
+                        $t('account_consultations.follow_up_booking'),
+                        followUpActionId === entry.id,
+                        'primary',
+                      )}
                       {#if followUpError}
                         <p class="admin-status admin-status-error" role="alert">{followUpError}</p>
                       {/if}
@@ -1364,7 +1522,7 @@
                 type="button"
                 class="btn-remove"
                 disabled={Boolean(deletingReservationId)}
-                onclick={() => handleDeleteReservation(entry)}
+                onclick={(event) => handleDeleteReservation(entry, event.currentTarget)}
               >
                 <BusyLabel
                   label={$t('admin.delete_reservation')}
@@ -1372,6 +1530,13 @@
                   busy={deletingReservationId === entry.id}
                 />
               </button>
+              {@render question(
+                'delete',
+                entry.id,
+                $t('admin.delete_reservation'),
+                $t('admin.deleting_reservation'),
+                deletingReservationId === entry.id,
+              )}
             </li>
           {/each}
         </ul>

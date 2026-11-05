@@ -13,7 +13,13 @@
 
 const FLEXIBLE_TAGS = ['rooms', 'expertise'];
 
-import { compareDateKeys, parseDateKey, toDateKey } from './calendar.js';
+import {
+  compareDateKeys,
+  libraryTodayKey,
+  libraryWallTimeToMs,
+  parseDateKey,
+  toDateKey,
+} from './calendar.js';
 
 export function isFixedBlockTag(tag) {
   return tag === 'equipment' || tag === 'books';
@@ -143,11 +149,11 @@ export function describeRoomTimes(reservation, translate, localeCode) {
 }
 
 /**
- * Checks the hours and purpose a member gives with a room request. Returns
- * `{ ok: true, timeSlots, purpose }` ready to store, or `{ ok: false, code, error }` with
- * the code the client translates (`calendar.<code>`).
+ * Checks a room booking's hours (a member's request, or a host choosing new ones). Returns
+ * `{ ok: true, timeSlots }` with the `HH:MM-HH:MM` value to store, or `{ ok: false, code, error }`
+ * (`room_times_required`, `room_times_order`).
  */
-export function validateRoomRequest({ startTime, endTime, purpose }) {
+export function validateRoomTimes({ startTime, endTime } = {}) {
   const start = timeOfDayMinutes(startTime);
   const end = timeOfDayMinutes(endTime);
 
@@ -157,6 +163,21 @@ export function validateRoomRequest({ startTime, endTime, purpose }) {
 
   if (end <= start) {
     return { ok: false, code: 'room_times_order', error: 'The end time must be after the start time.' };
+  }
+
+  return { ok: true, timeSlots: `${startTime.trim()}-${endTime.trim()}` };
+}
+
+/**
+ * Checks the hours and purpose a member gives with a room request. Returns
+ * `{ ok: true, timeSlots, purpose }` ready to store, or `{ ok: false, code, error }` with
+ * the code the client translates (`calendar.<code>`).
+ */
+export function validateRoomRequest({ startTime, endTime, purpose }) {
+  const times = validateRoomTimes({ startTime, endTime });
+
+  if (!times.ok) {
+    return times;
   }
 
   const text = typeof purpose === 'string' ? purpose.trim() : '';
@@ -173,7 +194,7 @@ export function validateRoomRequest({ startTime, endTime, purpose }) {
     };
   }
 
-  return { ok: true, timeSlots: `${startTime.trim()}-${endTime.trim()}`, purpose: text };
+  return { ok: true, timeSlots: times.timeSlots, purpose: text };
 }
 
 /** Consultation meeting length; matches Zoom `CONSULTATION_DURATION_MINUTES` in `src/lib/zoom.js`. */
@@ -195,9 +216,10 @@ export function isConsultationHeld(reservation, now = Date.now()) {
 
 /**
  * Whether the account and admin lists offer **Book a follow-up** on a consultation: it is
- * scheduled and its meeting has started, it is the member's latest meeting with that expert,
- * and nothing else between them is open. `others` are the same member's other consultations
- * on the same item. The server only enforces the "nothing else open" part.
+ * scheduled and its meeting is today or earlier (Montréal dates, so it shows from the morning of
+ * the meeting), it is the member's latest meeting with that expert, and nothing else between
+ * them is open. `others` are the same member's other consultations on the same item. The server
+ * enforces the day and the "nothing else open" parts, and that the follow-up starts after it.
  */
 export function canBookFollowUp(source, others, now = Date.now()) {
   if (source?.status !== 'reserved') {
@@ -205,7 +227,10 @@ export function canBookFollowUp(source, others, now = Date.now()) {
   }
 
   const start = Date.parse(source.meetingAt ?? '');
-  if (Number.isNaN(start) || start > now) {
+  if (
+    Number.isNaN(start) ||
+    compareDateKeys(libraryTodayKey(new Date(start)), libraryTodayKey(new Date(now))) > 0
+  ) {
     return false;
   }
 
@@ -216,6 +241,48 @@ export function canBookFollowUp(source, others, now = Date.now()) {
         (other.status === 'reserved' &&
           (!isConsultationHeld(other, now) || Date.parse(other.meetingAt ?? '') > start))),
   );
+}
+
+/** Longest message a member or host sends about a booking from /account (emailed, never stored). */
+export const RESERVATION_MESSAGE_MAX = 2000;
+
+/** The reminder goes out once a booking starts within a day... */
+export const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
+/** ...but not in the last hour before it starts, when it would only be noise. */
+export const REMINDER_MIN_LEAD_MS = 60 * 60 * 1000;
+/** Equipment and book pickups open at 10am (Montréal) on the Tuesday a loan starts. */
+export const PICKUP_OPENS_AT = '10:00';
+
+/**
+ * When a booking starts (epoch ms), or NaN: a consultation's meeting; a room's first day at its
+ * start time (Montréal); a pickup's first day at PICKUP_OPENS_AT, as for a room with no hours.
+ */
+export function reservationStartsAt(reservation, tag) {
+  if (tag === 'expertise') {
+    return Date.parse(reservation?.meetingAt ?? '');
+  }
+
+  const times = tag === 'rooms' ? parseRoomTimes(reservation?.timeSlots) : null;
+  return libraryWallTimeToMs(reservation?.startDate, times ? times.start : PICKUP_OPENS_AT);
+}
+
+/** The day-before reminder is due: the start is less than a day away and more than an hour. */
+export function isReminderDue(startsAt, now = Date.now()) {
+  if (!Number.isFinite(startsAt)) {
+    return false;
+  }
+
+  const lead = startsAt - now;
+  return lead > REMINDER_MIN_LEAD_MS && lead <= REMINDER_LEAD_MS;
+}
+
+/**
+ * The reservations.reminder_email to write when a booking is confirmed or moved: 'skipped' when
+ * it starts within a day (that email is the reminder, and the pass must not send another), else
+ * null so the pass sends one the day before.
+ */
+export function reminderStateFor(startsAt, now = Date.now()) {
+  return Number.isFinite(startsAt) && startsAt - now <= REMINDER_LEAD_MS ? 'skipped' : null;
 }
 
 /**
