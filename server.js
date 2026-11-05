@@ -98,6 +98,14 @@ import {
 } from './src/lib/ga-measurement-protocol.js';
 import { assertSupabaseAdminConfigured, getSupabaseAdmin } from './src/lib/supabase-server.js';
 import {
+  addReservationMessage,
+  countUnreadMessages,
+  listReservationMessages,
+  markThreadRead,
+  releaseNotification,
+  ThreadUnavailableError,
+} from './src/lib/reservation-messages-store.js';
+import {
   ITEM_MEDIA_BASE,
   isItemMediaUrl,
   isItemMediaUrlForItem,
@@ -1663,13 +1671,16 @@ function endSentence(text) {
 }
 
 /**
- * A message about a booking typed on /account (POST /api/reservations/:id/message): emailed to
- * `to`, never stored. `from` 'member': the member writes to the host (itemOwnerEmail, or the
- * library inbox), `kind` 'message' or 'new_time' (a time they'd prefer; nothing moves until the
- * host moves it). `from` 'owner': the host writes to the member. Reply-To is `senderEmail`, so a
- * reply goes straight to them (as the contact form's does). `senderIsExpert` (the mentor) and
- * `senderIsStaff` choose how a host is named: staff speak as the library team, anyone else
- * hosting a mentor as the mentor (consultationHostVoice).
+ * "You have a new message" for a booking's conversation (016; POST /api/reservations/:id/message),
+ * sent to `to` only when they've read the conversation since the last such email (see
+ * reservation-messages-store.js), so it carries the first unread message and points to /account.
+ * `from` 'member': the member wrote to the host (itemOwnerEmail, or the library inbox), `kind`
+ * 'message' or 'new_time' (a time they'd prefer; nothing moves until the host moves it).
+ * `from` 'owner': the host wrote to the member. Reply-To is the library's (EMAIL_REPLY_TO), never
+ * the sender's: answers go through the conversation, so neither side gets the other's address
+ * from it. `senderEmail` names the member to the host (who already sees it on /account).
+ * `senderIsExpert` (the mentor) and `senderIsStaff` choose how a host is named: staff speak as
+ * the library team, anyone else hosting a mentor as the mentor (consultationHostVoice).
  */
 function buildReservationMessageEmailPayload({
   item,
@@ -1715,8 +1726,10 @@ function buildReservationMessageEmailPayload({
     itemLabel = 'Room';
   }
   const itemRow = [itemLabel, title, itemPageUrl(item)];
-  const cta = { label: 'Your account panel', href: absoluteSiteUrl('/account') };
-  const replyNotice = 'Reply to this email to answer them directly.';
+  const cta = { label: 'Read and reply', href: absoluteSiteUrl('/account') };
+  const replyNotice =
+    'Read the conversation and answer from your account panel. Replies to this email reach the library team, not them.';
+  const quietNotice = "If they write again before you've read this, we won't send you another email.";
   let payload;
 
   if (from === 'member') {
@@ -1745,10 +1758,10 @@ function buildReservationMessageEmailPayload({
         itemRow,
         ...whenRows,
         ['Status', status],
-        ['From', senderEmail, `mailto:${senderEmail}`],
+        ['From', senderEmail],
         [suggestion ? 'Their suggestion' : 'Message', message],
       ],
-      paragraphs: [replyNotice, moveNotice],
+      paragraphs: [replyNotice, moveNotice, quietNotice],
       cta,
       // The mentor gets the expert's line; anyone else hosting it (or the library inbox), the host's.
       why: isConsultation && emailsMatch(to, item.expertEmail) ? EMAIL_WHY.consultationExpert : EMAIL_WHY.itemOwner,
@@ -1769,13 +1782,13 @@ function buildReservationMessageEmailPayload({
       heading: asMentor ? `A message from ${title}` : `A message about your ${noun}`,
       intro: endSentence(`${senderLabel} sent you a message about your ${noun}${when}`),
       details: [itemRow, ...whenRows, ['Message', message]],
-      paragraphs: [replyNotice],
+      paragraphs: [replyNotice, quietNotice],
       cta,
       why,
     });
   }
 
-  return { ...payload, replyTo: senderEmail };
+  return { ...payload, replyTo: EMAIL_REPLY_TO };
 }
 
 function isWithinWelcomeEmailSignupWindow(user) {
@@ -4726,6 +4739,19 @@ const consultationActionLimiter = rateLimit({
   message: { error: 'Too many consultation updates. Please try again later.' },
 });
 
+/**
+ * Adds `unreadMessages` (016: messages from the other side the viewer hasn't opened) to each
+ * serialized booking for `side` ('member' or 'host'). 0 everywhere when the count fails or 016
+ * isn't applied, so the agenda still loads.
+ */
+async function withUnreadMessages(rows, side) {
+  const counts = await countUnreadMessages(
+    rows.map((row) => row.id),
+    side,
+  );
+  return rows.map((row) => ({ ...row, unreadMessages: counts.get(row.id) ?? 0 }));
+}
+
 app.get('/api/account/consultations', requireAuth, async (req, res) => {
   const email = req.user?.email?.trim() ?? '';
 
@@ -4734,11 +4760,18 @@ app.get('/api/account/consultations', requireAuth, async (req, res) => {
       includeExpert: isConfirmedUser(req.user),
     });
 
+    const [memberRows, expertRows] = await Promise.all([
+      withUnreadMessages(
+        asMember.map((entry) => serializeConsultationForUser(entry, 'member')),
+        'member',
+      ),
+      withUnreadMessages(
+        asExpert.map((entry) => serializeConsultationForUser(entry, 'expert')),
+        'host',
+      ),
+    ]);
     res.set('Cache-Control', 'no-store');
-    res.json({
-      asMember: asMember.map((entry) => serializeConsultationForUser(entry, 'member')),
-      asExpert: asExpert.map((entry) => serializeConsultationForUser(entry, 'expert')),
-    });
+    res.json({ asMember: memberRows, asExpert: expertRows });
   } catch (error) {
     console.error('Failed to load account consultations:', error);
     const detail = error?.message || '';
@@ -4833,8 +4866,12 @@ app.get('/api/account/reservations', requireAuth, async (req, res) => {
   try {
     const entries = await listReservationsForMember(email);
     const today = libraryTodayKey();
+    const reservations = await withUnreadMessages(
+      entries.map((entry) => serializeReservationForMember(entry, today)),
+      'member',
+    );
     res.set('Cache-Control', 'no-store');
-    res.json({ reservations: entries.map((entry) => serializeReservationForMember(entry, today)) });
+    res.json({ reservations });
   } catch (error) {
     console.error('Failed to load account reservations:', error);
     res.status(500).json({ error: 'Could not load your reservations.' });
@@ -4958,7 +4995,7 @@ app.get('/api/account/hosted-reservations', requireAuth, async (req, res) => {
 
   try {
     const entries = await listHostedReservationsForOwner(req.user?.email?.trim() ?? '');
-    res.json({ reservations: entries.map(serializeHostedReservation) });
+    res.json({ reservations: await withUnreadMessages(entries.map(serializeHostedReservation), 'host') });
   } catch (error) {
     console.error('Failed to load hosted reservations:', error);
     res.status(500).json({ error: 'Could not load the bookings of your items.' });
@@ -5240,13 +5277,15 @@ const reservationMessageLimiter = rateLimit({
   message: RESERVATION_MESSAGE_LIMIT_BODY,
 });
 
-const RESERVATION_MESSAGES_PER_ACCOUNT_PER_HOUR = 10;
+// Messages are stored and emails are batched (one until the other side has read the
+// conversation), so this caps writing, not email.
+const RESERVATION_MESSAGES_PER_ACCOUNT_PER_HOUR = 30;
 const reservationMessageAccountStore = new MemoryStore();
 
-// Runs after requireAuth, keyed by account, so nobody can keep emailing a host (or a member) from
-// many IPs. Only messages that went out count: the route hands the hit back otherwise, once it
-// has finished (skipFailedRequests would also hand it back when the client hangs up while the
-// email is on its way; see countSavedReservationCreates). In-memory, single instance.
+// Runs after requireAuth, keyed by account, so nobody can flood a conversation from many IPs.
+// Only messages that were saved count: the route hands the hit back otherwise, once it has
+// finished (skipFailedRequests would also hand it back when the client hangs up while the email
+// is on its way; see countSavedReservationCreates). In-memory, single instance.
 const reservationMessageAccountLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: RESERVATION_MESSAGES_PER_ACCOUNT_PER_HOUR,
@@ -5257,14 +5296,93 @@ const reservationMessageAccountLimiter = rateLimit({
   message: RESERVATION_MESSAGE_LIMIT_BODY,
 });
 
+// Opening a conversation (per IP, before requireAuth; loose, as members share the office's IP).
+const reservationThreadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.', code: 'thread_rate_limited' },
+});
+
 const RESERVATION_MESSAGE_KINDS = ['message', 'new_time'];
 const RESERVATION_MESSAGE_SENDERS = ['member', 'owner'];
+// `as` on the wire → the side stored in 016's tables.
+const THREAD_SIDE_FOR = { member: 'member', owner: 'host' };
+const THREAD_UNAVAILABLE = {
+  error: 'Messages are not available yet. Please try again later.',
+  code: 'thread_unavailable',
+};
+
+/**
+ * The booking (with its item) when the caller is on the `as` side of its conversation: 'member',
+ * the person who booked; 'owner', the item's host (itemOwnerEmail), a confirmed account. Null
+ * otherwise, so missing and not theirs get the same 404.
+ */
+async function loadThreadParticipant(req, reservationId, as) {
+  const email = req.user?.email?.trim() ?? '';
+  const found = reservationId ? await findReservationWithItem(reservationId) : null;
+  const allowed =
+    found &&
+    (as === 'member'
+      ? emailsMatch(found.reservation.userEmail, email)
+      : isConfirmedUser(req.user) && isItemOwner(found.item, email));
+  return allowed ? found : null;
+}
+
+/** A message as `side` sees it: whose it is, never an address. */
+function serializeThreadMessage(message, side) {
+  return {
+    id: message.id,
+    mine: message.sender === side,
+    byStaff: message.byStaff,
+    kind: message.kind,
+    body: message.body,
+    createdAt: message.createdAt,
+  };
+}
+
+/**
+ * The conversation on a booking, oldest first, for the `as` side (?as=member|owner), on /account
+ * when a message panel opens. Opening it marks it read for that side: its unread count goes to 0
+ * and the next message from the other side emails it again.
+ */
+app.get('/api/reservations/:reservationId/messages', reservationThreadLimiter, requireAuth, async (req, res) => {
+  const reservationId =
+    typeof req.params.reservationId === 'string' ? req.params.reservationId.trim() : '';
+  const as = typeof req.query.as === 'string' ? req.query.as : 'member';
+  res.set('Cache-Control', 'no-store');
+
+  if (!RESERVATION_MESSAGE_SENDERS.includes(as)) {
+    return res.status(400).json({ error: 'This kind of message is not available.', code: 'message_kind_invalid' });
+  }
+
+  try {
+    const found = await loadThreadParticipant(req, reservationId, as);
+    if (!found) {
+      return res.status(404).json({ error: 'Reservation not found.' });
+    }
+
+    const side = THREAD_SIDE_FOR[as];
+    const messages = await listReservationMessages(found.reservation.id);
+    await markThreadRead(found.reservation.id, side);
+    res.json({ messages: messages.map((message) => serializeThreadMessage(message, side)) });
+  } catch (error) {
+    if (error instanceof ThreadUnavailableError) {
+      return res.status(503).json(THREAD_UNAVAILABLE);
+    }
+    console.error('Failed to load reservation messages:', error);
+    res.status(500).json({ error: 'Could not load the messages.' });
+  }
+});
 
 /**
  * "Message the host" and "Suggest a new time" (`as` 'member', the person who booked) and "Message
  * the member" (`as` 'owner', the item's host: itemOwnerEmail, a confirmed account) on /account,
- * for every kind of booking. One email (buildReservationMessageEmailPayload) with Reply-To the
- * sender; nothing is stored and nothing changes. Anyone else gets the 404 of a missing booking.
+ * for every kind of booking. The message joins the booking's conversation (016) and the other
+ * side gets buildReservationMessageEmailPayload only when they've read the conversation since the
+ * last one (addReservationMessage decides). Nothing about the booking changes. Anyone else gets
+ * the 404 of a missing booking.
  */
 app.post(
   '/api/reservations/:reservationId/message',
@@ -5278,7 +5396,7 @@ app.post(
     const kind = req.body?.kind ?? 'message';
     const as = req.body?.as ?? 'member';
     const senderEmail = req.user?.email?.trim() ?? '';
-    let sent = false;
+    let saved = false;
 
     try {
       if (!message) {
@@ -5300,14 +5418,9 @@ app.post(
         return res.status(400).json({ error: 'This kind of message is not available.', code: 'message_kind_invalid' });
       }
 
-      const found = await findReservationWithItem(reservationId);
-      const allowed =
-        found &&
-        (as === 'member'
-          ? emailsMatch(found.reservation.userEmail, senderEmail)
-          : isConfirmedUser(req.user) && isItemOwner(found.item, senderEmail));
+      const found = await loadThreadParticipant(req, reservationId, as);
 
-      if (!allowed) {
+      if (!found) {
         return res.status(404).json({ error: 'Reservation not found.' });
       }
 
@@ -5334,38 +5447,57 @@ app.post(
         });
       }
 
-      sent = await sendEmailPayloads(
-        [
-          buildReservationMessageEmailPayload({
-            item,
-            reservation,
-            kind,
-            from: as,
-            senderEmail,
-            to,
-            message,
-            senderIsExpert: isConsultationExpert(item, senderEmail),
-            senderIsStaff: isAdminUser(req.user),
-          }),
-        ],
-        'Reservation message',
-      );
+      const side = THREAD_SIDE_FOR[as];
+      const senderIsStaff = isAdminUser(req.user);
+      const stored = await addReservationMessage({
+        reservationId: reservation.id,
+        sender: side,
+        byStaff: side === 'host' && senderIsStaff,
+        kind,
+        body: message,
+      });
+      saved = true;
 
-      if (!sent) {
-        return res.status(502).json({
-          error: 'Your message could not be sent. Please try again in a moment.',
-          code: 'message_send_failed',
-        });
+      let emailSent = false;
+      if (stored.notify) {
+        emailSent = await sendEmailPayloads(
+          [
+            buildReservationMessageEmailPayload({
+              item,
+              reservation,
+              kind,
+              from: as,
+              senderEmail,
+              to,
+              message,
+              senderIsExpert: isConsultationExpert(item, senderEmail),
+              senderIsStaff,
+            }),
+          ],
+          'Reservation message',
+        );
+        if (!emailSent) {
+          // The next message tries again.
+          await releaseNotification(reservation.id, side === 'member' ? 'host' : 'member', stored.previousNotifiedAt);
+        }
       }
 
       // No content and no addresses in the log.
-      console.log('[reservation-message]', { reservationId, kind, as });
-      res.json({ emailSent: true });
+      console.log('[reservation-message]', { reservationId, kind, as, emailed: emailSent });
+      res.json({
+        message: serializeThreadMessage(stored.message, side),
+        emailSent,
+        // false: the other side already has an unread email about this conversation.
+        notified: stored.notify,
+      });
     } catch (error) {
+      if (error instanceof ThreadUnavailableError) {
+        return res.status(503).json(THREAD_UNAVAILABLE);
+      }
       console.error('Failed to send reservation message:', error);
       res.status(500).json({ error: 'Could not send your message.' });
     } finally {
-      if (!sent) {
+      if (!saved) {
         await reservationMessageAccountStore.decrement(reservationAccountKey(req));
       }
     }

@@ -54,8 +54,9 @@ const ERROR_CODE_KEYS = {
   message_kind_invalid: 'reservation_message.send_error',
   message_not_available: 'reservation_message.not_available',
   message_no_recipient: 'reservation_message.no_recipient',
-  message_send_failed: 'reservation_message.send_failed',
   message_rate_limited: 'reservation_message.rate_limited',
+  thread_rate_limited: 'reservation_message.rate_limited',
+  thread_unavailable: 'reservation_message.unavailable',
   account_suspended: 'auth.account_suspended',
   user_protected: 'admin.users_protected_error',
   password_reset_unavailable: 'admin.users_reset_unavailable',
@@ -494,10 +495,10 @@ export async function rescheduleConsultation(reservationId, meetingAt, message =
 }
 
 /**
- * Emails the other side of a booking (any tag) from /account: a member writes to the item's host
- * (`as` 'member'; `kind` 'new_time' words it as a request for another time), or the host writes
- * to the member (`as` 'owner'). Reply-To is the sender, and nothing is stored. Returns
- * `{ emailSent }`; a message that could not be sent throws.
+ * Adds a message to a booking's conversation (any tag) from /account: a member writes to the
+ * item's host (`as` 'member'; `kind` 'new_time' marks it as a request for another time), or the
+ * host writes to the member (`as` 'owner'). The other side is emailed only when they've read the
+ * conversation since the last email. A message that could not be saved throws.
  */
 export async function sendReservationMessage(reservationId, { message = '', kind = 'message', as = 'member' } = {}) {
   const response = await fetch(`/api/reservations/${encodeURIComponent(reservationId)}/message`, {
@@ -511,7 +512,27 @@ export async function sendReservationMessage(reservationId, { message = '', kind
     throw new Error(apiErrorMessage(result, 'reservation_message.send_error'));
   }
 
-  return { emailSent: result.emailSent };
+  // `message`: the saved message as the thread shows it. `notified`: false when the other side
+  // already had an unread email about this conversation, so none went out.
+  return { message: result.message ?? null, emailSent: result.emailSent, notified: result.notified };
+}
+
+/**
+ * A booking's conversation, oldest first: `{ id, mine, byStaff, kind, body, createdAt }` each.
+ * `as` 'member' (the person who booked) or 'owner' (the host). Opening it marks it read.
+ */
+export async function fetchReservationMessages(reservationId, as = 'member') {
+  const response = await fetch(
+    `/api/reservations/${encodeURIComponent(reservationId)}/messages?as=${encodeURIComponent(as)}`,
+    { headers: await authHeaders() },
+  );
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(result, 'reservation_message.load_error'));
+  }
+
+  return Array.isArray(result.messages) ? result.messages : [];
 }
 
 /** The signed-in member's equipment, book and room reservations (all statuses but `available`). */

@@ -27,6 +27,7 @@ import {
   OFFICE_LOCATION_ID,
 } from './item-location.js';
 import { isStorableImageDataUrl } from './item-media.js';
+import { deleteReservationThreads } from './reservation-messages-store.js';
 import { ensureUniqueSlug, slugifyTitle } from './slug.js';
 import { getSupabaseAdmin } from './supabase-server.js';
 
@@ -2604,8 +2605,9 @@ export async function cancelReservationByAdmin(itemId, reservationId, { cancelle
  * Strips a deleted account from its reservation history: every row whose `user_email` matches
  * (case-insensitively, any tag, any status) keeps its item, dates and status but loses
  * `user_email`, `time_slots` and `request_summary`, and gets `anonymized_at` (009) so Stats
- * still counts it as a member's request. A later account with the same email then inherits
- * nothing. Rows are updated by id, one item at a time under that item's lock.
+ * still counts it as a member's request, and its conversation (016) is deleted. A later account
+ * with the same email then inherits nothing. Rows are updated by id, one item at a time under
+ * that item's lock.
  */
 export async function anonymizeReservationsForEmail(email) {
   const memberEmail = typeof email === 'string' ? email.trim() : '';
@@ -2662,6 +2664,9 @@ export async function anonymizeReservationsForEmail(email) {
       return updated?.length ?? 0;
     });
   }
+
+  // Their booking conversations (016) go too: what they wrote, and what was written to them.
+  await deleteReservationThreads([...idsByItem.values()].flat());
 
   return { count };
 }

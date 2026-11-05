@@ -10,7 +10,7 @@
   import { navigate } from '../lib/router.js';
   import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
-  import { stickerFor, timingStickerFor, TOOL_KINDS } from '../lib/agenda.js';
+  import { pluralKey, stickerFor, timingStickerFor, TOOL_KINDS } from '../lib/agenda.js';
   import { rowKey } from '../lib/consultation-notices.js';
   import {
     cancelFeedbackFor,
@@ -90,6 +90,8 @@
   let reschedulePicker = $state(null);
   let followUpPicker = $state(null);
   let messageForm = $state(null);
+  /** The conversation was opened here, so its unread count is stale (the list reloads later). */
+  let threadSeen = $state(false);
 
   const row = $derived(entry.row);
   const cardId = $derived(`agenda-${entry.key.replace(/[^\w-]/g, '-')}`);
@@ -98,6 +100,11 @@
   const past = $derived(section === 'recent' || section === 'earlier');
   const sticker = $derived(stickerFor(entry));
   const timingSticker = $derived(timingStickerFor(entry.timing));
+  // The conversation's tool on this side, and its unread messages (016) while that tool is offered.
+  const messageTool = $derived(row.role === 'member' ? 'message-mentor' : 'message-member');
+  const unreadCount = $derived(
+    threadSeen || !entry.tools.includes(messageTool) ? 0 : Number(row.unreadMessages) || 0,
+  );
   // A tool the server no longer allows (a meeting that started) closes its panel.
   const activeTool = $derived(
     openPanel?.key === entry.key && entry.tools.includes(openPanel.tool) ? openPanel.tool : '',
@@ -243,10 +250,10 @@
     }
   }
 
+  // The panel stays open on the conversation, with the sent message in it.
   function handleMessageSent(tool) {
     announce?.($t(MESSAGE_TOOLS[tool].status));
     notify({ textKey: MESSAGE_TOOLS[tool].kimchi }, DEFAULT_NOTIFICATION_DURATION);
-    closeTool();
   }
 
   function askSchedule() {
@@ -615,6 +622,21 @@
   {/if}
 {/snippet}
 
+<!-- Unread messages from the other side: opens the conversation. -->
+{#snippet unread()}
+  {#if unreadCount > 0}
+    <button
+      type="button"
+      class="consultation-status consultation-status--unread"
+      aria-label={$t(pluralKey('reservation_message.unread_aria', unreadCount), { count: unreadCount, title: row.itemTitle })}
+      disabled={busy}
+      onclick={() => showTool(messageTool)}
+    >
+      {$t(pluralKey('reservation_message.unread', unreadCount), { count: unreadCount })}
+    </button>
+  {/if}
+{/snippet}
+
 {#snippet field(labelKey, value)}
   <div class="consultation-field">
     <span class="consultation-field__label">{$t(labelKey)}</span>
@@ -650,9 +672,13 @@
           label={$t(MESSAGE_TOOLS[activeTool].label)}
           hint={$t(MESSAGE_TOOLS[activeTool].hint)}
           placeholder={MESSAGE_TOOLS[activeTool].placeholder ? $t(MESSAGE_TOOLS[activeTool].placeholder) : ''}
+          otherLabel={row.role === 'member'
+            ? $t('reservation_message.from_mentor')
+            : row.memberEmail || $t('reservation_message.from_member')}
           disabled={busy}
           onbusy={handleMessageBusy}
           onsent={() => handleMessageSent(activeTool)}
+          onread={() => (threadSeen = true)}
           oncancel={closeTool}
         />
       {:else if activeTool === 'reschedule'}
@@ -753,6 +779,7 @@
             {$t('account_consultations.follow_up_badge')}
           </span>
         {/if}
+        {@render unread()}
         <span>{$t('account_consultations.requested_on', { date: formatDateKey(row.requestedOn, $locale) })}</span>
         <span aria-hidden="true">·</span>
         <a bind:this={titleLink} href={row.itemPath} onclick={openItem}>{row.itemTitle}</a>
@@ -830,6 +857,7 @@
               {$t('account_consultations.follow_up_badge')}
             </span>
           {/if}
+          {@render unread()}
           <span class="agenda-entry__meta-text">
             <strong class="agenda-entry__when">{when}</strong>{#each metaRest as part (part)}<span aria-hidden="true"
                 >{'\u00a0·'}</span

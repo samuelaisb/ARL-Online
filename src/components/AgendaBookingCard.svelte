@@ -85,6 +85,8 @@
   let menus = $state({});
   let confirms = $state({});
   let messageForms = $state({});
+  /** Keys whose conversation was opened here, so their unread count is stale until the list reloads. */
+  let seenThreads = $state({});
   let saveButtons = $state({});
   let startDateInputs = $state({});
   let startTimeInputs = $state({});
@@ -381,6 +383,7 @@
     }
   }
 
+  // The panel stays open on the conversation, with the sent message in it.
   function handleMessageSent(item, tool) {
     const own = item.source === 'res';
     announce?.($t(own ? RESERVATION_TOOL_PANELS[tool].status : 'reservation_message.sent_status'));
@@ -388,7 +391,11 @@
       { textKey: own ? RESERVATION_TOOL_PANELS[tool].kimchi : 'kimchi.message_sent' },
       DEFAULT_NOTIFICATION_DURATION,
     );
-    closeTool(item);
+  }
+
+  /** Unread messages from the other side (016), while the item still offers its message tool. */
+  function unreadCountOf(item) {
+    return seenThreads[item.key] || !item.tools.includes('message') ? 0 : Number(item.row?.unreadMessages) || 0;
   }
 
   /** The member withdraws a request or cancels a booking before its first day. */
@@ -730,6 +737,22 @@
   />
 {/snippet}
 
+<!-- Unread messages from the other side: opens the conversation. -->
+{#snippet unread(item)}
+  {@const count = unreadCountOf(item)}
+  {#if count > 0}
+    <button
+      type="button"
+      class="consultation-status consultation-status--unread"
+      aria-label={$t(pluralKey('reservation_message.unread_aria', count), { count, title: item.title })}
+      disabled={anyBusy}
+      onclick={() => openTool(item, 'message')}
+    >
+      {$t(pluralKey('reservation_message.unread', count), { count })}
+    </button>
+  {/if}
+{/snippet}
+
 {#snippet stickers(item)}
   {@const sticker = stickerFor(item)}
   {#if sticker && !item.needs}
@@ -740,6 +763,9 @@
   {/if}
   {#if item.row?.bookedByStaff}
     <span class="consultation-status consultation-status--staff">{$t('account_hosted.booked_by_staff')}</span>
+  {/if}
+  {#if item.type !== 'group'}
+    {@render unread(item)}
   {/if}
 {/snippet}
 
@@ -968,9 +994,11 @@
         label={$t(own ? RESERVATION_TOOL_PANELS[tool].label : 'account_hosted.message_label')}
         hint={$t(own ? RESERVATION_TOOL_PANELS[tool].hint : 'account_hosted.message_hint')}
         placeholder={own && RESERVATION_TOOL_PANELS[tool].placeholder ? $t(RESERVATION_TOOL_PANELS[tool].placeholder) : ''}
+        otherLabel={own ? $t('reservation_message.from_host') : item.row.memberEmail || $t('reservation_message.from_member')}
         disabled={anyBusy}
         onbusy={(busy) => handleMessageBusy(item, busy)}
         onsent={() => handleMessageSent(item, tool)}
+        onread={() => (seenThreads[item.key] = true)}
         oncancel={() => closeTool(item)}
       />
     </div>
@@ -1068,6 +1096,7 @@
             <a use:titleLink={item.key} href={itemToPath(item.row)} onclick={(event) => openItem(event, item.row)}>
               {item.title}
             </a>
+            {@render unread(item)}
           </p>
           {#if item.tools.length > 0}
             {@render moreMenu(item)}

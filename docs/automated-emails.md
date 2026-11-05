@@ -2,13 +2,13 @@
 
 Production emails are sent from `server.js` via the [Resend](https://resend.com) SDK. **Routes wait for their emails before they respond** (`settleNotifications()`): Cloud Run can throttle CPU once a response is out, which stalls sends still in flight. A failed email never turns a saved action into an error. The route still succeeds, logs the failure, and returns `emailSent: false` (see [`emailSent` in responses](#emailsent-in-responses)). Each send is capped at 10 seconds (`EMAIL_SEND_TIMEOUT_MS`). Resend's default rate limit is 2 requests per second per team: a send it refuses with 429 `rate_limit_exceeded` (nothing was sent) is retried once after 1 second (`EMAIL_RATE_LIMIT_RETRY_MS`). Nothing else is retried. Admin item deletes and member account deletes, which can email many people at once, send in paced rounds (see triggers 7 and 8).
 
-**Reply-To:** every app email except two sets `Reply-To` to `EMAIL_REPLY_TO` (default `samuel@apathyisboring.com`). `activistresourcelibrary.com` has no MX record and receives no mail, so without it a member's reply to `noreply@` would be lost. The contact form sets `Reply-To` to the visitor instead, and a message about a booking sent from `/account` (triggers 13 and 14) to its sender, so a reply goes straight to the other person.
+**Reply-To:** every app email except the contact form sets `Reply-To` to `EMAIL_REPLY_TO` (default `samuel@apathyisboring.com`). `activistresourcelibrary.com` has no MX record and receives no mail, so without it a member's reply to `noreply@` would be lost. The contact form sets `Reply-To` to the visitor instead. Messages about a booking (triggers 13 and 14) use the library's too: the other side answers in the booking's conversation on `/account`, so neither gets the other's address from the email (until 2026-11-05 they used the sender's).
 
 **Recipients are the member who made the reservation** (`userEmail` from the JWT at create time, stored on the reservation row) — plus, for expertise consultations, **the item's expert** (`inventory_items.expert_email`). The admin password reset (trigger 9) goes to the account's own email from Supabase Auth. A booking staff create in admin (trigger 10, or trigger 6 for a meeting with a mentor) stores, and emails, the address they typed, which may have no account yet. When staff give a mentor a new address, the new address gets the open consultations' expert emails again (trigger 11). There is no admin `EMAIL_TO` or env-based fallback recipient.
 
 New pending reservation requests on equipment, books, and rooms do **not** send email — admins are notified via the [Slack webhook](automated-webhooks.md) only, and the member follows the request on the `/account` agenda (under **Coming up**). **Expertise consultations are the exception:** see triggers 5–7 (request received / new request, scheduled, cancelled). An admin deleting a member's upcoming equipment, book or room reservation (or its item) emails that member (trigger 8). In `/admin` → **Members**, deleting a member account cancels their active bookings and sends triggers 7 and 8 for them, and **Send password reset** sends trigger 9.
 
-From the `/account` agenda (migration 015; the actions below sit in each entry's **More** menu, or are the one button of a **Needs you** card): every confirmed booking gets a reminder about a day before it starts (trigger 12); the person who booked can write to the item's host, or suggest a new time (trigger 13), and the host can write back (trigger 14); a mentor (or the owner of a mentor with no address) can move a meeting (trigger 15); the owner of a room, equipment or book can give a booking new dates (trigger 16), approve or decline a request (trigger 17, the admin emails 1 and 2) and cancel a booking (trigger 18, the team-cancel email 8). The host of an item is its effective owner (`itemOwnerEmail()`: a mentor's `expert_email`, else the item's `owner_email`).
+From the `/account` agenda (migration 015; the actions below sit in each entry's **More** menu, or are the one button of a **Needs you** card): every confirmed booking gets a reminder about a day before it starts (trigger 12); the person who booked can write to the item's host, or suggest a new time (trigger 13), and the host can write back (trigger 14), in a conversation kept on the booking (migration 016) that emails each side once until they've read it; a mentor (or the owner of a mentor with no address) can move a meeting (trigger 15); the owner of a room, equipment or book can give a booking new dates (trigger 16), approve or decline a request (trigger 17, the admin emails 1 and 2) and cancel a booking (trigger 18, the team-cancel email 8). The host of an item is its effective owner (`itemOwnerEmail()`: a mentor's `expert_email`, else the item's `owner_email`).
 
 Email dates are written out in English (`formatReservationDates()`: "Tuesday, October 13, 2026 to Tuesday, October 20, 2026", one date when a room is booked for a single day). Room hours are Montréal wall-clock times, written `6:00 p.m. to 9:00 p.m.` with no time-zone conversion (`formatRoomTimes()`).
 
@@ -401,13 +401,14 @@ Not sent for held, cancelled or refused consultations. An account's own email ch
 | Field | Value |
 |-------|-------|
 | **Trigger** | `/account` agenda → the entry's **More** → **Message the host** / **Suggest a new time** (rooms, equipment, books: `AgendaBookingCard`) or **Message the mentor** / **Suggest a new time** (consultations: `AgendaConsultationCard`) → **Send** → `POST /api/reservations/:reservationId/message { message, kind: 'message' \| 'new_time', as: 'member' }`. Only on the member's own `pending` or `reserved` booking; `new_time` only while it is pending or hasn't started |
-| **Function** | `buildReservationMessageEmailPayload({ item, reservation, kind, from: 'member', senderEmail, to, message })` → `sendEmailPayloads([payload], 'Reservation message')` |
+| **Function** | `addReservationMessage` saves the message (migration 016) and decides; when it says so, `buildReservationMessageEmailPayload({ item, reservation, kind, from: 'member', senderEmail, to, message })` → `sendEmailPayloads([payload], 'Reservation message')` |
+| **When** | Only when the host has opened the booking's conversation on `/account` since the last such email, or never got one (`shouldNotify` in `src/lib/reservation-messages-store.js`). Later messages before they read it are saved and send nothing (the route answers `notified: false`) |
 | **From** | `EMAIL_FROM` |
-| **Reply-To** | The member's address (from the JWT) |
+| **Reply-To** | `EMAIL_REPLY_TO` (the library), never the member |
 | **To** | The item's host: `itemOwnerEmail(item)` (a mentor's `expert_email`, else `owner_email`), or the library inbox (`CONTACT_TO`) when there is none (before migration 015) |
 | **Subject** | `New message about {title}` · `New time suggested for {title}` |
-| **Timing** | Awaited; the route answers 200 `{ emailSent: true }` only when Resend accepted it |
-| **Auth** | The booking's member (`requireAuth`, email match); IP limit 60 / 15 min and 10 sent messages per account per hour (429 `message_rate_limited`) |
+| **Timing** | Awaited; the route answers 200 `{ message, emailSent, notified }` once the message is saved, `emailSent: true` only when Resend accepted the email |
+| **Auth** | The booking's member (`requireAuth`, email match); IP limit 60 / 15 min and 30 saved messages per account per hour (429 `message_rate_limited`) |
 
 **Content summary:**
 
@@ -415,14 +416,14 @@ Not sent for held, cancelled or refused consultations. An account's own email ch
 |------|------|
 | Heading | New message from a member · A new time was suggested |
 | Intro | "{member} sent you a message about their {consultation \| room reservation \| reservation}{when}." · "{member} would like a new time for their …{when}." `{when}`: a scheduled consultation " on {meeting time} (Montreal time)"; a pending one ", requested on {date}"; other bookings " for {dates}, {times}" (one closing period, even after "p.m.") |
-| Details | **Consultation** / **Room** / **Item** (linked), **When** or **Requested on** (consultations) / **Dates** + **Times**, **Status** (Waiting for review, Scheduled or Confirmed), **From** (mailto link), **Message** or **Their suggestion** |
-| Body | "Reply to this email to answer them directly." A suggestion adds "To move it, choose the new time from your account panel; they will get an email with it." (a pending consultation: "To schedule it, pick the time from your account panel; you will both get the invitation by email.") |
-| Button | **Your account panel** → `/account` |
+| Details | **Consultation** / **Room** / **Item** (linked), **When** or **Requested on** (consultations) / **Dates** + **Times**, **Status** (Waiting for review, Scheduled or Confirmed), **From** (the member's address, plain text; the host already sees it on `/account`), **Message** or **Their suggestion** (the message that triggered the email) |
+| Body | "Read the conversation and answer from your account panel. Replies to this email reach the library team, not them." A suggestion adds "To move it, choose the new time from your account panel; they will get an email with it." (a pending consultation: "To schedule it, pick the time from your account panel; you will both get the invitation by email."). Then "If they write again before you've read this, we won't send you another email." |
+| Button | **Read and reply** → `/account` |
 | Footer | `EMAIL_WHY.consultationExpert` when it goes to the mentor's own address, else `EMAIL_WHY.itemOwner`: "You are receiving this email because you are listed as the host of this item in the Activist Resource Library." |
 
-Nothing is stored and the booking doesn't change: a suggested time only moves when the host acts (triggers 15 and 16). The message's text is escaped in the HTML, and the server log (`[reservation-message] { reservationId, kind, as }`) has no address or text.
+The message is kept in the booking's conversation (`reservation_messages`), but the booking doesn't change: a suggested time only moves when the host acts (triggers 15 and 16). The message's text is escaped in the HTML, and the server log (`[reservation-message] { reservationId, kind, as, emailed }`) has no address or text.
 
-**Failure behavior:** the email is the whole action, so a failed send is a 502 `message_send_failed` (logged `Reservation message email failed: …`) and doesn't count toward the hourly limit.
+**Failure behavior:** the message is saved either way. A failed send is logged (`Reservation message email failed: …`), the route answers `emailSent: false`, and the email claim is handed back (`releaseNotification`), so the next message tries again. Before migration 016 nothing is saved or sent (503 `thread_unavailable`).
 
 ---
 
@@ -431,12 +432,13 @@ Nothing is stored and the booking doesn't change: a suggested time only moves wh
 | Field | Value |
 |-------|-------|
 | **Trigger** | `/account` agenda → the entry's **More** → **Message the member**, from the mentor or owner (`AgendaConsultationCard`), or from the owner of a room, equipment or book (`AgendaBookingCard`: a request under **Needs you**, or a booking marked **Your item**) → **Send** → `POST /api/reservations/:reservationId/message { message, kind: 'message', as: 'owner' }`. A `pending` or `reserved` booking (held meetings and ended loans too) |
-| **Function** | `buildReservationMessageEmailPayload({ …, from: 'owner', senderIsExpert, senderIsStaff })` → `sendEmailPayloads([payload], 'Reservation message')` |
+| **Function** | `addReservationMessage` (side `host`, `byStaff` for an admin), then, when it says so, `buildReservationMessageEmailPayload({ …, from: 'owner', senderIsExpert, senderIsStaff })` → `sendEmailPayloads([payload], 'Reservation message')` |
+| **When** | As trigger 13: only when the member has opened the conversation since the last such email |
 | **From** | `EMAIL_FROM` |
-| **Reply-To** | The sender's address |
+| **Reply-To** | `EMAIL_REPLY_TO` (the library), never the host's address |
 | **To** | The booking's `userEmail` (none, a deleted account: 400 `message_no_recipient`, nothing sent) |
 | **Subject** | `Message about your {consultation \| room reservation \| reservation}: {title}` |
-| **Timing** | Awaited; 200 `{ emailSent: true }` only when Resend accepted it |
+| **Timing** | As trigger 13 |
 | **Auth** | A confirmed account that hosts the item (`isItemOwner`); same limits as trigger 13 |
 
 **Content summary:**
@@ -446,8 +448,8 @@ Nothing is stored and the booking doesn't change: a suggested time only moves wh
 | Heading | Consultations from the mentor: "A message from {title}"; otherwise "A message about your {noun}" |
 | Intro | "{sender} sent you a message about your {noun}{when}." (`{when}` as in trigger 13) `{sender}`: consultations, the mentor's name (the expert, or an owner who isn't staff) or "The Activist Resource Library team" (staff); other bookings, "The Activist Resource Library team" (staff) or "The host of {title}" |
 | Details | The item, its time or dates (as in trigger 13), **Message** |
-| Body | Reply to this email to answer them directly. |
-| Button | **Your account panel** → `/account` |
+| Body | "Read the conversation and answer from your account panel. Replies to this email reach the library team, not them." Then "If they write again before you've read this, we won't send you another email." |
+| Button | **Read and reply** → `/account` |
 | Footer | `EMAIL_WHY.consultationMember` / `reservation` (`staffConsultation` / `staffReservation` for a staff booking) |
 
 **Failure behavior:** as trigger 13.
