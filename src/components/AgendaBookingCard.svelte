@@ -14,7 +14,6 @@
   import {
     locationAddressLine,
     locationAreaLine,
-    locationTransitNote,
     transitAppUrl,
   } from '../lib/item-location.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
@@ -773,7 +772,6 @@
 <!-- The server sends the full address only for a confirmed reservation that hasn't ended. -->
 {#snippet location(row, place, mapId)}
   {@const address = locationAddressLine(place, $locale)}
-  {@const transitNote = locationTransitNote(place.transitNote, $locale)}
   {@const transitUrl = transitAppUrl(place, $locale)}
   {@const hasMap = typeof place.latitude === 'number' && typeof place.longitude === 'number'}
   <div class="reservation-location agenda-location">
@@ -781,9 +779,6 @@
       <span class="consultation-field__label">{$t('account_reservations.location_label')}</span>
       <span class="agenda-location__address">{place.name ? `${place.name}, ${address}` : address}</span>
     </span>
-    {#if transitNote}
-      <span class="admin-consultation-detail">{transitNote}</span>
-    {/if}
     {#if row.tag !== 'rooms'}
       <span class="admin-consultation-detail">{$t('calendar.pickup_dropoff_hours')}</span>
     {/if}

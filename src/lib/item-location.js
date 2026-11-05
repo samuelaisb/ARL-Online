@@ -7,7 +7,7 @@
  * - full location (server and admin only): every field of the row.
  * - public location (anyone): city, province and postal code, plus an approximate area for the map.
  * - member location (a member's confirmed reservation that hasn't ended): the full address,
- *   the exact point, the transit note and a directions link.
+ *   the exact point, nearby stations and a directions link. The transit note stays in the emails.
  */
 
 export const OFFICE_LOCATION_ID = 'aisb-office';
@@ -199,13 +199,6 @@ export function locationAddressLine(location, locale = 'en') {
   return [street, locationAreaLine(location, locale)].filter(Boolean).join(', ');
 }
 
-/** The transit note in the visitor's language, falling back to the other one. */
-export function locationTransitNote(transitNote, locale = 'en') {
-  const en = text(transitNote?.en);
-  const fr = text(transitNote?.fr);
-  return locale === 'fr' ? fr || en : en || fr;
-}
-
 /**
  * Google Maps directions to the street address, transit first (Google shows the other modes as
  * tabs). No key; opens the Google Maps app on phones that have it. The address rather than the
@@ -256,7 +249,7 @@ export function publicLocation(location, { withArea = true } = {}) {
   };
 }
 
-/** A member's confirmed reservation: the full address, the exact point and how to get there. */
+/** A member's confirmed reservation: the full address, the exact point, nearby stations and directions. */
 export function memberLocation(location) {
   if (!location) {
     return null;
@@ -271,10 +264,6 @@ export function memberLocation(location) {
     postalCode: text(location.postalCode),
     latitude: typeof location.latitude === 'number' ? location.latitude : null,
     longitude: typeof location.longitude === 'number' ? location.longitude : null,
-    transitNote: {
-      en: location.transitNoteEn ?? null,
-      fr: location.transitNoteFr ?? null,
-    },
     stations: normalizeStations(location.nearbyStations),
     directionsUrl: directionsUrl(location),
   };
