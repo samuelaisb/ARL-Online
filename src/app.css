@@ -1,6 +1,6 @@
 /* Latin WOFF2 subsets of the TTF/OTF sources kept beside them (Inter: slnt pinned
    to 0, wght 400–900). Keep unicode-range in step with the subset, and rename the
-   file when regenerating it: /assets/fonts is cached for 7 days (see AGENTS.md). */
+   file when regenerating it: /assets/fonts is cached for 7 days (see AGENTS.md → Common change patterns). */
 @font-face {
   font-family: 'Inter';
   src: url('/assets/fonts/inter/Inter-latin.woff2') format('woff2');

@@ -166,7 +166,7 @@ All in `KimchiNotification.svelte`.
 
 The load-time bubbles (B4, B5, B6, C8) are sent by `AccountAgenda.svelte`, the `/account` agenda, with their rules in `src/lib/consultation-notices.js`; the bubbles after an action come from `AgendaConsultationCard.svelte`. Keys and conditions are unchanged from the old `AccountConsultations.svelte`. Texts are in [Consultation messages](#consultation-messages). `/account` shows **at most one load-time consultation bubble per visit**, in the priority B6 > B4 > B5 > C8. Those bubbles use `notifyWhenIdle` with kind `account-consultations` and are removed when the agenda unmounts ("on this page" and "below" stop being true). None of them contains a Zoom link, a member's email, time slots or a summary.
 
-"Expert" below includes the effective owner of a mentor with no expert email (migration 015, `AGENTS.md` → **Who hosts it**): those consultations are on the same agenda, so B5 (new requests), B4 (a member's cancel) and B6 (meeting soon) cover them too. Today that is samuel@apathyisboring.com, who owns every item that had no owner.
+"Expert" below includes the effective owner of a mentor with no expert email (migration 015, `docs/consultations.md` → **Who hosts it**): those consultations are on the same agenda, so B5 (new requests), B4 (a member's cancel) and B6 (meeting soon) cover them too. Today that is samuel@apathyisboring.com, who owns every item that had no owner.
 
 | Trigger | Locale key(s) | Duration | Conditions |
 |---------|---------------|----------|------------|

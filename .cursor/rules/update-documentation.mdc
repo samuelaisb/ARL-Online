@@ -1,18 +1,21 @@
 ---
-description: Require agents to update AGENTS.md after website changes
+description: Require agents to update the project docs (AGENTS.md and docs/) after website changes
 alwaysApply: true
 ---
 
 # Update documentation after website edits
 
-When you finish editing the ARL Online website (frontend, API, scripts, env, or structure), you must update documentation before considering the task complete.
+When you finish editing the ARL Online website (frontend, API, scripts, env, or structure), update the documentation before considering the task complete.
+
+`AGENTS.md` is the map: it lists every doc and what belongs in it (**Start here**). Detail lives in the topic docs under `docs/`.
 
 ## Required
 
 1. Read `AGENTS.md` at the project root before making structural changes.
-2. After changes that affect behavior, layout, APIs, scripts, env vars, or directory structure, update `AGENTS.md` (and any other affected docs).
-3. Add a row to the **Changelog** table in `AGENTS.md` for meaningful changes.
-4. If you change Expertise / consultation behavior, update the **Expertise consultations** section in `AGENTS.md` (and `.cursor/rules/expertise-consultations.mdc` if invariants change). Also update `docs/automated-emails.md`, `docs/automated-webhooks.md`, or `docs/automated-notifications.md` when those triggers change.
+2. After changes that affect behavior, layout, APIs, scripts, env vars, or directory structure, update the doc that covers it: `docs/frontend.md` (components, `src/lib`, auth, styling), `docs/backend.md` (`server.js`, API table, env vars, Docker / Cloud Run), `docs/consultations.md` (Expertise consultations), or `AGENTS.md` itself (directory layout, which code runs where, npm scripts, common change patterns).
+3. Add a row at the top of the **Change log** table in `docs/changelog.md` (newest first) for meaningful changes.
+4. If you change Expertise / consultation behavior, update `docs/consultations.md` (and `.cursor/rules/expertise-consultations.mdc` if invariants change). Also update `docs/automated-emails.md`, `docs/automated-webhooks.md`, or `docs/automated-notifications.md` when those triggers change.
+5. Open bugs and owner to-dos live only in `docs/claude-handoff.md`. Delete an item there once it is fixed or done.
 
 ## Skip doc updates only when
 
@@ -21,5 +24,6 @@ When you finish editing the ARL Online website (frontend, API, scripts, env, or 
 
 ## Do not
 
-- Leave `AGENTS.md` describing removed files, endpoints, or workflows.
-- Add new README or markdown files unless the user asked for them; prefer updating `AGENTS.md`.
+- Leave any doc describing removed files, endpoints, or workflows.
+- Put long detail in `AGENTS.md`; it stays a short map.
+- Add new README or markdown files unless the user asked for them; prefer updating the existing docs.
