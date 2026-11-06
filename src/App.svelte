@@ -14,6 +14,7 @@
     isHomeRoute,
     isHowThisWorksRoute,
     isItemDetailRoute,
+    isJoinRoute,
     isKnownAppPath,
     isPlainLeftClick,
     isPrivacyRoute,
@@ -144,7 +145,8 @@
   const onAccountPage = $derived(isAccountRoute($path));
   const onPrivacyPage = $derived(isPrivacyRoute($path));
   const onItemDetailPage = $derived(isItemDetailRoute($path));
-  const onHomePage = $derived(isHomeRoute($path));
+  // /join is the homepage with the Register pop-up opened by HeaderAuth.
+  const onHomePage = $derived(isHomeRoute($path) || isJoinRoute($path));
   const onInventoryPage = $derived(isCategoryPath($path));
   const onUnknownPage = $derived(!isKnownAppPath($path));
 

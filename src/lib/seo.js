@@ -51,6 +51,12 @@ export const ROUTE_SEO_KEYS = {
     description: 'seo.default_description',
     noindex: true,
   },
+  // The homepage with the Register pop-up open: shareable, but kept out of search results.
+  '/join': {
+    title: 'seo.join_title',
+    description: 'seo.join_description',
+    noindex: true,
+  },
 };
 
 function lookup(dict, key) {

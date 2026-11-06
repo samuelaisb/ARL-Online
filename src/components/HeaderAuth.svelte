@@ -10,7 +10,7 @@
     session,
     signOut,
   } from '../lib/auth.js';
-  import { navigate } from '../lib/router.js';
+  import { isJoinRoute, navigate, path } from '../lib/router.js';
   import { t } from '../lib/i18n.js';
   import { notify } from '../lib/notification-store.js';
   import AuthModal from './AuthModal.svelte';
@@ -44,6 +44,25 @@
     if ((authRedirectError || authRedirectErrorCode) && !authRedirectFromPasswordReset) {
       authModal?.open('login', formatRedirectError(authRedirectError, authRedirectErrorCode));
     }
+  });
+
+  // /join ("Make a free account" from outside the library) opens Register once per arrival,
+  // once the session is known: not for a signed-in visitor (an OAuth sign-up returns here), and
+  // not over the sign-in error or reset dialog this page load already opened.
+  let joinHandled = false;
+  $effect(() => {
+    if (!isJoinRoute($path)) {
+      joinHandled = false;
+      return;
+    }
+    if (joinHandled || !$authReady) {
+      return;
+    }
+    joinHandled = true;
+    if ($session || authRedirectError || authRedirectErrorCode || authRedirectFromPasswordReset) {
+      return;
+    }
+    openRegister();
   });
 
   /** Supabase redirect errors are English and technical; lead with a localized message. */

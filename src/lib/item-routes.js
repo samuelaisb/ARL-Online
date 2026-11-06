@@ -50,6 +50,7 @@ export const APP_PAGE_PATHS = [
   '/privacy',
   '/account',
   '/admin',
+  '/join',
 ];
 
 /**

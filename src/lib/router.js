@@ -438,6 +438,14 @@ export function isAccountRoute(pathname) {
   return normalizePath(pathname) === '/account';
 }
 
+/**
+ * `/join`: a direct link to the Register pop-up for links from outside the library ("Make a
+ * free account"). App shows the homepage there; HeaderAuth opens Register for a signed-out visitor.
+ */
+export function isJoinRoute(pathname) {
+  return normalizePath(pathname) === '/join';
+}
+
 if (typeof window !== 'undefined') {
   // Back and Forward swap without the morph: the browser restores the scroll position
   // right after popstate, which must land on the page it belongs to, not the old one.
