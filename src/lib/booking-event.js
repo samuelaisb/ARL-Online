@@ -19,12 +19,17 @@ const BOOKING_TYPES = {
  */
 const STAFF_BOOKING_TRAFFIC_TYPE = 'staff_booking';
 
+/** `equipment`, `book`, `room` or `expertise`, from the item's tag. */
+export function bookingTypeOf(item) {
+  return BOOKING_TYPES[item?.tag] ?? 'equipment';
+}
+
 /**
  * `booking_type` from the item's tag, `booking_source` `member` or `staff`, and `listing_name`
  * (the item's title) except for expertise, whose listings are titled with the expert's name.
  */
 export function bookingRequestParams(item, { bookedByStaff = false } = {}) {
-  const bookingType = BOOKING_TYPES[item?.tag] ?? 'equipment';
+  const bookingType = bookingTypeOf(item);
   return {
     booking_type: bookingType,
     booking_source: bookedByStaff ? 'staff' : 'member',

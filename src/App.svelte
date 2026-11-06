@@ -304,6 +304,9 @@
       window.gtag('config', 'G-5VERECD6ZJ', {
         page_path: window.location.pathname + window.location.search,
       });
+      window.gtag('config', 'G-6370Y1Y7YS', {
+        page_path: window.location.pathname + window.location.search,
+      });
     }
   }
 

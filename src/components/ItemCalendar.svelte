@@ -1,6 +1,6 @@
 <script>
   import { createReservation } from '../lib/inventory.js';
-  import { trackBookingRequestSent } from '../lib/analytics.js';
+  import { trackBookingRequestSent, trackRequestSubmitted } from '../lib/analytics.js';
   import { availabilityNow } from '../lib/availability-clock.js';
   import { locale, t } from '../lib/i18n.js';
   import { notify, DEFAULT_NOTIFICATION_DURATION } from '../lib/notification-store.js';
@@ -232,6 +232,7 @@
         ...roomFields,
       });
       trackBookingRequestSent(item);
+      trackRequestSubmitted(item);
 
       const updatedItem =
         result.item?.reservations != null

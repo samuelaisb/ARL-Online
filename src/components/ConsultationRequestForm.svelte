@@ -1,6 +1,6 @@
 <script>
   import { tick } from 'svelte';
-  import { trackBookingRequestSent } from '../lib/analytics.js';
+  import { trackBookingRequestSent, trackRequestSubmitted } from '../lib/analytics.js';
   import { availabilityNow } from '../lib/availability-clock.js';
   import { toDateKey } from '../lib/calendar.js';
   import { locale, t } from '../lib/i18n.js';
@@ -260,6 +260,7 @@
     try {
       const result = await createReservation(item.id, request);
       trackBookingRequestSent(item);
+      trackRequestSubmitted(item);
 
       const updatedItem =
         result.item?.reservations != null

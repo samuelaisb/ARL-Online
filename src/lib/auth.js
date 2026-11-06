@@ -1,10 +1,11 @@
-import { derived, writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import {
   isAuthError,
   isAuthRetryableFetchError,
   isAuthSessionMissingError,
   isAuthWeakPasswordError,
 } from '@supabase/supabase-js';
+import { trackAccountCreated } from './analytics.js';
 import { categoryToPath, getItemRouteParams } from './item-routes.js';
 import {
   PASSWORD_RESET_RETURN_PARAM,
@@ -274,10 +275,36 @@ export async function signUpWithEmail(
     options,
   });
   if (error) throw error;
+  if (signedMemberAgreement && isNewEmailSignup(data.user)) {
+    trackNewAccount(data.user, 'email');
+  }
   if (data.session) {
     session.set(data.session);
   }
   return data;
+}
+
+/** Accounts this page already sent `arl_account` for (ids stay here, never go to GA). */
+const accountsTracked = new Set();
+
+function trackNewAccount(user, method) {
+  if (!user?.id || accountsTracked.has(user.id)) return;
+  accountsTracked.add(user.id);
+  trackAccountCreated(method);
+}
+
+/**
+ * True when `signUp` created this account. An address that already has a confirmed account comes
+ * back as a user without identities; one still waiting for its confirmation is sent a new email,
+ * so its `confirmation_sent_at` moves on while `created_at` stays (Supabase refuses a resend
+ * within a minute, so a real retry is always later than that).
+ */
+function isNewEmailSignup(user) {
+  if (!user?.identities?.length) return false;
+  const createdAt = Date.parse(user.created_at);
+  const confirmationSentAt = Date.parse(user.confirmation_sent_at);
+  if (!Number.isFinite(createdAt) || !Number.isFinite(confirmationSentAt)) return true;
+  return confirmationSentAt - createdAt < 60 * 1000;
 }
 
 /**
@@ -308,13 +335,21 @@ export async function signInWithOAuthProvider(
   }
 }
 
-/** Records the member agreement (and email-updates choice) on the signed-in user. */
+/**
+ * Records the member agreement (and email-updates choice) on the signed-in user. The first save
+ * for a Google or Discord account completes it, which sends `arl_account`.
+ */
 export async function completeMemberAgreement({ emailUpdatesOptIn = false } = {}) {
   if (!supabase) throw new Error('Auth is not configured.');
+  const userBefore = get(session)?.user;
+  const completesNewAccount = userNeedsMemberAgreement(userBefore);
   const { error } = await supabase.auth.updateUser({
     data: { signed_member_agreement: true, email_updates_opt_in: emailUpdatesOptIn },
   });
   if (error) throw error;
+  if (completesNewAccount) {
+    trackNewAccount(userBefore, userBefore.app_metadata?.provider);
+  }
   const { data } = await supabase.auth.getSession();
   session.set(data.session);
 }
