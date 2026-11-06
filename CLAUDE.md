@@ -23,7 +23,7 @@ In short: after any change to behavior, layout, APIs, scripts, env vars, or stru
 |------|---------|
 | Local dev (Express :3000 + Vite :5173) | `npm run dev` |
 | Build check | `npm run build` |
-| Syntax check server | `node --check server.js` |
+| Syntax check server | `node --check server.js && for f in server/*.js; do node --check "$f"; done` |
 | Zoom credentials check (network) | `npm run zoom:check` |
 | Deploy to Cloud Run | Push to `main` (deploys automatically, see **Git**). `npm run cloud:build` (reads `.env`) is the manual route, only needed to change Cloud Run env vars or secrets. Both only with the user's go-ahead |
 
@@ -41,7 +41,7 @@ There is no test suite or linter. Verify with `npm run build`, `node --check`, a
 ## Git
 
 - Work lands on `main` at `github.com/samuelaisb/ARL-Online` as direct commits (no PR flow so far). Commit subject is one sentence ending in a period, then a short body.
-- **A push to `main` deploys production.** A Cloud Build trigger in Google Cloud (not in this repo; `cloudbuild.yaml` is only used by `npm run cloud:build`) builds the image and deploys the `arl-online` Cloud Run service on every push, keeping the service's current env vars and secrets. So push only when the user asks, after `npm run build` and `node --check server.js` pass, and make sure any new migration is applied in Supabase before pushing code that needs it. After pushing, confirm the deploy on the live site (for example, a new route behaviour or a string in the live bundle; Cloud Build's asset names differ from a local build's), then update **Where things stand** in `docs/claude-handoff.md` and add an entry at the top of the **Deploy log** in `docs/changelog.md`.
+- **A push to `main` deploys production.** A Cloud Build trigger in Google Cloud (not in this repo; `cloudbuild.yaml` is only used by `npm run cloud:build`) builds the image and deploys the `arl-online` Cloud Run service on every push, keeping the service's current env vars and secrets. So push only when the user asks, after `npm run build` and the server syntax checks pass, and make sure any new migration is applied in Supabase before pushing code that needs it. After pushing, confirm the deploy on the live site (for example, a new route behaviour or a string in the live bundle; Cloud Build's asset names differ from a local build's), then update **Where things stand** in `docs/claude-handoff.md` and add an entry at the top of the **Deploy log** in `docs/changelog.md`.
 - Git identity isn't configured globally on this Mac. Commit as `Samuel AisB <samuelaisb@mac.home>` (e.g. `git -c user.name="Samuel AisB" -c user.email="samuelaisb@mac.home" commit ...`) unless the user says otherwise.
 - `.env` holds real secrets and is gitignored. Never commit it or print its values.
 - Local `.env` is the **production** Supabase project plus live Zoom, Resend, and Slack. Don't exercise write flows (requests, scheduling, cancelling, admin edits) in local dev without the user's go-ahead; test them against a mocked Supabase client instead.

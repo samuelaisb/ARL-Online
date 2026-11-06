@@ -10,7 +10,7 @@ The ARL Online server posts to **one optional outbound webhook**: a Slack workfl
 |-------|-------|
 | **Env var** | `SLACK_RESERVATION_WEBHOOK_URL` |
 | **Required** | No — omitted or empty string disables the webhook entirely |
-| **Function** | `notifySlackReservation()` and `notifySlackAlert()` in `server.js`, both posting through `postSlackWorkflow()` |
+| **Function** | `notifySlackReservation()` and `notifySlackAlert()` in `server.js`, both posting through `postSlackWorkflow()` the payload built by `buildSlackReservationPayload()` / `buildSlackAlertPayload()` in `server/slack-messages.js` |
 | **Trigger** | Successful `POST /api/inventory/:id/reservations`; successful `POST /api/account/mentor-profile`; `PATCH /api/account/mentor-profile` that changed a field; `POST /api/account/reservations/:reservationId/cancel` on an approved booking; a new member's first `POST /api/auth/welcome-email` (see [Staff alerts](#staff-alerts)) |
 | **HTTP method** | `POST` |
 | **Content-Type** | `application/json` |
@@ -31,7 +31,7 @@ All values are plain strings suitable for Slack workflow trigger variables:
 
 | Field | Source | Example / notes |
 |-------|--------|-----------------|
-| `message` | Built by the server | The whole Slack message, ready to post: plain text with line breaks. New requests: `📚 New {equipment\|book\|room} request: {title}`, `From {email}`, the readable dates (room requests then add `Times: 6:00 p.m. to 9:00 p.m.`, with `, each day` over several days, and `For: {what the room is for}`); consultations: `📚 New consultation request: {expert}`, `From {email}`, `Topic: …`, `Availability: …`. Staff alerts: the event's emoji and the `request_summary` sentence. Built by `reservationSlackMessage()` / `notifySlackAlert()` |
+| `message` | Built by the server | The whole Slack message, ready to post: plain text with line breaks. New requests: `📚 New {equipment\|book\|room} request: {title}`, `From {email}`, the readable dates (room requests then add `Times: 6:00 p.m. to 9:00 p.m.`, with `, each day` over several days, and `For: {what the room is for}`); consultations: `📚 New consultation request: {expert}`, `From {email}`, `Topic: …`, `Availability: …`. Staff alerts: the event's emoji and the `request_summary` sentence. Built by `reservationSlackMessage()` / `buildSlackAlertPayload()` in `server/slack-messages.js` |
 | `item_id` | `item.id` | Inventory item UUID or seed id |
 | `item_title` | `item.title` | Display title |
 | `item_body` | `item.body` | Description text. For expertise, this is the short list blurb (the long bio is not sent) |
@@ -69,7 +69,7 @@ All values are plain strings suitable for Slack workflow trigger variables:
 
 ### Staff alerts
 
-`notifySlackAlert({ status, item, userEmail, summary, reservation? })` sends an event that is not a new reservation through the **same** workflow trigger, with **exactly the same 14 keys** (unused ones are `''`). `status` names the event and `request_summary` carries a sentence for staff; `message` is that sentence after the event's emoji (👋 new member, 🧑‍🏫 published, ✏️ updated, ↩️ cancelled by member, 🔁 follow-up, `SLACK_ALERT_EMOJI` in `server.js`). Pass `reservation` when an alert is about one reservation or consultation: its id fills `reservation_id` and its dates fill `start_date` / `end_date` (without it, both dates are today's date key).
+`notifySlackAlert({ status, item, userEmail, summary, reservation? })` sends an event that is not a new reservation through the **same** workflow trigger, with **exactly the same 14 keys** (unused ones are `''`). `status` names the event and `request_summary` carries a sentence for staff; `message` is that sentence after the event's emoji (👋 new member, 🧑‍🏫 published, ✏️ updated, ↩️ cancelled by member, 🔁 follow-up, `SLACK_ALERT_EMOJI` in `server/slack-messages.js`). Pass `reservation` when an alert is about one reservation or consultation: its id fills `reservation_id` and its dates fill `start_date` / `end_date` (without it, both dates are today's date key).
 
 | `status` | When | Other fields |
 |----------|------|--------------|
@@ -155,7 +155,8 @@ Slack reservation webhook → configured
 
 | File | Role |
 |------|------|
-| `server.js` | `postSlackWorkflow()`, `notifySlackReservation()`, `notifySlackAlert()`, `notifyMentorProfileChange()`, `notifyMemberReservationCancelled()`; hooks on reservation create, mentor-profile `POST`/`PATCH` and the member reservation cancel |
+| `server/slack-messages.js` | The payloads: `buildSlackReservationPayload()` (with `reservationSlackMessage()`) and `buildSlackAlertPayload()` (with `SLACK_ALERT_EMOJI`), the same 14 keys |
+| `server.js` | `postSlackWorkflow()`, `notifySlackReservation()`, `notifySlackAlert()`, `notifyMentorProfileChange()`, `notifyMemberReservationCancelled()` (each alert's `summary` sentence); hooks on reservation create, mentor-profile `POST`/`PATCH` and the member reservation cancel |
 | `.env.example` | Documents optional `SLACK_RESERVATION_WEBHOOK_URL` |
 | `scripts/cloud-build.sh` | Cloud Run runtime env for webhook URL |
 
